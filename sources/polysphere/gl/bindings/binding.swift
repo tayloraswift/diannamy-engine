@@ -63,9 +63,9 @@ public typealias GLDebugProcAMD = @convention(c)
     import Darwin
 #endif
 
-enum OpenGL 
+enum OpenGL
 {
-    static 
+    static
     func getfp(_ name:String, support:[String]) -> UnsafeMutableRawPointer
     {
         guard let fp:UnsafeMutableRawPointer = lookupAddress(of: name)
@@ -75,74 +75,51 @@ enum OpenGL
         }
         return fp
     }
-    
-#if os(Linux)
-    static 
-    var glxGetProcAddress:(@convention(c) (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?)? = nil
 
-    static 
+#if os(Linux)
+    typealias LoaderFunction = (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?
+    static
+    var loader:LoaderFunction? = nil
+
+    static
     func lookupAddress(of name:String) -> UnsafeMutableRawPointer?
     {
-        if let glxGetProcAddress = glxGetProcAddress
-        {
-            return glxGetProcAddress(name)
-        }
-
-        guard let dlopenhandle:UnsafeMutableRawPointer = dlopen(nil, RTLD_LAZY | RTLD_LOCAL)
+        guard let loader:LoaderFunction = loader
         else
         {
-            fatalError("failed to obtain dynamic library handle")
-        }
-        if let fp:UnsafeMutableRawPointer = dlsym(dlopenhandle, "glXGetProcAddressARB")
-        {
-            glxGetProcAddress = unsafeBitCast(fp, to: type(of: glxGetProcAddress))
+            Log.fatal("missing opengl loader function")
         }
 
-        if let glxGetProcAddress = glxGetProcAddress
-        {
-            return glxGetProcAddress(name)
-        }
-
-        if let fp:UnsafeMutableRawPointer = dlsym(dlopenhandle, "glXGetProcAddress")
-        {
-            glxGetProcAddress = unsafeBitCast(fp, to: type(of: glxGetProcAddress))
-        }
-
-        if let glxGetProcAddress = glxGetProcAddress
-        {
-            return glxGetProcAddress(name)
-        }
-
-        fatalError("failed to find glXGetProcAddress")
+        return loader(name)
     }
 
 #elseif os(OSX)
-    static 
+    static
     var dlopenhandle:UnsafeMutableRawPointer? = nil
-    
-    static 
+
+    static
     func lookupAddress(of name:String) -> UnsafeMutableRawPointer?
     {
         if let dlopenhandle:UnsafeMutableRawPointer = dlopenhandle
         {
             return dlsym(dlopenhandle, name)
         }
-        
+
         dlopenhandle = dlopen("/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL", RTLD_LAZY)
-        
+
         if let dlopenhandle:UnsafeMutableRawPointer = dlopenhandle
         {
             return dlsym(dlopenhandle, name)
         }
-        
+
         fatalError("failed to load opengl framework")
     }
-    
+
 #else
     func lookupAddress(of _:String) -> UnsafeMutableRawPointer?
     {
         fatalError("unsupported OS")
     }
-    
+
 #endif
 }
