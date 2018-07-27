@@ -217,7 +217,7 @@ struct ViewControl
     func compose(_ position:Math<Float>.V2, anchor:Anchor)
     {
         let displacement:Math<Float>.V2 =
-            Math.scale(Math.sub(position, anchor.base), by: -0.01)
+            Math.scale(Math.sub(position, anchor.base), by: -0.005)
         switch anchor.action
         {
             case .pan:
