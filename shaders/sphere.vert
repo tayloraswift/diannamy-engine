@@ -16,13 +16,7 @@ layout(std140) uniform Camera
     vec3 position;
 } camera;
 
-out Vertex
-{
-    vec3 color;
-} vertex;
-
 void main()
 {
-    vertex.color = position; 
     gl_Position  = camera.U * vec4(position, 1);
 }

@@ -14,6 +14,19 @@ enum Programs
             .block("Camera", binding: 0)
         ]
     )!
+    static
+    let sphere:GL.Program = .create(
+        shaders:
+        [
+            (.vertex  , "shaders/sphere.vert"),
+            (.fragment, "shaders/sphere.frag")
+        ],
+        uniforms:
+        [
+            .block("Camera", binding: 0), 
+            .float4("sphere")
+        ]
+    )!
 }
 
 enum Direction
@@ -204,10 +217,11 @@ struct ViewControl
 
         let space:Space = interpolation.space()
         let (a, b):(Math<Float>.V3, Math<Float>.V3) =
-            interpolation.frustum(sensor: sensor, clip: (-0.1, -100))
+            interpolation.frustum(sensor: self.sensor, clip: (-0.1, -100))
 
         self.camera.view(space)
         self.camera.frustum(a, b)
+        self.camera.fragment(sensor: self.sensor, space: space)
         self.camera.matrices()
 
         return true
@@ -376,8 +390,8 @@ struct Frame
         self.view = .init(.init(
             pivot: (0, 0, 0),
             angle: (0.25 * Float.pi, 1.75 * Float.pi),
-            distance: 6,
-            focalLength: 35))
+            distance: 3,
+            focalLength: 25))
 
         self._obj    = .init()
 
@@ -482,7 +496,7 @@ struct Frame
     mutating
     func process(_ δ:Double) -> Bool
     {
-        GL.clearColor((0.5, 0.5, 0.5), 1)
+        GL.clearColor((0.1, 0.1, 0.1), 1)
         OpenGL.glClearDepth(-1.0)
         GL.clear(color: true, depth: true)
 
@@ -508,8 +522,9 @@ struct Frame
                 }
             }
 
-            Programs.debug.bind
+            Programs.sphere.bind
             {
+                $0.set(float4: "sphere", (0, 0, 0, 1))
                 self._obj.vao.draw(0 ..< 36, as: .triangles)
             }
         }

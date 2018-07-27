@@ -13,7 +13,7 @@ struct Camera
     {
         mat4 U;
         mat4 V;
-        //mat4 W;
+        mat4 W;
         
         // projection parameters 
         vec3 a;
@@ -28,9 +28,10 @@ struct Camera
     @usableFromInline
     struct Storage 
     {
-        var U:Math<Float>.Mat4, 
-            V:Math<Float>.Mat4, 
-            //W:Math<Float>.Mat4, 
+        var U:Math<Float>.Mat4,   // projection–view matrix
+            V:Math<Float>.Mat4,   // view matrix 
+            F:Math<Float>.Mat4,   // fragment matrix
+            //G:Math<Float>.Mat4, // global matrix
             
             a:Math<Float>.V3, 
             _padf0:Float = 0, 
@@ -41,13 +42,24 @@ struct Camera
             position:Math<Float>.V3, 
             _padf2:Float = 0
         
-        init(U:Math<Float>.Mat4, V:Math<Float>.Mat4, a:Math<Float>.V3, b:Math<Float>.V3, position:Math<Float>.V3)
+        init()
         {
-            self.U = U
-            self.V = V
-            self.a = a
-            self.b = b
-            self.position = position
+            let identity:Math<Float>.Mat4 = 
+            (
+                (1, 0, 0, 0), 
+                (0, 1, 0, 0), 
+                (0, 0, 1, 0), 
+                (0, 0, 0, 1)
+            )
+            self.U = identity
+            self.V = identity
+            self.F = identity
+            
+            self.a        = (-1, -1, -0.5)
+            self.b        = ( 1,  1, -2)
+            self.position = ( 0,  0,  0)
+            
+            assert(MemoryLayout<Storage>.size == 240)
         }
     }
     
@@ -77,6 +89,18 @@ struct Camera
         set(V)
         {
             return self.storage.value.V = V
+        }
+    }
+    private 
+    var F:Math<Float>.Mat4 
+    {
+        get 
+        {
+            return self.storage.value.F
+        }
+        set(F)
+        {
+            return self.storage.value.F = F
         }
     }
     private 
@@ -124,13 +148,7 @@ struct Camera
     
     init()
     {
-        let position:Math<Float>.V3 = ( 0,  0,  0), 
-            a:Math<Float>.V3        = (-1, -1, -0.5), 
-            b:Math<Float>.V3        = ( 1,  1, -2)
-        let V:Math<Float>.Mat4 = Camera.view(position: position, y: (0, 1, 0), z: (0, 0, 1)), 
-            U:Math<Float>.Mat4 = Math.mult(Camera.projection(a, b), V)
-        
-        self.storage = .init(.init(U: U, V: V, a: a, b: b, position: position))
+        self.storage = .init(.init())
     }
     
     // all vectors must be normalized
@@ -154,20 +172,6 @@ struct Camera
             )
     }
     
-    private static 
-    func view(position:Math<Float>.V3, z:Math<Float>.V3, x:Math<Float>.V3) -> Math<Float>.Mat4
-    {
-        let y:Math<Float>.V3 = Math.normalize(Math.cross(z, x))
-        return view(.init(origin: position, basis: (x, y, z)))
-    }
-    
-    private static 
-    func view(position:Math<Float>.V3, y:Math<Float>.V3, z:Math<Float>.V3) -> Math<Float>.Mat4
-    {
-        let x:Math<Float>.V3 = Math.normalize(Math.cross(y, z))
-        return view(.init(origin: position, basis: (x, y, z)))
-    }
-    
     private static  
     func projection(_ a:Math<Float>.V3, _ b:Math<Float>.V3) -> Math<Float>.Mat4
     {
@@ -188,26 +192,61 @@ struct Camera
                 (0,                 0,                  2 * a.z * b.z * scale.z, 0)
             )
     }
+    
+    // computes the `F` (“fragment”) matrix. its purpose is to convert `gl_FragCoord`s 
+    // into world space vectors (not necessarily normalized)
+    private static  
+    func fragment(_ a:Math<Float>.V3, _ b:Math<Float>.V3, 
+        sensor:Math<Float>.Rectangle, space:Space) -> Math<Float>.Mat4
+    {
+        let k:Math<Float>.V2  = Math.div(Math.sub((b.x, b.y), (a.x, a.y)), 
+                                         Math.sub(sensor.1, sensor.0))
+        let ξ1:Math<Float>.V3 = Math.scale(space.basis.x, by: k.x), 
+            ξ2:Math<Float>.V3 = Math.scale(space.basis.y, by: k.y)
+        
+        let d:Math<Float>.V3 
+        d.x = Math.dot(a, (space.basis.x.x, space.basis.y.x, space.basis.z.x))
+        d.y = Math.dot(a, (space.basis.x.y, space.basis.y.y, space.basis.z.y))
+        d.z = Math.dot(a, (space.basis.x.z, space.basis.y.z, space.basis.z.z))
+        
+        return 
+            (
+                (ξ1.x, ξ1.y, ξ1.z, 0), 
+                (ξ2.x, ξ2.y, ξ2.z, 0), 
+                (d.x,  d.y,  d.z,  0), 
+                (space.origin.x, space.origin.y, space.origin.z, 1)
+            )
+    }
 
     // sets the view matrix. does not update the combined `U` matrix
     mutating 
     func view(_ space:Space)
     {
         self.V = Camera.view(space)
+        self.position = space.origin
     }
 
     mutating 
     func view(position:Math<Float>.V3, z:Math<Float>.V3, x:Math<Float>.V3)
     {
-        self.V = Camera.view(position: position, z: z, x: x)
+        let y:Math<Float>.V3 = Math.normalize(Math.cross(z, x))
+        self.view(.init(origin: position, basis: (x, y, z)))
     }
     
     mutating 
     func view(position:Math<Float>.V3, y:Math<Float>.V3, z:Math<Float>.V3)
     {
-        self.V = Camera.view(position: position, y: y, z: z)
+        let x:Math<Float>.V3 = Math.normalize(Math.cross(y, z))
+        self.view(.init(origin: position, basis: (x, y, z)))
     }
     
+    // sets the `F` (“fragment”) matrix. its purpose is to convert `gl_FragCoord`s 
+    // into world space vectors (not necessarily normalized)
+    mutating 
+    func fragment(sensor:Math<Float>.Rectangle, space:Space)
+    {
+        self.F = Camera.fragment(self.a, self.b, sensor: sensor, space: space)
+    }
     
     // sets the frustum parameters. does not compute any matrices
     // parameters should *not* be a Math<Float>.Prism because the z coordinates 

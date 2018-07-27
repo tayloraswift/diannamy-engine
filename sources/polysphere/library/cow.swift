@@ -42,7 +42,6 @@ struct Unique<T>
     {
         return Swift.withUnsafeBytes(of: self.reference.value)
         {
-            assert($0.count == 44 * 4)
             return body($0)
         }
     }
