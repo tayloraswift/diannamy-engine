@@ -65,6 +65,14 @@ enum GL
             return Buffer(id: id)
         }
         
+        func destroy() 
+        {
+            withUnsafePointer(to: self.id)
+            {
+                OpenGL.glDeleteBuffers(1, $0)
+            }
+        }
+        
         enum Usage:OpenGL.Enum
         {
             case `static` = 0x88E4,
@@ -186,8 +194,10 @@ enum GL
 
         func destroy()
         {
-            var _id:OpenGL.UInt = self.id
-            OpenGL.glDeleteVertexArrays(1, &_id)
+            withUnsafePointer(to: self.id)
+            {
+                OpenGL.glDeleteVertexArrays(1, $0)
+            }
         }
 
         func bind()

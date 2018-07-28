@@ -36,7 +36,7 @@ struct ControlPlane
         // animation: setting the phase to 0 will immediately update the state to 
         // head while setting it to 1 will allow a transition from base to head
         phase:Float?
-
+    
     init(_ base:Camera.Rig)
     {
         self.head = base
@@ -219,7 +219,7 @@ struct ControlPlane
         return true
     }
     
-    func raycast(_ position:Math<Float>.V2) -> Math<Float>.V3 
+    func ray(_ position:Math<Float>.V2) -> Math<Float>.V3 
     {
         let F:Math<Float>.Mat3 = Math.mat3(from: self.camera.F)
         return Math.normalize(Math.mult(F, Math.homogenize(position)))

@@ -29,70 +29,6 @@ enum Programs
     )!
 }
 
-struct _Obj
-{
-    let vbo:GL.Buffer,
-        ebo:GL.Buffer,
-        vao:GL.VertexArray
-
-    init()
-    {
-        self.ebo = .generate()
-        self.vbo = .generate()
-        self.vao = .generate()
-
-        let cube:[Float] =
-        [
-             -1, -1, -1,
-              1, -1, -1,
-              1,  1, -1,
-             -1,  1, -1,
-
-             -1, -1,  1,
-              1, -1,  1,
-              1,  1,  1,
-             -1,  1,  1,
-        ]
-
-        let indices:[UInt32] =
-        [
-            0, 2, 1,
-            0, 3, 2,
-
-            0, 1, 5,
-            0, 5, 4,
-
-            1, 2, 6,
-            1, 6, 5,
-
-            2, 3, 7,
-            2, 7, 6,
-
-            3, 0, 4,
-            3, 4, 7,
-
-            4, 5, 6,
-            4, 6, 7
-        ]
-
-        self.vbo.bind(to: .array)
-        {
-
-
-            $0.data(cube, usage: .static)
-
-            self.vao.bind()
-            GL.setVertexLayout(.float(from: .float3))
-
-            self.ebo.bind(to: .elementArray)
-            {
-                $0.data(indices, usage: .static)
-                self.vao.unbind()
-            }
-        }
-    }
-}
-
 struct Frame
 {
     enum MouseButton
@@ -128,7 +64,7 @@ struct Frame
     }
 
     private
-    var _obj:_Obj,
+    var globe:Globe,
         _cameraBlock:GL.Buffer,
         plane:ControlPlane
 
@@ -142,7 +78,7 @@ struct Frame
             distance: 4,
             focalLength: 32))
 
-        self._obj    = .init()
+        self.globe = .init()
 
         self._cameraBlock = .generate()
         self._cameraBlock.bind(to: .uniform)
@@ -188,6 +124,18 @@ struct Frame
     mutating
     func press(_ position:Math<Double>.V2, button:MouseButton)
     {
+        switch button 
+        {
+            case .left:
+                let ray:Math<Float>.V3 = self.plane.ray(Math.castFloat(position))
+                if let intersect:Math<Float>.V3 = self.globe.cast(ray, from: self.plane.camera.position)
+                {
+                    Log.note("struck unit sphere at \(intersect)")
+                }
+            default:
+                break 
+        }
+        
         guard let action:ControlPlane.Action = Frame.buttonAction(button)
         else
         {
@@ -272,7 +220,7 @@ struct Frame
             Programs.sphere.bind
             {
                 $0.set(float4: "sphere", (0, 0, 0, 1))
-                self._obj.vao.draw(0 ..< 36, as: .triangles)
+                self.globe.vao.draw(0 ..< 36, as: .triangles)
             }
         }
 
@@ -295,7 +243,8 @@ class Window
     let window:OpaquePointer
 
     private
-    var frame:Frame
+    var frame:Frame, 
+        height:Double // need to store this to flip y axis
 
     init(size:Math<Int>.V2, name:String)
     {
@@ -310,6 +259,7 @@ class Window
 
         self.window = window
         self.frame  = .init(size: size)
+        self.height = Double(size.y)
 
         // attach pointer to self to window
         glfwSetWindowUserPointer(window,
@@ -317,14 +267,16 @@ class Window
 
         glfwSetFramebufferSizeCallback(window)
         {
-            (window:OpaquePointer?, x:CInt, y:CInt) in
-
-            Window.reconstitute(from: window).frame.resize(to: Math.cast((x, y), as: Int.self))
+            (context:OpaquePointer?, x:CInt, y:CInt) in
+            
+            let window:Window = .reconstitute(from: context)
+            window.height = Double(y)
+            window.frame.resize(to: Math.cast((x, y), as: Int.self))
         }
 
         glfwSetKeyCallback(window)
         {
-            (window:OpaquePointer?, keycode:CInt, scancode:CInt, action:CInt, mods:CInt) in
+            (context:OpaquePointer?, keycode:CInt, scancode:CInt, action:CInt, mods:CInt) in
 
             guard action == GLFW_PRESS
             else
@@ -333,21 +285,22 @@ class Window
             }
 
             let key:Frame.Key = .init(keycode)
-            Window.reconstitute(from: window).frame.keypress(key)
+            Window.reconstitute(from: context).frame.keypress(key)
         }
 
         glfwSetCursorPosCallback(window)
         {
-            (window:OpaquePointer?, x:Double, y:Double) in
-
-            Window.reconstitute(from: window).frame.cursor((x, -y))
+            (context:OpaquePointer?, x:Double, y:Double) in
+            
+            let window:Window = .reconstitute(from: context)
+            window.frame.cursor((x, window.height - y))
         }
 
         glfwSetMouseButtonCallback(window)
         {
-            (window:OpaquePointer?, code:CInt, action:CInt, mods:CInt) in
+            (context:OpaquePointer?, code:CInt, action:CInt, mods:CInt) in
 
-            let interface:Window = Window.reconstitute(from: window),
+            let window:Window = .reconstitute(from: context),
                 button:Frame.MouseButton
 
             switch code
@@ -365,16 +318,16 @@ class Window
             }
 
             var position:Math<Double>.V2 = (0, 0)
-            glfwGetCursorPos(window, &position.x, &position.y)
-            position.y = -position.y
+            glfwGetCursorPos(context, &position.x, &position.y)
+            position.y = window.height - position.y
 
             if action == GLFW_PRESS
             {
-                interface.frame.press(position, button: button)
+                window.frame.press(position, button: button)
             }
             else // if action == GLFW_RELEASE
             {
-                interface.frame.release(position, button: button)
+                window.frame.release(position, button: button)
             }
         }
 

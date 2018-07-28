@@ -1,8 +1,10 @@
 struct Globe
 {
+    private 
     let vbo:GL.Buffer,
-        ebo:GL.Buffer,
-        vao:GL.VertexArray
+        ebo:GL.Buffer
+    
+    let vao:GL.VertexArray
 
     init()
     {
@@ -46,8 +48,6 @@ struct Globe
 
         self.vbo.bind(to: .array)
         {
-
-
             $0.data(cube, usage: .static)
 
             self.vao.bind()
@@ -59,5 +59,20 @@ struct Globe
                 self.vao.unbind()
             }
         }
+    }
+    
+    func cast(_ ray:Math<Float>.V3, from position:Math<Float>.V3) -> Math<Float>.V3?
+    {
+        let c:Math<Float>.V3 = Math.sub((0, 0, 0), position), 
+            l:Float          = Math.dot(c, ray)
+        
+        let discriminant:Float = 1 * 1 + l * l - Math.eusq(c)
+        guard discriminant >= 0 
+        else 
+        {
+            return nil
+        }
+        
+        return Math.add(position, Math.scale(ray, by: l - discriminant.squareRoot()))
     }
 }

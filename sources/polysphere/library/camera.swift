@@ -124,6 +124,12 @@ struct Camera
         }
     }
     
+    var position:Math<Float>.V3 
+    {
+        let h:Math<Float>.V4 = self.storage.value.F.3
+        return (h.x, h.y, h.z)
+    }
+    
     // when used as a data source for a uniform buffer
     func withUnsafeBytes<Result>(body:(UnsafeRawBufferPointer) -> Result) -> Result 
     {
