@@ -29,254 +29,6 @@ enum Programs
     )!
 }
 
-enum Direction
-{
-    case up, down, left, right
-}
-
-struct ViewControl
-{
-    enum Action
-    {
-        case pan, track, zoom
-    }
-
-    struct Anchor
-    {
-        let base:Math<Float>.V2,
-            action:Action
-    }
-
-    private(set)
-    var camera:Camera
-
-    private
-    var view:Camera.Rig,
-        base:Camera.Rig,
-
-        sensor:Math<Float>.Rectangle,
-        anchor:Anchor? = nil,
-
-        // animation
-        phase:Float?
-
-    init(_ base:Camera.Rig)
-    {
-        self.view = base
-        self.base = base
-
-        self.camera = .init()
-        self.sensor = ((0, 0), (0, 0))
-        self.phase  = 0
-    }
-
-    mutating
-    func setSensor(_ sensor:Math<Float>.Rectangle)
-    {
-        self.sensor = sensor
-        self.phase  = 0
-    }
-
-    mutating
-    func down(_ position:Math<Float>.V2, action:Action)
-    {
-        guard self.anchor == nil
-        else
-        {
-            return
-        }
-
-        self.anchor = .init(base: position, action: action)
-        self.rebase()
-    }
-
-    mutating
-    func move(_ position:Math<Float>.V2)
-    {
-        guard let anchor:Anchor = self.anchor
-        else
-        {
-            // hover
-            return
-        }
-
-        self.compose(position, anchor: anchor)
-    }
-
-    mutating
-    func up(_ position:Math<Float>.V2, action:Action)
-    {
-        guard let anchor:Anchor = self.anchor
-        else
-        {
-            Log.warning("control up event recieved, but no corresponding down event was recieved")
-            return
-        }
-
-        switch (anchor.action, action)
-        {
-            case (.pan, .pan), (.track, .track), (.zoom, .zoom):
-                break
-
-            default:
-                // up event does not match stored down event
-                return
-        }
-
-        self.compose(position, anchor: anchor)
-
-        self.anchor = nil
-    }
-
-    mutating
-    func bump(_ direction:Direction, action:Action)
-    {
-        // bumps have lower priority than anchors
-        guard self.anchor == nil
-        else
-        {
-            return
-        }
-
-        // ordering of operations here is important
-        self.rebase()
-        self.phase = 1
-
-        switch action
-        {
-            case .pan:
-                switch direction
-                {
-                    case .up:
-                        let θ:Float       = self.view.angle.θ - 0.1
-                        self.view.angle.θ = max(0, min(θ, Float.pi))
-                    case .down:
-                        let θ:Float       = self.view.angle.θ + 0.1
-                        self.view.angle.θ = max(0, min(θ, Float.pi))
-                    case .left:
-                        self.view.angle.φ -= 0.1
-                    case .right:
-                        self.view.angle.φ += 0.1
-                }
-
-            case .track:
-                let basis:Math<Math<Float>.V3>.V3 = self.base.basis()
-
-                let vector:Math<Float>.V3
-                switch direction
-                {
-                    case .up:
-                        vector = basis.y
-                    case .down:
-                        vector = Math.neg(basis.y)
-                    case .left:
-                        vector = Math.neg(basis.x)
-                    case .right:
-                        vector = basis.x
-                }
-
-                self.view.pivot = Math.scadd(self.base.pivot, vector, 0.5)
-
-            case .zoom:
-                switch direction
-                {
-                    case .up:
-                        self.view.focalLength = min(195, self.view.focalLength + 10)
-                    case .down:
-                        self.view.focalLength = max(15,  self.view.focalLength - 10)
-
-                    default:
-                        self.phase = 0
-                }
-        }
-    }
-
-    // returns true if the view system has changed
-    mutating
-    func next(_ δ:Float) -> Bool
-    {
-        guard let phase:Float = self.phase
-        else
-        {
-            return false
-        }
-
-        let decremented:Float = phase - δ * 5,
-            interpolation:Camera.Rig
-        if decremented > 0
-        {
-            interpolation = Camera.Rig.lerp(self.view, self.base,
-                ViewControl.parameter(decremented))
-            self.phase = decremented
-        }
-        else
-        {
-            interpolation = self.view
-            self.phase = nil
-        }
-
-        let space:Space = interpolation.space()
-        let (a, b):(Math<Float>.V3, Math<Float>.V3) =
-            interpolation.frustum(sensor: self.sensor, clip: (-0.1, -100))
-
-        self.camera.view(space)
-        self.camera.frustum(a, b)
-        self.camera.fragment(sensor: self.sensor, space: space)
-        self.camera.matrices()
-
-        return true
-    }
-
-    private mutating
-    func compose(_ position:Math<Float>.V2, anchor:Anchor)
-    {
-        let displacement:Math<Float>.V2 =
-            Math.scale(Math.sub(position, anchor.base), by: -0.005)
-        switch anchor.action
-        {
-            case .pan:
-                self.view.angle.φ = self.base.angle.φ + displacement.x
-                let θ:Float       = self.base.angle.θ - displacement.y
-                self.view.angle.θ = max(0, min(θ, Float.pi))
-
-            case .track:
-                let basis:Math<Math<Float>.V3>.V3 = self.base.basis()
-
-                self.view.pivot = Math.add(self.base.pivot,
-                    (Math.dot(displacement, (basis.x.x, basis.y.x)),
-                     Math.dot(displacement, (basis.x.y, basis.y.y)),
-                     Math.dot(displacement, (basis.x.z, basis.y.z))))
-
-            case .zoom:
-                // not implemented
-                break
-        }
-
-        self.phase = 0
-    }
-
-    private static
-    func parameter(_ x:Float) -> Float
-    {
-        // x from 0 to 1
-        return x * x
-    }
-
-    // kills any current animation and synchronizes the 2 current keyframes
-    mutating
-    func rebase()
-    {
-        if let  phase:Float = self.phase,
-                phase > 0
-        {
-            self.view  = Camera.Rig.lerp(self.view, self.base, ViewControl.parameter(phase))
-            self.phase = 0
-        }
-
-        self.base = self.view
-    }
-}
-
 struct _Obj
 {
     let vbo:GL.Buffer,
@@ -376,22 +128,19 @@ struct Frame
     }
 
     private
-    var size:Math<Int>.V2 = (0, 0)
-
-    private
     var _obj:_Obj,
         _cameraBlock:GL.Buffer,
-        view:ViewControl
+        plane:ControlPlane
 
     init(size:Math<Int>.V2)
     {
         GL.enableDebugOutput()
 
-        self.view = .init(.init(
+        self.plane = .init(.init(
             pivot: (0, 0, 0),
             angle: (0.25 * Float.pi, 1.75 * Float.pi),
-            distance: 3,
-            focalLength: 25))
+            distance: 4,
+            focalLength: 32))
 
         self._obj    = .init()
 
@@ -399,7 +148,7 @@ struct Frame
         self._cameraBlock.bind(to: .uniform)
         {
             (target:GL.Buffer.BoundTarget) in
-            self.view.camera.withUnsafeBytes
+            self.plane.camera.withUnsafeBytes
             {
                 target.reserve($0.count, usage: .dynamic)
             }
@@ -414,16 +163,14 @@ struct Frame
         // figure out center point of screen
         let sizef:Math<Float>.V2 = Math.castFloat(size),
             shift:Math<Float>.V2 = Math.scale(sizef, by: -0.5)
-
-        let sensor:Math<Float>.Rectangle = (shift, Math.add(sizef, shift))
-
-        self.view.setSensor(sensor)
-        self.size = size
+        
+        self.plane.sensor = (shift, Math.add(sizef, shift))
+        
         GL.viewport(anchor: (0, 0), size: size)
     }
 
     private static
-    func buttonAction(_ button:MouseButton) -> ViewControl.Action?
+    func buttonAction(_ button:MouseButton) -> ControlPlane.Action?
     {
         switch button
         {
@@ -441,37 +188,37 @@ struct Frame
     mutating
     func press(_ position:Math<Double>.V2, button:MouseButton)
     {
-        guard let action:ViewControl.Action = Frame.buttonAction(button)
+        guard let action:ControlPlane.Action = Frame.buttonAction(button)
         else
         {
             return
         }
 
-        self.view.down(Math.castFloat(position), action: action)
+        self.plane.down(Math.castFloat(position), action: action)
     }
 
     mutating
     func cursor(_ position:Math<Double>.V2)
     {
-        self.view.move(Math.castFloat(position))
+        self.plane.move(Math.castFloat(position))
     }
 
     mutating
     func release(_ position:Math<Double>.V2, button:MouseButton)
     {
-        guard let action:ViewControl.Action = Frame.buttonAction(button)
+        guard let action:ControlPlane.Action = Frame.buttonAction(button)
         else
         {
             return
         }
 
-        self.view.up(Math.castFloat(position), action: action)
+        self.plane.up(Math.castFloat(position), action: action)
     }
 
     mutating
     func scroll(_ direction:Direction)
     {
-        self.view.bump(direction, action: .zoom)
+        self.plane.bump(direction, action: .zoom)
     }
 
     mutating
@@ -480,13 +227,13 @@ struct Frame
         switch key
         {
             case .up:
-                self.view.bump(.up, action: .track)
+                self.plane.bump(.up, action: .track)
             case .down:
-                self.view.bump(.down, action: .track)
+                self.plane.bump(.down, action: .track)
             case .left:
-                self.view.bump(.left, action: .track)
+                self.plane.bump(.left, action: .track)
             case .right:
-                self.view.bump(.right, action: .track)
+                self.plane.bump(.right, action: .track)
 
             default:
                 break
@@ -514,9 +261,9 @@ struct Frame
             (target:GL.Buffer.BoundTarget) in
 
             // check if camera needs updating
-            if self.view.next(Float(δ))
+            if self.plane.next(Float(δ))
             {
-                self.view.camera.withUnsafeBytes
+                self.plane.camera.withUnsafeBytes
                 {
                     target.subData($0)
                 }
@@ -645,11 +392,11 @@ class Window
             {
                 interface.frame.scroll(.down)
             }
-            else if x < 0
+            else if x > 0
             {
                 interface.frame.scroll(.left)
             }
-            else if x > 0
+            else if x < 0
             {
                 interface.frame.scroll(.right)
             }
