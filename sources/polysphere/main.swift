@@ -182,9 +182,12 @@ struct Frame
                 self.plane.bump(.left, action: .track)
             case .right:
                 self.plane.bump(.right, action: .track)
+            
+            case .period:
+                self.plane.jump(to: (0, 0, 0))
 
             default:
-                break
+                Log.note("unrecognized key press (\(key))")
         }
     }
 
@@ -390,7 +393,7 @@ func main()
     guard glfwInit() == 1
     else
     {
-        fatalError("glfwInit() failed")
+        Log.fatal("glfwInit() failed")
     }
     defer
     {
@@ -403,7 +406,7 @@ func main()
 
         if let description = description
         {
-            print("(glfw) \(error): \(String(cString: description))")
+            Log.error(.init(cString: description), from: .glfw)
         }
     }
 

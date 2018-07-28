@@ -66,12 +66,12 @@ struct ControlPlane
         switch action
         {
             case .pan:
-                let delta:Math<Float>.V2 = Math.scale(displacement, by: 1/128)
-                self.head.angle.φ =            self.base.angle.φ - delta.x
-                self.head.angle.θ = max(0, min(self.base.angle.θ + delta.y, Float.pi))
+                let delta:Math<Float>.V2 = Math.scale(displacement, by: -1/128)
+                self.head.angle.φ =            self.base.angle.φ + delta.x
+                self.head.angle.θ = max(0, min(self.base.angle.θ - delta.y, Float.pi))
 
             case .track:
-                let delta:Math<Float>.V2 = Math.scale(displacement, by: 1/128)
+                let delta:Math<Float>.V2 = Math.scale(displacement, by: -1/128)
                 let basis:Math<Math<Float>.V3>.V3 = self.base.basis()
 
                 self.head.pivot = Math.add(self.base.pivot,
@@ -80,7 +80,7 @@ struct ControlPlane
                      Math.dot(delta, (basis.x.z, basis.y.z))))
 
             case .zoom:
-                let delta:Float = 1/8 * displacement.y
+                let delta:Float = -1/8 * displacement.y
                 self.head.focalLength = max(8, self.head.focalLength + delta)
         }
     }
@@ -97,6 +97,24 @@ struct ControlPlane
         }
 
         self.base = self.head
+    }
+    
+    // rebases to the current animation state and starts the transition timer to 
+    // progress to whatever head will be set to
+    private mutating 
+    func charge() -> Bool
+    {
+        // loaded animations have lower priority than anchor drags
+        guard self.anchor == nil
+        else
+        {
+            return false 
+        }
+
+        // ordering of operations here is important
+        self.rebase()
+        self.phase = 1
+        return true
     }
 
     mutating
@@ -154,34 +172,42 @@ struct ControlPlane
     mutating
     func bump(_ direction:Direction, action:Action)
     {
-        // bumps have lower priority than anchors
-        guard self.anchor == nil
-        else
+        guard self.charge()
+        else 
         {
-            return
-        }
-
-        // ordering of operations here is important
-        self.rebase()
-        self.phase = 1
+            return 
+        } 
         
         let displacement:Math<Float>.V2
         switch direction 
         {
+            // a bump is kind of like pushing off into the opposite direction
             case .up:
-                displacement = (  0,  64)
+            displacement = (  0, -64)
             
             case .down:
-                displacement = (  0, -64)
+            displacement = (  0,  64)
             
             case .left:
-                displacement = (-64,   0)
+            displacement = ( 64,   0)
             
             case .right:
-                displacement = ( 64,   0)
+            displacement = (-64,   0)
         }
         
         self.displace(displacement, action: action)
+    }
+    
+    mutating 
+    func jump(to target:Math<Float>.V3)
+    {
+        guard self.charge()
+        else 
+        {
+            return 
+        } 
+        
+        self.head.pivot = target
     }
 
     // returns true if the view system has changed
