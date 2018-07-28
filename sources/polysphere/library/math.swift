@@ -278,18 +278,38 @@ extension Math where N:Numeric
     // matrix math
     @inline(__always)
     static
+    func mat3(from M:Mat4) -> Mat3
+    {
+        return 
+            (
+                (M.0.0, M.0.1, M.0.2), 
+                (M.1.0, M.1.1, M.1.2), 
+                (M.2.0, M.2.1, M.2.2)
+            )
+    }
+    
+    @inline(__always)
+    static
     func transpose(_ M:Mat3) -> Mat3
     {
-        return ((M.0.0, M.1.0, M.2.0), (M.0.1, M.1.1, M.2.1), (M.0.2, M.1.2, M.2.2))
+        return 
+            (
+                (M.0.0, M.1.0, M.2.0), 
+                (M.0.1, M.1.1, M.2.1), 
+                (M.0.2, M.1.2, M.2.2)
+            )
     }
     @inline(__always)
     static
     func transpose(_ M:Mat4) -> Mat4
     {
-        return ((M.0.0, M.1.0, M.2.0, M.3.0), 
+        return 
+            (
+                (M.0.0, M.1.0, M.2.0, M.3.0), 
                 (M.0.1, M.1.1, M.2.1, M.3.1), 
                 (M.0.2, M.1.2, M.2.2, M.3.2), 
-                (M.0.3, M.1.3, M.2.3, M.3.3))
+                (M.0.3, M.1.3, M.2.3, M.3.3)
+            )
     }
 
     @inline(__always)
@@ -304,19 +324,12 @@ extension Math where N:Numeric
     func mult(_ A:Mat3, _ B:Mat3) -> Mat3
     {
         let AT:(V3, V3, V3) = transpose(A)
-        return ((dot(AT.0, B.0), dot(AT.1, B.0), dot(AT.2, B.0)),
+        return 
+            (
+                (dot(AT.0, B.0), dot(AT.1, B.0), dot(AT.2, B.0)),
                 (dot(AT.0, B.1), dot(AT.1, B.1), dot(AT.2, B.1)),
-                (dot(AT.0, B.2), dot(AT.1, B.2), dot(AT.2, B.2)))
-    }
-    @inline(__always)
-    static
-    func mult(_ A:Mat4, _ B:Mat4) -> Mat4
-    {
-        let AT:Mat4 = transpose(A)
-        return ((dot(AT.0, B.0), dot(AT.1, B.0), dot(AT.2, B.0), dot(AT.3, B.0)), 
-                (dot(AT.0, B.1), dot(AT.1, B.1), dot(AT.2, B.1), dot(AT.3, B.1)), 
-                (dot(AT.0, B.2), dot(AT.1, B.2), dot(AT.2, B.2), dot(AT.3, B.2)), 
-                (dot(AT.0, B.3), dot(AT.1, B.3), dot(AT.2, B.3), dot(AT.3, B.3)))
+                (dot(AT.0, B.2), dot(AT.1, B.2), dot(AT.2, B.2))
+            )
     }
     
     @inline(__always)
@@ -325,6 +338,32 @@ extension Math where N:Numeric
     {
         let AT:Mat4 = transpose(A)
         return (dot(AT.0, v), dot(AT.1, v), dot(AT.2, v), dot(AT.3, v))
+    }
+    @inline(__always)
+    static
+    func mult(_ A:Mat4, _ B:Mat4) -> Mat4
+    {
+        let AT:Mat4 = transpose(A)
+        return 
+            (
+                (dot(AT.0, B.0), dot(AT.1, B.0), dot(AT.2, B.0), dot(AT.3, B.0)), 
+                (dot(AT.0, B.1), dot(AT.1, B.1), dot(AT.2, B.1), dot(AT.3, B.1)), 
+                (dot(AT.0, B.2), dot(AT.1, B.2), dot(AT.2, B.2), dot(AT.3, B.2)), 
+                (dot(AT.0, B.3), dot(AT.1, B.3), dot(AT.2, B.3), dot(AT.3, B.3))
+            )
+    }
+    
+    @inline(__always)
+    static
+    func homogenize(_ v:V2) -> V3
+    {
+        return (v.x, v.y, 1)
+    }
+    @inline(__always)
+    static
+    func homogenize(_ v:V3) -> V4
+    {
+        return (v.x, v.y, v.z, 1)
     }
 }
 

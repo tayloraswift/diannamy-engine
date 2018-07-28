@@ -11,16 +11,16 @@ struct Camera
 
     layout(std140) uniform camera
     {
-        mat4 U;
-        mat4 V;
-        mat4 W;
+        mat4 U;         // set by matrices()
+        
+        mat4 V;         // set by view(_:)
+        
+        mat3 F;         // set by fragment(_:_:sensor:space)
+        vec3 position;  // set by fragment(_:_:sensor:space)
         
         // projection parameters 
-        vec3 a;
-        vec3 b;
-        
-        // view parameters
-        vec3 position;
+        vec3 a;         // set by frustum(_:_:)
+        vec3 b;         // set by frustum(_:_:)
     };
     */
     
@@ -37,10 +37,7 @@ struct Camera
             _padf0:Float = 0, 
             
             b:Math<Float>.V3, 
-            _padf1:Float = 0, 
-            
-            position:Math<Float>.V3, 
-            _padf2:Float = 0
+            _padf1:Float = 0
         
         init()
         {
@@ -57,9 +54,8 @@ struct Camera
             
             self.a        = (-1, -1, -0.5)
             self.b        = ( 1,  1, -2)
-            self.position = ( 0,  0,  0)
             
-            assert(MemoryLayout<Storage>.size == 240)
+            assert(MemoryLayout<Storage>.size == 56 * MemoryLayout<Float>.size)
         }
     }
     
@@ -67,7 +63,7 @@ struct Camera
     var storage:Unique<Storage>
     
     // private field accessors, unimportant to the logic of the engine
-    private 
+    internal private(set)
     var U:Math<Float>.Mat4 
     {
         get 
@@ -79,7 +75,7 @@ struct Camera
             return self.storage.value.U = U
         }
     }
-    private 
+    internal private(set)
     var V:Math<Float>.Mat4 
     {
         get 
@@ -91,7 +87,7 @@ struct Camera
             return self.storage.value.V = V
         }
     }
-    private 
+    internal private(set)
     var F:Math<Float>.Mat4 
     {
         get 
@@ -103,7 +99,7 @@ struct Camera
             return self.storage.value.F = F
         }
     }
-    private 
+    internal private(set)
     var a:Math<Float>.V3
     {
         get 
@@ -115,7 +111,7 @@ struct Camera
             return self.storage.value.a = a
         }
     }
-    private 
+    internal private(set)
     var b:Math<Float>.V3
     {
         get 
@@ -125,18 +121,6 @@ struct Camera
         set(b)
         {
             return self.storage.value.b = b
-        }
-    }
-    private 
-    var position:Math<Float>.V3 
-    {
-        get 
-        {
-            return self.storage.value.position
-        }
-        set(position)
-        {
-            return self.storage.value.position = position
         }
     }
     
@@ -155,12 +139,11 @@ struct Camera
     private static 
     func view(_ space:Space) -> Math<Float>.Mat4
     {
-        let translation:Math<Float>.V4 = 
+        let translation:Math<Float>.V3 = 
         (
             -Math.dot(space.origin, space.basis.x), 
             -Math.dot(space.origin, space.basis.y), 
-            -Math.dot(space.origin, space.basis.z), 
-            1
+            -Math.dot(space.origin, space.basis.z)
         )
         
         return 
@@ -168,7 +151,7 @@ struct Camera
                 (space.basis.x.x, space.basis.y.x, space.basis.z.x, 0), 
                 (space.basis.x.y, space.basis.y.y, space.basis.z.y, 0), 
                 (space.basis.x.z, space.basis.y.z, space.basis.z.z, 0), 
-                translation
+                Math.homogenize(translation)
             )
     }
     
@@ -194,7 +177,7 @@ struct Camera
     }
     
     // computes the `F` (“fragment”) matrix. its purpose is to convert `gl_FragCoord`s 
-    // into world space vectors (not necessarily normalized)
+    // into world space rays (not necessarily normalized)
     private static  
     func fragment(_ a:Math<Float>.V3, _ b:Math<Float>.V3, 
         sensor:Math<Float>.Rectangle, space:Space) -> Math<Float>.Mat4
@@ -214,7 +197,9 @@ struct Camera
                 (ξ1.x, ξ1.y, ξ1.z, 0), 
                 (ξ2.x, ξ2.y, ξ2.z, 0), 
                 (d.x,  d.y,  d.z,  0), 
-                (space.origin.x, space.origin.y, space.origin.z, 1)
+                
+                // the ‘position’ variable in the glsl uniform block
+                Math.homogenize(space.origin)
             )
     }
 
@@ -223,7 +208,6 @@ struct Camera
     func view(_ space:Space)
     {
         self.V = Camera.view(space)
-        self.position = space.origin
     }
 
     mutating 

@@ -9,14 +9,11 @@ layout(std140) uniform Camera
 {
     mat4 U;
     mat4 V;
-    mat4 F;
+    mat3 F;
+    vec3 position;
     
-    // projection parameters 
     vec3 a;
     vec3 b;
-    
-    // view parameters
-    vec3 position;
 } camera;
 
 out vec4 color;
@@ -42,6 +39,6 @@ vec3 debugColor(float x)
 
 void main()
 {
-    vec3 ray = normalize((camera.F * vec4(gl_FragCoord.xy, 1, 1)).xyz);
+    vec3 ray = normalize(camera.F * vec3(gl_FragCoord.xy, 1));
     color = vec4(ray, 1);
 }

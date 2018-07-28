@@ -6,14 +6,11 @@ layout(std140) uniform Camera
 {
     mat4 U;
     mat4 V;
-    mat4 F;
+    mat3 F;
+    vec3 position;
     
-    // projection parameters 
     vec3 a;
     vec3 b;
-    
-    // view parameters
-    vec3 position;
 } camera;
 
 out Vertex

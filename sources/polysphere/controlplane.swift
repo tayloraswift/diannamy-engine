@@ -218,4 +218,10 @@ struct ControlPlane
 
         return true
     }
+    
+    func raycast(_ position:Math<Float>.V2) -> Math<Float>.V3 
+    {
+        let F:Math<Float>.Mat3 = Math.mat3(from: self.camera.F)
+        return Math.normalize(Math.mult(F, Math.homogenize(position)))
+    }
 }

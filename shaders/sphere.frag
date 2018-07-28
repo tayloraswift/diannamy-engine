@@ -4,14 +4,11 @@ layout(std140) uniform Camera
 {
     mat4 U;
     mat4 V;
-    mat4 F;
+    mat3 F;
+    vec3 position;
     
-    // projection parameters 
     vec3 a;
     vec3 b;
-    
-    // view parameters
-    vec3 position;
 } camera;
 
 uniform vec4 sphere;
@@ -20,7 +17,7 @@ out vec4 color;
 
 void main()
 {
-    vec3 ray = normalize((camera.F * vec4(gl_FragCoord.xy, 1, 1)).xyz - camera.position);
+    vec3 ray = normalize(camera.F * vec3(gl_FragCoord.xy, 1));
     vec3  c  = sphere.xyz - camera.position;
     float l  = dot(c, ray);
     
