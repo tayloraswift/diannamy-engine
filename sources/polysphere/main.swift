@@ -1,34 +1,5 @@
 import GLFW
 
-enum Programs
-{
-    static
-    let debug:GL.Program = .create(
-        shaders:
-        [
-            (.vertex  , "shaders/debug.vert"),
-            (.fragment, "shaders/debug.frag")
-        ],
-        uniforms:
-        [
-            .block("Camera", binding: 0)
-        ]
-    )!
-    static
-    let sphere:GL.Program = .create(
-        shaders:
-        [
-            (.vertex  , "shaders/sphere.vert"),
-            (.fragment, "shaders/sphere.frag")
-        ],
-        uniforms:
-        [
-            .block("Camera", binding: 0), 
-            .float4("sphere")
-        ]
-    )!
-}
-
 struct Frame
 {
     enum MouseButton
@@ -64,30 +35,29 @@ struct Frame
     }
 
     private
-    var globe:Globe,
-        _cameraBlock:GL.Buffer,
-        plane:ControlPlane
+    var world:World, 
+        scene:Scene,
+        _cameraBlock:GL.Buffer<Camera.Storage>,
+        plane:ControlPlane, 
+        
+        _preselectedResource:Int? = nil
 
     init(size:Math<Int>.V2)
     {
         GL.enableDebugOutput()
-
+        
+        self.world = .init()
+        self.scene = .init()
         self.plane = .init(.init(
             pivot: (0, 0, 0),
             angle: (0.25 * Float.pi, 1.75 * Float.pi),
             distance: 4,
             focalLength: 32))
-
-        self.globe = .init()
-
+        
         self._cameraBlock = .generate()
         self._cameraBlock.bind(to: .uniform)
         {
-            (target:GL.Buffer.BoundTarget) in
-            self.plane.camera.withUnsafeBytes
-            {
-                target.reserve($0.count, usage: .dynamic)
-            }
+            $0.reserve(capacity: 1, usage: .dynamic)
         }
 
         self.resize(to: size)
@@ -120,6 +90,14 @@ struct Frame
                 return .pan
         }
     }
+    
+    private 
+    func sphereIntersection(_ position:Math<Double>.V2) -> Math<Float>.V3? 
+    {
+        let ray:Math<Float>.V3    = self.plane.ray(Math.castFloat(position)), 
+            source:Math<Float>.V3 = self.plane.camera.position
+        return self.scene.cast(ray, from: source)
+    }
 
     mutating
     func press(_ position:Math<Double>.V2, button:MouseButton)
@@ -127,11 +105,12 @@ struct Frame
         switch button 
         {
             case .left:
-                let ray:Math<Float>.V3 = self.plane.ray(Math.castFloat(position))
-                if let intersect:Math<Float>.V3 = self.globe.cast(ray, from: self.plane.camera.position)
+                if let intersect:Math<Float>.V3 = self.sphereIntersection(position)
                 {
-                    Log.note("struck unit sphere at \(intersect)")
+                    self._preselectedResource = 
+                        world.add(deposit: .init(location: .init(vector: intersect), amount: 2))
                 }
+            
             default:
                 break 
         }
@@ -149,6 +128,15 @@ struct Frame
     func cursor(_ position:Math<Double>.V2)
     {
         self.plane.move(Math.castFloat(position))
+        
+        if let intersect:Math<Float>.V3 = self.sphereIntersection(position)
+        {
+            self._preselectedResource = world.find(.init(vector: intersect))
+        }
+        else 
+        {
+            self._preselectedResource = nil
+        }
     }
 
     mutating
@@ -195,17 +183,8 @@ struct Frame
     func process(_ δ:Double) -> Bool
     {
         GL.clearColor((0.1, 0.1, 0.1), 1)
-        OpenGL.glClearDepth(-1.0)
+        GL.clearDepth(-1.0)
         GL.clear(color: true, depth: true)
-
-        //GL.enable(.blending)
-        GL.enable(.multisampling)
-        //GL.blend(.mix)
-
-        OpenGL.glEnable(OpenGL.DEPTH_TEST)
-        OpenGL.glDepthFunc(OpenGL.GEQUAL)
-        OpenGL.glEnable(OpenGL.CULL_FACE)
-        OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, OpenGL.FILL)
 
         self._cameraBlock.bind(to: .uniform, index: 0)
         {
@@ -219,12 +198,10 @@ struct Frame
                     target.subData($0)
                 }
             }
-
-            Programs.sphere.bind
-            {
-                $0.set(float4: "sphere", (0, 0, 0, 1))
-                self.globe.vao.draw(0 ..< 36, as: .triangles)
-            }
+            
+            // rebuild the scene 
+            self.scene.rebuild(self.world)
+            self.scene.draw(preselectedResource: self._preselectedResource)
         }
 
         return true
@@ -361,6 +338,8 @@ class Window
 
     func loop()
     {
+        GL.depthTest(.greaterEqual)
+        
         var t0:Double = glfwGetTime()
         while glfwWindowShouldClose(self.window) == 0
         {

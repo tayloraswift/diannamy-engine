@@ -5,17 +5,6 @@ in Vertex
     vec3 color;
 } vertex;
 
-layout(std140) uniform Camera
-{
-    mat4 U;
-    mat4 V;
-    mat3 F;
-    vec3 position;
-    
-    vec3 a;
-    vec3 b;
-} camera;
-
 out vec4 color;
 
 /*
@@ -39,6 +28,5 @@ vec3 debugColor(float x)
 
 void main()
 {
-    vec3 ray = normalize(camera.F * vec3(gl_FragCoord.xy, 1));
-    color = vec4(ray, 1);
+    color = vec4(vertex.color, 1);
 }

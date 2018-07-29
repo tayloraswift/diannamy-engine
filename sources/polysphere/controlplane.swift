@@ -20,7 +20,10 @@ struct ControlPlane
     {
         didSet 
         {
-            self.phase = 0
+            if self.phase == nil 
+            {
+                self.phase = 0
+            }
         }
     }
 
@@ -60,29 +63,34 @@ struct ControlPlane
         return Camera.Rig.lerp(self.head, self.base, ControlPlane.parameter(phase))
     }
     
-    private mutating 
-    func displace(_ displacement:Math<Float>.V2, action:Action)
+    private static 
+    func displace(_ displacement:Math<Float>.V2, action:Action, base:Camera.Rig, head:inout Camera.Rig)
     {
         switch action
         {
             case .pan:
                 let delta:Math<Float>.V2 = Math.scale(displacement, by: -1/128)
-                self.head.angle.φ =            self.base.angle.φ + delta.x
-                self.head.angle.θ = max(0, min(self.base.angle.θ - delta.y, Float.pi))
+                head.angle.φ =            base.angle.φ + delta.x
+                head.angle.θ = max(0, min(base.angle.θ - delta.y, Float.pi))
 
             case .track:
                 let delta:Math<Float>.V2 = Math.scale(displacement, by: -1/128)
-                let basis:Math<Math<Float>.V3>.V3 = self.base.basis()
+                let basis:Math<Math<Float>.V3>.V3 = base.basis()
 
-                self.head.pivot = Math.add(self.base.pivot,
+                head.pivot = Math.add(base.pivot,
                     (Math.dot(delta, (basis.x.x, basis.y.x)),
                      Math.dot(delta, (basis.x.y, basis.y.y)),
                      Math.dot(delta, (basis.x.z, basis.y.z))))
 
             case .zoom:
                 let delta:Float = -1/8 * displacement.y
-                self.head.focalLength = max(8, self.head.focalLength + delta)
+                head.focalLength = max(8, head.focalLength + delta)
         }
+    }
+    private mutating 
+    func displace(_ displacement:Math<Float>.V2, action:Action)
+    {
+        ControlPlane.displace(displacement, action: action, base: self.base, head: &self.head)
     }
 
     // kills any current animation and synchronizes the 2 current keyframes
@@ -102,19 +110,19 @@ struct ControlPlane
     // rebases to the current animation state and starts the transition timer to 
     // progress to whatever head will be set to
     private mutating 
-    func charge() -> Bool
+    func charge(_ body:(Camera.Rig, inout Camera.Rig) -> ())
     {
         // loaded animations have lower priority than anchor drags
         guard self.anchor == nil
         else
         {
-            return false 
+            return 
         }
 
         // ordering of operations here is important
         self.rebase()
         self.phase = 1
-        return true
+        body(self.base, &self.head)
     }
 
     mutating
@@ -171,13 +179,7 @@ struct ControlPlane
 
     mutating
     func bump(_ direction:Direction, action:Action)
-    {
-        guard self.charge()
-        else 
-        {
-            return 
-        } 
-        
+    {        
         let displacement:Math<Float>.V2
         switch direction 
         {
@@ -195,19 +197,19 @@ struct ControlPlane
             displacement = (-64,   0)
         }
         
-        self.displace(displacement, action: action)
+        self.charge 
+        {
+            ControlPlane.displace(displacement, action: action, base: $0, head: &$1)
+        }
     }
     
     mutating 
     func jump(to target:Math<Float>.V3)
     {
-        guard self.charge()
-        else 
+        self.charge()
         {
-            return 
+            $1.pivot = target 
         } 
-        
-        self.head.pivot = target
     }
 
     // returns true if the view system has changed

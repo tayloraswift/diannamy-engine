@@ -1,11 +1,18 @@
+//import GLFW
+
 struct Location 
 {
     let coordinates:Math<Float>.V3
     
+    init(vector:Math<Float>.V3)
+    {
+        self.coordinates = Math.normalize(vector)
+    }
+    
     static 
     func distance(_ a:Location, _ b:Location) -> Float 
     {
-        return Float.acos(Math.dot(a.coordinates, b.coordinates))
+        return Float.acos(Math.clamp(Math.dot(a.coordinates, b.coordinates), to: -1 ... 1))
     }
 }
 
@@ -49,17 +56,24 @@ struct World
     }
     
     mutating 
-    func add(deposit:Deposit)
+    func add(deposit:Deposit) -> Int
     {
         if let existing:Int = 
             Algorithm.nearest(of: self.food.map{ $0.location }, to: deposit.location, within: 0.1)
         {
-            self.food[existing].amount += 1
+            self.food[existing].amount += deposit.amount
+            return existing
         }
         else 
         {
             self.food.append(deposit)
+            return self.food.count - 1
         }
+    }
+    
+    func find(_ location:Location) -> Int?
+    {
+        return Algorithm.nearest(of: self.food.map{ $0.location }, to: location, within: 0.1)
     }
 }
 
@@ -68,6 +82,8 @@ enum Algorithm
     static 
     func nearest(of points:[Location], to query:Location, within range:Float) -> Int?
     {
+        //let _t0:Double = glfwGetTime()
+        
         var radius:Float = Float.infinity, 
             index:Int?    = nil
         for (i, point):(Int, Location) in points.enumerated() 
@@ -85,6 +101,8 @@ enum Algorithm
                 index  = i
             }
         }
+        
+        //print(1000 * (glfwGetTime() - _t0))
         
         return index
     }

@@ -2,18 +2,23 @@
 
 layout(std140) uniform Camera
 {
-    mat4 U;
-    mat4 V;
-    mat3 F;
-    vec3 position;
+    mat4  U;
+    mat4  V;
+    mat3  F;
+    vec3  position;
     
-    vec3 a;
-    vec3 b;
+    vec3  a;
+    float h;
+    vec3  b;
+    float k;
 } camera;
 
 uniform vec4 sphere;
 
 out vec4 color;
+
+
+const float pi = 3.1415926538;
 
 void main()
 {
@@ -27,6 +32,6 @@ void main()
         discard;
     }
     
-    vec3 near = ray * (l - sqrt(discriminant));
-    color = vec4((camera.position + near) * 0.5 + 0.5, 1);
+    vec3 normal = normalize(camera.position + ray * (l - sqrt(discriminant)) - sphere.xyz);
+    color = vec4(0.5 * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1))))), 1);
 }

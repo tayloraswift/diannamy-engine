@@ -20,7 +20,9 @@ struct Camera
         
         // projection parameters 
         vec3 a;         // set by frustum(_:_:)
+        float h;        // set by fragment(_:_:sensor:space)
         vec3 b;         // set by frustum(_:_:)
+        float k;        // set by fragment(_:_:sensor:space)
     };
     */
     
@@ -34,10 +36,10 @@ struct Camera
             //G:Math<Float>.Mat4, // global matrix
             
             a:Math<Float>.V3, 
-            _padf0:Float = 0, 
+            h:Float,              // viewport width
             
             b:Math<Float>.V3, 
-            _padf1:Float = 0
+            k:Float               // viewport height
         
         init()
         {
@@ -52,10 +54,13 @@ struct Camera
             self.V = identity
             self.F = identity
             
-            self.a        = (-1, -1, -0.5)
-            self.b        = ( 1,  1, -2)
+            self.a = (-1, -1, -0.5)
+            self.b = ( 1,  1, -2)
+            self.h = 0
+            self.k = 0
             
-            assert(MemoryLayout<Storage>.size == 56 * MemoryLayout<Float>.size)
+            assert(MemoryLayout<Storage>.size   == 56 * MemoryLayout<Float>.size)
+            assert(MemoryLayout<Storage>.stride == 56 * MemoryLayout<Float>.size)
         }
     }
     
@@ -72,7 +77,7 @@ struct Camera
         }
         set(U)
         {
-            return self.storage.value.U = U
+            self.storage.value.U = U
         }
     }
     internal private(set)
@@ -84,7 +89,7 @@ struct Camera
         }
         set(V)
         {
-            return self.storage.value.V = V
+            self.storage.value.V = V
         }
     }
     internal private(set)
@@ -96,7 +101,7 @@ struct Camera
         }
         set(F)
         {
-            return self.storage.value.F = F
+            self.storage.value.F = F
         }
     }
     internal private(set)
@@ -108,7 +113,7 @@ struct Camera
         }
         set(a)
         {
-            return self.storage.value.a = a
+            self.storage.value.a = a
         }
     }
     internal private(set)
@@ -120,14 +125,26 @@ struct Camera
         }
         set(b)
         {
-            return self.storage.value.b = b
+            self.storage.value.b = b
+        }
+    }
+    internal private(set)
+    var viewport:Math<Float>.V2
+    {
+        get 
+        {
+            return (self.storage.value.h, self.storage.value.k)
+        }
+        set(viewport)
+        {
+            (self.storage.value.h, self.storage.value.k) = viewport
         }
     }
     
     var position:Math<Float>.V3 
     {
-        let h:Math<Float>.V4 = self.storage.value.F.3
-        return (h.x, h.y, h.z)
+        let homogenous:Math<Float>.V4 = self.storage.value.F.3
+        return (homogenous.x, homogenous.y, homogenous.z)
     }
     
     // when used as a data source for a uniform buffer
@@ -185,11 +202,10 @@ struct Camera
     // computes the `F` (“fragment”) matrix. its purpose is to convert `gl_FragCoord`s 
     // into world space rays (not necessarily normalized)
     private static  
-    func fragment(_ a:Math<Float>.V3, _ b:Math<Float>.V3, 
-        sensor:Math<Float>.Rectangle, space:Space) -> Math<Float>.Mat4
+    func fragment(_ a:Math<Float>.V3, _ b:Math<Float>.V3, viewport:Math<Float>.V2, space:Space) 
+        -> Math<Float>.Mat4
     {
-        let k:Math<Float>.V2  = Math.div(Math.sub((b.x, b.y), (a.x, a.y)), 
-                                         Math.sub(sensor.1, sensor.0))
+        let k:Math<Float>.V2  = Math.div(Math.sub((b.x, b.y), (a.x, a.y)), viewport)
         let ξ1:Math<Float>.V3 = Math.scale(space.basis.x, by: k.x), 
             ξ2:Math<Float>.V3 = Math.scale(space.basis.y, by: k.y)
         
@@ -235,7 +251,8 @@ struct Camera
     mutating 
     func fragment(sensor:Math<Float>.Rectangle, space:Space)
     {
-        self.F = Camera.fragment(self.a, self.b, sensor: sensor, space: space)
+        self.viewport = Math.sub(sensor.1, sensor.0)
+        self.F = Camera.fragment(self.a, self.b, viewport: self.viewport, space: space)
     }
     
     // sets the frustum parameters. does not compute any matrices

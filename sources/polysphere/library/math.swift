@@ -151,7 +151,7 @@ enum Math<N>
 }
 
 extension Math where N:Numeric
-{
+{    
     @inline(__always)
     static
     func sum(_ v:V2) -> N
@@ -395,6 +395,25 @@ extension Math where N:FloatingPoint
     func abs(_ v:V3) -> V3
     {
         return (Swift.abs(v.x), Swift.abs(v.y), Swift.abs(v.z))
+    }
+    
+    @inline(__always)
+    static
+    func clamp(_ v:N, to range:ClosedRange<N> = 0 ... 1) -> N
+    {
+        return max(range.lowerBound, min(v, range.upperBound))
+    }
+    @inline(__always)
+    static
+    func clamp(_ v:V2) -> V2
+    {
+        return (clamp(v.x), clamp(v.y))
+    }
+    @inline(__always)
+    static
+    func clamp(_ v:V3) -> V3
+    {
+        return (clamp(v.x), clamp(v.y), clamp(v.z))
     }
 }
 extension Math where N:SignedNumeric, N.Magnitude == N
