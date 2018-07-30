@@ -112,7 +112,7 @@ struct ControlPlane
     private mutating 
     func charge(_ body:(Camera.Rig, inout Camera.Rig) -> ())
     {
-        // loaded animations have lower priority than anchor drags
+        // if an action is in progress, ignore
         guard self.anchor == nil
         else
         {
@@ -124,59 +124,7 @@ struct ControlPlane
         self.phase = 1
         body(self.base, &self.head)
     }
-
-    mutating
-    func down(_ position:Math<Float>.V2, action:Action)
-    {
-        guard self.anchor == nil
-        else
-        {
-            return
-        }
-
-        self.anchor = .init(base: position, action: action)
-        self.rebase()
-    }
-
-    mutating
-    func move(_ position:Math<Float>.V2)
-    {
-        guard let anchor:Anchor = self.anchor
-        else
-        {
-            // hover
-            return
-        }
-
-        self.displace(Math.sub(position, anchor.base), action: anchor.action)
-        self.phase = 0
-    }
-
-    mutating
-    func up(_ position:Math<Float>.V2, action:Action)
-    {
-        guard let anchor:Anchor = self.anchor
-        else
-        {
-            Log.warning("control up event recieved, but no corresponding down event was recieved")
-            return
-        }
-
-        switch (anchor.action, action)
-        {
-            case (.pan, .pan), (.track, .track), (.zoom, .zoom):
-                break
-
-            default:
-                // up event does not match stored down event
-                return
-        }
-
-        self.displace(Math.sub(position, anchor.base), action: anchor.action)
-        self.phase  = 0
-        self.anchor = nil
-    }
-
+    
     mutating
     func bump(_ direction:Direction, action:Action)
     {        
@@ -212,9 +160,58 @@ struct ControlPlane
         } 
     }
 
+    mutating
+    func down(_ position:Math<Float>.V2, action:Action)
+    {
+        // if another action is in progress, end it 
+        if let anchor:Anchor = self.anchor 
+        {
+            self.release(position, anchor: anchor)
+        }
+        
+        self.rebase()
+        self.anchor = .init(base: position, action: action)
+    }
+
+    mutating
+    func move(_ position:Math<Float>.V2)
+    {
+        guard let anchor:Anchor = self.anchor
+        else
+        {
+            // hover
+            return
+        }
+
+        self.displace(Math.sub(position, anchor.base), action: anchor.action)
+        self.phase = 0
+    }
+
+    mutating
+    func up(_ position:Math<Float>.V2, action:Action)
+    {
+        guard let anchor:Anchor = self.anchor, 
+                  anchor.action == action
+        else
+        {
+            Log.warning("control up event recieved, but no corresponding down event was recieved")
+            return
+        }
+        
+        self.release(position, anchor: anchor)
+    }
+    
+    private mutating 
+    func release(_ position:Math<Float>.V2, anchor:Anchor)
+    {
+        self.displace(Math.sub(position, anchor.base), action: anchor.action)
+        self.phase  = 0
+        self.anchor = nil
+    }
+
     // returns true if the view system has changed
     mutating
-    func next(_ δ:Float) -> Bool
+    func next(_ delta:Float) -> Bool
     {
         guard let phase:Float = self.phase
         else
@@ -222,7 +219,7 @@ struct ControlPlane
             return false
         }
 
-        let decremented:Float = phase - δ * 5,
+        let decremented:Float = phase - delta * 5,
             interpolation:Camera.Rig
         if decremented > 0
         {
