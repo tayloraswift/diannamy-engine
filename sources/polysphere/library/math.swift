@@ -261,31 +261,6 @@ extension Math where N:Numeric
     {
         return v.x * v.x + v.y * v.y + v.z * v.z
     }
-    
-    @inline(__always)
-    static
-    func test(_ v:V2, lessThan r:N) -> Bool
-    {
-        return eusq(v) < r * r
-    }
-    @inline(__always)
-    static
-    func test(_ v:V3, lessThan r:N) -> Bool
-    {
-        return eusq(v) < r * r
-    }
-    @inline(__always)
-    static
-    func test(_ v:V2, lessEqual r:N) -> Bool
-    {
-        return eusq(v) <= r * r
-    }
-    @inline(__always)
-    static
-    func test(_ v:V3, lessEqual r:N) -> Bool
-    {
-        return eusq(v) <= r * r
-    }
 
     @inline(__always)
     static
@@ -389,6 +364,34 @@ extension Math where N:Numeric
     func homogenize(_ v:V3) -> V4
     {
         return (v.x, v.y, v.z, 1)
+    }
+}
+
+extension Math where N:Numeric, N:Comparable 
+{
+    @inline(__always)
+    static
+    func test(_ v:V2, lessThan r:N) -> Bool
+    {
+        return eusq(v) < r * r
+    }
+    @inline(__always)
+    static
+    func test(_ v:V3, lessThan r:N) -> Bool
+    {
+        return eusq(v) < r * r
+    }
+    @inline(__always)
+    static
+    func test(_ v:V2, lessEqual r:N) -> Bool
+    {
+        return eusq(v) <= r * r
+    }
+    @inline(__always)
+    static
+    func test(_ v:V3, lessEqual r:N) -> Bool
+    {
+        return eusq(v) <= r * r
     }
 }
 

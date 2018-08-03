@@ -38,4 +38,11 @@ enum Log
         print("\u{1B}[1m(\(source)) \u{1B}[38;2;255;80;90mfatal error:\u{1B}[39m \(message)\u{1B}[0m")
         fatalError()
     }
+    
+    static 
+    func unreachable(file:String = #file, line:Int = #line) -> Never
+    {
+        print("\u{1B}[1m\(file):\(line): \u{1B}[38;2;255;80;90munreachable code executed\u{1B}[0m")
+        fatalError()
+    }
 }

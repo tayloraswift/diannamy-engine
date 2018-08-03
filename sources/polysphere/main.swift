@@ -94,9 +94,8 @@ struct Frame
     private 
     func sphereIntersection(_ position:Math<Double>.V2) -> Math<Float>.V3? 
     {
-        let ray:Math<Float>.V3    = self.plane.ray(Math.castFloat(position)), 
-            source:Math<Float>.V3 = self.plane.camera.position
-        return self.scene.cast(ray, from: source)
+        let ray:ControlPlane.Ray = self.plane.raycast(Math.castFloat(position))
+        return self.scene.cast(ray.vector, from: ray.source)
     }
 
     mutating

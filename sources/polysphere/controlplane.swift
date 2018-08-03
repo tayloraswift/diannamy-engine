@@ -5,6 +5,12 @@ enum Direction
 
 struct ControlPlane
 {
+    struct Ray 
+    {
+        let source:Math<Float>.V3, 
+            vector:Math<Float>.V3
+    }
+    
     enum Action
     {
         case pan, track, zoom
@@ -244,9 +250,10 @@ struct ControlPlane
         return true
     }
     
-    func ray(_ position:Math<Float>.V2) -> Math<Float>.V3 
+    func raycast(_ position:Math<Float>.V2) -> Ray
     {
         let F:Math<Float>.Mat3 = Math.mat3(from: self.camera.F)
-        return Math.normalize(Math.mult(F, Math.homogenize(position)))
+        let vector:Math<Float>.V3 = Math.normalize(Math.mult(F, Math.homogenize(position)))
+        return .init(source: self.camera.position, vector: vector)
     }
 }
