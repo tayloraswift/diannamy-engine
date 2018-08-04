@@ -257,7 +257,7 @@ extension UI
             private 
             enum Anchor 
             {
-                case vertex(Int), planar, navigation
+                case vertex(Int), navigation(Action)
             }
             
             private 
@@ -304,8 +304,8 @@ extension UI
                             plane.down(position, action: .pan)
                             fallthrough
                         
-                        case (.tertiary, .planar), (.tertiary, .navigation):
-                            self.anchor = .navigation                           // ← anchor down (tertiary)
+                        case (.tertiary, .navigation):
+                            self.anchor = .navigation(.tertiary)                // ← anchor down (navigation)
                             
                             return nil
                         
@@ -332,9 +332,9 @@ extension UI
                             return nil 
                         
                         
-                        case (.double,    .planar), (.double,    .navigation), 
-                             (.primary,   .planar), (.primary,   .navigation), 
-                             (.secondary, .planar), (.secondary, .navigation):
+                        case (.double,    .navigation), 
+                             (.primary,   .navigation), 
+                             (.secondary, .navigation):
                             plane.up(position, action: .pan)
                     }
                 }
@@ -353,6 +353,8 @@ extension UI
                             guard let hit:Hit = self.probe(ray)
                             else 
                             {
+                                plane.down(position, action: .pan)
+                                self.anchor = .navigation(.primary)             // ← anchor down (navigation)
                                 break
                             }
                             
@@ -382,7 +384,7 @@ extension UI
                             else 
                             {
                                 plane.down(position, action: .pan)
-                                self.anchor = .planar                           // ← anchor down (planar)
+                                self.anchor = .navigation(.secondary)           // ← anchor down (navigation)
                                 break
                             }
                             
@@ -400,7 +402,7 @@ extension UI
                         
                         case .tertiary:
                             plane.down(position, action: .pan)
-                            self.anchor = .navigation                           // ← anchor down (tertiary)
+                            self.anchor = .navigation(.tertiary)                // ← anchor down (tertiary)
                     }
                 }
                 
@@ -440,7 +442,7 @@ extension UI
                             
                             return 
                         
-                        case .planar, .navigation:
+                        case .navigation:
                             plane.move(position)
                     }
                 }
@@ -483,25 +485,18 @@ extension UI
                             Log.unreachable()
                         
                         
-                        case (.primary,   .vertex), 
-                             (.secondary, .vertex):
+                        case (_, .vertex):
                             break 
-                        
-                        case (.primary, .planar):
-                            break
                             
-                        case (.secondary, .planar), 
-                             (.tertiary,  .navigation):
+                        case (_, .navigation(let beginning)):
+                            guard action == beginning 
+                            else 
+                            {
+                                break 
+                            }
+                            
                             plane.up(position, action: .pan)
                             self.anchor = nil 
-                        
-                        case (.primary,   .navigation), 
-                             (.secondary, .navigation):
-                            break
-                        
-                        case (.tertiary,  .vertex), 
-                             (.tertiary,  .planar):
-                            break
                     }
                 }
             }
