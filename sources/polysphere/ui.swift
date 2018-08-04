@@ -1,340 +1,182 @@
-struct Sphere 
-{
-    internal private(set) 
-    var points:[Math<Float>.V3], 
-        center:Math<Float>.V3
-    
-    enum MovePreview 
-    {
-        case unconstrained, snapped(Math<Float>.V3), deleted(Int)
-    }
-    
-    // the two points are not guaranteed to be distinct (i.e. if we have a digon), 
-    // but are guaranteed to be different from the input
-    private 
-    func adjacent(to index:Int) -> (Int, Int)?
-    {
-        guard self.points.count > 1 
-        else 
-        {
-            return nil 
-        }
-        
-        let before:Int, 
-            after:Int 
-        
-        if index != self.points.startIndex 
-        {
-            before = self.points.index(before: index)
-        }
-        else 
-        {
-            before = self.points.index(before: self.points.endIndex)
-        }
-        
-        if index != self.points.index(before: self.points.endIndex)
-        {
-            after  = self.points.index(after: index)
-        }
-        else 
-        {
-            after  = self.points.startIndex
-            
-        }
-        
-        return (before, after)
-    }
-    
-    @inline(__always)
-    private static 
-    func proximity(_ a:Math<Float>.V3, _ b:Math<Float>.V3, distance:Float) -> Bool
-    {
-        return Math.dot(a, b) > Float.cos(distance)
-    }
-    
-    private 
-    func nearest(to target:Math<Float>.V3, threshold:Float) -> Int? 
-    {
-        var gamma:Float = -1, 
-            index:Int?  = nil 
-        for (i, point):(Int, Math<Float>.V3) in self.points.enumerated()
-        {
-            let g:Float = Math.dot(point, target)
-            if g < gamma 
-            {
-                gamma = g
-                index = i
-            }
-        }
-        
-        return gamma > Float.cos(threshold) ? index : nil
-    }
-    
-    private 
-    func intersect(ray:ControlPlane.Ray) -> Math<Float>.V3? 
-    {
-        let c:Math<Float>.V3 = Math.sub(self.center, ray.source), 
-            l:Float          = Math.dot(c, ray.vector)
-        
-        let discriminant:Float = 1 * 1 + l * l - Math.eusq(c)
-        guard discriminant >= 0 
-        else 
-        {
-            return nil
-        }
-        
-        let offset:Math<Float>.V3 = Math.scale(ray.vector, by: l - discriminant.squareRoot())
-        return Math.normalize(Math.add(ray.source, offset))
-    }
-    private 
-    func attract(ray:ControlPlane.Ray) -> Math<Float>.V3
-    {
-        let c:Math<Float>.V3 = Math.sub(self.center, ray.source), 
-            l:Float          = Math.dot(c, ray.vector)
-        
-        let discriminant:Float    = max(1 * 1 + l * l - Math.eusq(c), 0), 
-            offset:Math<Float>.V3 = Math.scale(ray.vector, by: l - discriminant.squareRoot())
-        return Math.normalize(Math.add(ray.source, offset))
-    }
-    
-    func find(_ ray:ControlPlane.Ray) -> Int? 
-    {
-        guard let target:Math<Float>.V3 = self.intersect(ray: ray)
-        else 
-        {
-            return nil
-        }
-        
-        return self.nearest(to: target, threshold: 0.1)
-    }
-    
-    func movePreview(_ active:Int, ray _:ControlPlane.Ray) -> MovePreview
-    {
-        return .unconstrained
-    }
-    
-    mutating 
-    func move(_ active:Int, ray:ControlPlane.Ray) 
-    {
-        self.points[active] = self.attract(ray: ray)
-    }
-    
-    mutating 
-    func duplicate(_ active:Int) -> Int 
-    {
-        let index:Int = self.points.count
-        self.points.append(self.points[active])
-        return index
-    }
-}
-
 struct UI 
-{    
+{
+    enum Direction
+    {
+        case up, down, left, right
+    }
+    
     enum Action 
     {
         case double, primary, secondary, tertiary
     }
     
-    private 
+    enum Key:Int
+    {
+        case esc     = 256,
+             enter,
+             tab,
+             backspace,
+             insert,
+             delete,
+             right,
+             left,
+             down,
+             up,
+
+             zero = 48, one, two, three, four, five, six, seven, eight, nine,
+
+             f1 = 290, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12,
+
+             space   = 32,
+             period  = 46,
+             unknown = -1
+
+        init(_ keycode:Int32)
+        {
+            self = Key.init(rawValue: Int(keycode)) ?? .unknown
+        }
+    }
+    
     enum Mode 
     {
     }
     
-    private 
-    enum Hit 
+    enum Lazy<T> 
     {
-        case gate(Mode), local(Int)
+        case mutated(T), invariant
+        
+        mutating 
+        func push(_ value:T) 
+        {
+            self = .mutated(value)
+        }
+        
+        mutating 
+        func pop() -> T? 
+        {
+            switch self 
+            {
+                case .mutated(let value):
+                    self = .invariant
+                    return value 
+                
+                case .invariant:
+                    return nil
+            }
+        }
     }
     
-    struct Controller 
+    
+    private 
+    var _interface:Controller.Geo, 
+        _scene:Controller.Geo.Scene, 
+        
+        plane:ControlPlane, 
+        cameraBlock:GL.Buffer<Camera.Storage>, 
+        
+        _view:View.Geo
+        
+    init()
     {
-        struct Geo 
+        let sphere:Sphere = .init([(0, 1, 1), (-1, -1, 1), (1, -1, 1)].map(Math.normalize(_:)))
+        self._interface   = .init(sphere: sphere)
+        self._scene       = .init(sphere: sphere)
+        
+        self.plane = .init(.init(
+            pivot: (0, 0, 0),
+            angle: (0.25 * Float.pi, 1.75 * Float.pi),
+            distance: 4,
+            focalLength: 32))
+        
+        self.cameraBlock = .generate()
+        self.cameraBlock.bind(to: .uniform)
         {
-            private 
-            enum Anchor 
-            {
-                case vertex(Int), planar, navigation
-            }
-            
-            private 
-            var sphere:Sphere, 
-                active:Int?, 
-                anchor:Anchor?
-            
-            private 
-            var controlplane:ControlPlane
-            
-            private 
-            func probe(_ ray:ControlPlane.Ray) -> Hit?
-            {
-                guard let index:Int = self.sphere.find(ray)
-                else 
-                {
-                    return nil
-                }
-                
-                return .local(index)
-            }
-            
-            private 
-            func intersectsFloating(_:Math<Float>.V2) -> Bool 
-            {
-                return false 
-            }
-            
-            fileprivate mutating 
-            func down(_ position:Math<Float>.V2, action:Action, scene:inout Scene) 
-                -> Mode?
-            {            
-                if let anchor:Anchor = self.anchor 
-                {
-                    switch (action, anchor)
-                    {
-                        case (.tertiary, .vertex):
-                            self.controlplane.down(position, action: .pan)
-                            fallthrough
-                        
-                        case (.tertiary, .planar), (.tertiary, .navigation):
-                            self.anchor = .navigation                           // ← anchor down (tertiary)
-                            
-                            return nil
-                        
-                        // confirm a point drag 
-                        case (.double,  .vertex(let active)), 
-                             (.primary, .vertex(let active)):
-                            let ray:ControlPlane.Ray = self.controlplane.raycast(position)
-                            
-                            self.sphere.move(active, ray: ray)
-                            scene.basepoints = self.sphere.points.map
-                            {
-                                Math.add($0, self.sphere.center)
-                            }
-                            fallthrough 
-                        // cancel a point drag
-                        case (.secondary, .vertex):
-                            self.anchor = nil                                   // → anchor up
-                            
-                            return nil 
-                        
-                        
-                        case (.double,    .planar), (.double,    .navigation), 
-                             (.primary,   .planar), (.primary,   .navigation), 
-                             (.secondary, .planar), (.secondary, .navigation):
-                            self.controlplane.up(position, action: .pan)
-                    }
-                }
-                
-                self.anchor = nil                                               // → anchor up
-                if self.intersectsFloating(position)
-                {
-                    
-                }
-                else 
-                {
-                    let ray:ControlPlane.Ray = self.controlplane.raycast(position)
-                    switch action 
-                    {
-                        case .double, .primary:
-                            guard let hit:Hit = self.probe(ray)
-                            else 
-                            {
-                                self.controlplane.down(position, action: .pan)
-                                self.anchor = .planar                           // ← anchor down (planar)
-                                break
-                            }
-                            
-                            switch hit 
-                            {
-                                case .gate(let mode):
-                                    return mode 
-                                
-                                case .local(let identifier):
-                                    if action == .double 
-                                    {
-                                        self.active = self.sphere.duplicate(identifier)
-                                    }
-                                    else 
-                                    {
-                                        self.active = identifier
-                                    }
-                            }
-                        
-                        case .secondary:
-                            guard let hit:Hit = self.probe(ray)
-                            else 
-                            {
-                                break
-                            }
-                            
-                            switch hit 
-                            {
-                                case .gate(let mode):
-                                    return mode 
-                                
-                                case .local(let identifier):
-                                    self.active = identifier
-                                    self.anchor = .vertex(identifier)           // ← anchor down (vertex)
-                            } 
-                        
-                        case .tertiary:
-                            self.controlplane.down(position, action: .pan)
-                            self.anchor = .navigation                           // ← anchor down (tertiary)
-                    }
-                }
-                
-                return nil
-            }
-            
-            fileprivate mutating 
-            func up(_ position:Math<Float>.V2, action:Action, scene:inout Scene) 
-            {
-                if let anchor:Anchor = self.anchor 
-                {
-                    switch (action, anchor)
-                    {
-                        // double never occurs in up
-                        case (.double, _):
-                            Log.unreachable()
-                        
-                        
-                        case (.primary,   .vertex), 
-                             (.secondary, .vertex):
-                            break 
-                        
-                        case (.primary,   .planar), 
-                             (.tertiary,  .navigation):
-                            self.controlplane.up(position, action: .pan)
-                            self.anchor = nil 
-                        
-                        case (.secondary, .planar):
-                            break
-                            
-                        
-                        case (.primary,   .navigation), 
-                             (.secondary, .navigation):
-                            break
-                        
-                        case (.tertiary,  .vertex), 
-                             (.tertiary,  .planar):
-                            break
-                    }
-                }
-            }
+            $0.reserve(capacity: 1, usage: .dynamic)
         }
         
-        private 
-        var interface:Geo 
+        self._view = .init()
+    }
+
+    mutating
+    func resize(to size:Math<Float>.V2)
+    {
+        // figure out center point of screen
+        let shift:Math<Float>.V2 = Math.scale(size, by: -0.5)
+        self.plane.sensor = (shift, Math.add(size, shift))
         
-        mutating 
-        func down(_ position:Math<Float>.V2, action:Action)
+        GL.viewport(anchor: (0, 0), size: Math.cast(size, as: Int.self))
+    }
+    
+    mutating 
+    func down(_ position:Math<Float>.V2, action:Action)
+    {
+        assert(self._interface.down(position, action: action, 
+            scene: &self._scene, plane: &self.plane) == nil)
+    }
+    
+    mutating 
+    func move(_ position:Math<Float>.V2)
+    {
+        self._interface.move(position, scene: &self._scene, plane: &self.plane)
+    }
+    
+    mutating 
+    func up(_ position:Math<Float>.V2, action:Action)
+    {
+        self._interface.up(position, action: action, scene: &self._scene, plane: &self.plane)
+    }
+
+    mutating
+    func scroll(_ direction:Direction)
+    {
+        self.plane.bump(direction, action: .zoom)
+    }
+
+    mutating
+    func keypress(_ key:Key)
+    {
+        switch key
         {
-            assert(self.interface.down(position, action: action) == nil)
+            case .up:
+                self.plane.bump(.up, action: .track)
+            case .down:
+                self.plane.bump(.down, action: .track)
+            case .left:
+                self.plane.bump(.left, action: .track)
+            case .right:
+                self.plane.bump(.right, action: .track)
+            
+            case .period:
+                self.plane.jump(to: (0, 0, 0))
+
+            default:
+                Log.note("unrecognized key press (\(key))")
         }
-        
-        mutating 
-        func up(_ position:Math<Float>.V2, action:Action)
+    }
+
+    mutating
+    func process(_ delta:Float) -> Bool
+    {
+        GL.clear(color: true, depth: true)
+
+        self.cameraBlock.bind(to: .uniform, index: 0)
         {
-            self.interface.up(position, action: action)
+            (target:GL.Buffer.BoundTarget) in
+
+            // check if camera needs updating
+            if self.plane.next(delta)
+            {
+                self.plane.camera.withUnsafeBytes
+                {
+                    target.subData($0)
+                }
+            }
+            
+            // rebuild the scene 
+            self._view.rebuild(from: &self._scene)
+            self._view.draw()
         }
+
+        return true
     }
 }

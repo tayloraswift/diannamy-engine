@@ -1,8 +1,3 @@
-enum Direction
-{
-    case up, down, left, right
-}
-
 struct ControlPlane
 {
     struct Ray 
@@ -132,7 +127,7 @@ struct ControlPlane
     }
     
     mutating
-    func bump(_ direction:Direction, action:Action)
+    func bump(_ direction:UI.Direction, action:Action)
     {        
         let displacement:Math<Float>.V2
         switch direction 

@@ -504,6 +504,18 @@ extension Math where N:BinaryInteger
     {
         return (I(v.x), I(v.y), I(v.z))
     }
+    @inline(__always)
+    static
+    func cast<F>(_ v:V2, as _:F.Type) -> Math<F>.V2 where F:FloatingPoint
+    {
+        return (F(v.x), F(v.y))
+    }
+    @inline(__always)
+    static
+    func cast<F>(_ v:V3, as _:F.Type) -> Math<F>.V3 where F:FloatingPoint
+    {
+        return (F(v.x), F(v.y), F(v.z))
+    }
 
     @inline(__always)
     static
@@ -519,62 +531,6 @@ extension Math where N:BinaryInteger
         return (dividend.x.quotientAndRemainder(dividingBy: divisor.x),
                 dividend.y.quotientAndRemainder(dividingBy: divisor.y),
                 dividend.z.quotientAndRemainder(dividingBy: divisor.z))
-    }
-}
-extension Math where N == Int32
-{
-    @inline(__always)
-    static
-    func castFloat(_ v:V2) -> Math<Float>.V2
-    {
-        return (Float(v.x), Float(v.y))
-    }
-    @inline(__always)
-    static
-    func castFloat(_ v:V3) -> Math<Float>.V3
-    {
-        return (Float(v.x), Float(v.y), Float(v.z))
-    }
-
-    @inline(__always)
-    static
-    func castDouble(_ v:V2) -> Math<Double>.V2
-    {
-        return (Double(v.x), Double(v.y))
-    }
-    @inline(__always)
-    static
-    func castDouble(_ v:V3) -> Math<Double>.V3
-    {
-        return (Double(v.x), Double(v.y), Double(v.z))
-    }
-}
-extension Math where N == Int
-{
-    @inline(__always)
-    static
-    func castFloat(_ v:V2) -> Math<Float>.V2
-    {
-        return (Float(v.x), Float(v.y))
-    }
-    @inline(__always)
-    static
-    func castFloat(_ v:V3) -> Math<Float>.V3
-    {
-        return (Float(v.x), Float(v.y), Float(v.z))
-    }
-
-    @inline(__always)
-    static
-    func castDouble(_ v:V2) -> Math<Double>.V2
-    {
-        return (Double(v.x), Double(v.y))
-    }
-    @inline(__always)
-    static
-    func castDouble(_ v:V3) -> Math<Double>.V3
-    {
-        return (Double(v.x), Double(v.y), Double(v.z))
     }
 }
 
@@ -680,34 +636,19 @@ extension Math where N:FloatingPoint
         return scale(v, by: 1 / length(v))
     }
 }
-extension Math where N == Double
+extension Math where N:BinaryFloatingPoint
 {
     @inline(__always)
     static
-    func castFloat(_ v:V2) -> Math<Float>.V2
+    func cast<F>(_ v:V2, as _:F.Type) -> Math<F>.V2 where F:BinaryFloatingPoint
     {
-        return (Float(v.x), Float(v.y))
+        return (F(v.x), F(v.y))
     }
     @inline(__always)
     static
-    func castFloat(_ v:V3) -> Math<Float>.V3
+    func cast<F>(_ v:V3, as _:F.Type) -> Math<F>.V3 where F:BinaryFloatingPoint
     {
-        return (Float(v.x), Float(v.y), Float(v.z))
-    }
-}
-extension Math where N == Float
-{
-    @inline(__always)
-    static
-    func castDouble(_ v:V2) -> Math<Double>.V2
-    {
-        return (Double(v.x), Double(v.y))
-    }
-    @inline(__always)
-    static
-    func castDouble(_ v:V3) -> Math<Double>.V3
-    {
-        return (Double(v.x), Double(v.y), Double(v.z))
+        return (F(v.x), F(v.y), F(v.z))
     }
 }
 
