@@ -123,6 +123,49 @@ enum GL
         OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, mode.rawValue)
     }
     
+    struct Vector<Element> 
+    {
+        let buffer:Buffer<Element>
+        internal private(set)
+        var count:Int
+        private 
+        var capacity:Int 
+        
+        static 
+        func generate() -> Vector
+        {
+            return .init(buffer: .generate(), count: 0, capacity: 0)
+        }
+        
+        func destroy()
+        {
+            self.buffer.destroy()
+        }
+        
+        mutating 
+        func assign(data:[Element], in target:Buffer<Element>.Target, usage:Buffer<Element>.Usage)
+        {
+            self.buffer.bind(to: target)
+            {
+                guard self.capacity != 0 || data.count != 0
+                else 
+                {
+                    return 
+                }
+                
+                let bin:Int = max(16, Math.nextPowerOfTwo(data.count))
+                if self.capacity != bin 
+                {
+                    $0.reserve(capacity: bin, usage: usage)
+                    self.capacity = bin
+                }
+                
+                $0.subData(data)
+                self.count = data.count
+            }
+        }
+    }
+    
     struct Buffer<Element> 
     {
         private 
