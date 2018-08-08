@@ -651,6 +651,17 @@ extension Math where N:BinaryFloatingPoint
         return (F(v.x), F(v.y), F(v.z))
     }
 }
+extension Math where N:FixedWidthInteger 
+{
+    // rounds up to the next power of two, with 0 rounding up to 1. 
+    // numbers that are already powers of two return themselves
+    @inline(__always)
+    static 
+    func nextPowerOfTwo(_ n:N) -> N 
+    {
+        return 1 &<< (N.bitWidth - (n - 1).leadingZeroBitCount)
+    }
+}
 
 extension Math where N:_SwiftFloatingPoint
 {

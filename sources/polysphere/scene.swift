@@ -75,11 +75,9 @@ extension UI
                 }
                 
                 private 
-                let vao:GL.VertexArray, 
-                    vbo:GL.Buffer<Vertex>
-                
+                let vao:GL.VertexArray
                 private 
-                var count:Int = 0
+                var vvo:GL.Vector<Vertex>
                 
                 private 
                 var selected:Int?, 
@@ -89,11 +87,10 @@ extension UI
                 
                 init()
                 {
-                    self.vbo   = .generate()
+                    self.vvo   = .generate()
                     self.vao   = .generate()
-                    self.count = 0
                     
-                    self.vbo.bind(to: .array)
+                    self.vvo.buffer.bind(to: .array)
                     {
                         self.vao.bind 
                         {
@@ -112,24 +109,7 @@ extension UI
                             .init(position: $0.1, id: Int32(truncatingIfNeeded: $0.0))
                         }
                         
-                        self.vbo.bind(to: .array)
-                        {
-                            if buffer.count == self.count
-                            {
-                                guard buffer.count > 0 
-                                else 
-                                {
-                                    return  
-                                }
-                                
-                                $0.subData(buffer)
-                            }
-                            else 
-                            {
-                                $0.data(buffer, usage: .dynamic)
-                                self.count = buffer.count
-                            }
-                        }
+                        self.vvo.assign(data: buffer, in: .array, usage: .dynamic)
                     }
                     
                     self.selected    = scene.selected
@@ -146,7 +126,7 @@ extension UI
                         $0.set(int: "preselected", Int32(self.preselected ?? -1))
                         $0.set(int: "snapped",     Int32(self.snapped     ?? -1))
                         $0.set(int: "deleted",     Int32(self.deleted     ?? -1))
-                        self.vao.draw(0 ..< self.count, as: .points)
+                        self.vao.draw(0 ..< self.vvo.count, as: .points)
                     }
                 }
             }
