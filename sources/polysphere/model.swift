@@ -1,4 +1,107 @@
-//import GLFW
+//import GLFW    
+
+struct Borders 
+{
+    struct Marker 
+    {
+        enum Unfrozen 
+        {
+            case exterior(Int), interior(Int)
+        }
+        
+        var location:Location, 
+            owners:Set<Regions.Index>
+    }
+    
+    struct Regions 
+    {
+        struct Index:Hashable 
+        {
+            let value:Int
+            init(_ value:Int) 
+            {
+                self.value = value
+            }
+        }
+        
+        private 
+        var regions:[[Int]]
+        
+        subscript(index:Index) -> [Int]
+        {
+            get 
+            {
+                return self.regions[index.value]
+            }
+            set(v)
+            {
+                self.regions[index.value] = v
+            }
+        }
+    }
+    
+    private 
+    var markers:[Marker], 
+        regions:Regions
+    
+    mutating 
+    func replace(_ regions:(Regions.Index, [Marker.Unfrozen])..., interiorMarkers:[Marker])
+    {
+        // find all interior points to remove (points owned solely by the replaced regions)
+        let unfrozen:Set<Regions.Index> = .init(regions.lazy.map{ $0.0 })
+        var removals:[Int]              = []
+        for (region, _):(Regions.Index, [Marker.Unfrozen]) in regions 
+        {
+            for marker:Int in self.regions[region]
+            {
+                assert(self.markers[marker].owners.isSuperset(of: unfrozen))
+                
+                guard !self.markers[marker].owners.isStrictSuperset(of: unfrozen)
+                else 
+                {
+                    continue 
+                }
+                
+                removals.append(marker)
+            }
+        }
+        
+        // sort removals in reversed order so that a sequence of pops gives 
+        // indices in ascending order
+        removals.sort(by: >)
+        
+        // remove the points
+        let count:Int = self.markers.count - removals.count
+        var filtered:[Marker] = []
+            filtered.reserveCapacity(count)
+        var indices:[Int]     = []
+            indices.reserveCapacity(self.markers.count)
+        
+        for (oldIndex, marker):(Int, Marker) in self.markers.enumerated()
+        {
+            guard let remove:Int = removals.last 
+            else 
+            {
+                break 
+            }
+            
+            if oldIndex == remove 
+            {
+                indices.append(-1) 
+                removals.removeLast()
+            }
+            else 
+            {
+                indices.append(filtered.count) 
+                filtered.append(marker)
+            }
+        }
+        
+        // replace region indices
+        
+        self.markers = filtered
+    }
+}
 
 struct Location 
 {
