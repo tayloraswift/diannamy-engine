@@ -4,7 +4,7 @@ struct Borders
 {
     struct Marker 
     {
-        enum Unfrozen 
+        enum Selector 
         {
             case exterior(Int), interior(Int)
         }
@@ -13,20 +13,27 @@ struct Borders
             owners:Set<Regions.Index>
     }
     
-    struct Regions 
+    struct Regions:Collection 
     {
-        struct Index:Hashable 
+        struct Index:Hashable, Comparable
         {
             let value:Int
             init(_ value:Int) 
             {
                 self.value = value
             }
+            
+            static 
+            func < (lhs:Index, rhs:Index) -> Bool
+            {
+                return lhs.value < rhs.value
+            }
         }
         
         private 
         var regions:[[Int]]
         
+        // Collection conformance
         subscript(index:Index) -> [Int]
         {
             get 
@@ -38,57 +45,108 @@ struct Borders
                 self.regions[index.value] = v
             }
         }
+        
+        var startIndex:Index 
+        {
+            return .init(0)
+        }
+        var endIndex:Index 
+        {
+            return .init(self.regions.count)
+        }
+        
+        func index(after current:Index) -> Index 
+        {
+            return .init(current.value + 1)
+        }
     }
     
     private 
     var markers:[Marker], 
         regions:Regions
     
-    mutating 
-    func replace(_ regions:(Regions.Index, [Marker.Unfrozen])..., interiorMarkers:[Marker])
+    // returns indices of markers that belong exclusively to the given set of regions
+    func exclusive(to unfrozen:Set<Regions.Index>) -> [Int]
     {
-        // find all interior points to remove (points owned solely by the replaced regions)
-        let unfrozen:Set<Regions.Index> = .init(regions.lazy.map{ $0.0 })
-        var removals:[Int]              = []
-        for (region, _):(Regions.Index, [Marker.Unfrozen]) in regions 
+        var indices:[Int] = []
+        for r:Regions.Index in unfrozen 
         {
-            for marker:Int in self.regions[region]
+            for m:Int in self.regions[r]
             {
-                assert(self.markers[marker].owners.isSuperset(of: unfrozen))
-                
-                guard !self.markers[marker].owners.isStrictSuperset(of: unfrozen)
+                guard unfrozen.isSuperset(of: self.markers[m].owners)
                 else 
                 {
                     continue 
                 }
                 
-                removals.append(marker)
+                indices.append(m)
             }
         }
         
-        // sort removals in reversed order so that a sequence of pops gives 
-        // indices in ascending order
-        removals.sort(by: >)
+        indices.sort()
+        return indices
+    }
+    
+    // returns indices of markers that do not belong exclusively to the given set 
+    // of regions. this is not just the complement of `exclusive(to:)`, it includes 
+    // points that are not owned by any member of the given set at all 
+    func external(to regions:Regions.Index...) -> [Int]
+    {
+        // find all interior points to remove (points owned solely by the replaced regions)
+        let unfrozen:Set<Regions.Index> = .init(regions), 
+            removals:[Int]              = self.exclusive(to: unfrozen)
         
         // remove the points
+        var iterator:IndexingIterator<[Int]> = removals.makeIterator()
+        var remove:Int? = iterator.next()
+        
+        guard remove != nil 
+        else  
+        {
+            return .init(self.markers.indices)
+        }
+        
+        let count:Int = self.markers.count - removals.count
+        var filtered:[Int] = []
+            filtered.reserveCapacity(count)
+        for m:Int in self.markers.indices
+        {
+            if m == remove 
+            {
+                remove = iterator.next()
+            }
+            else 
+            {
+                filtered.append(m)
+            }
+        }
+        
+        return filtered
+    }
+    
+    mutating 
+    func replace(_ replacements:(Regions.Index, [Marker.Selector])..., interiorMarkers:[Marker])
+    {
+        // find all interior points to remove (points owned solely by the replaced regions)
+        let unfrozen:Set<Regions.Index> = .init(replacements.lazy.map{ $0.0 }), 
+            removals:[Int]              = self.exclusive(to: unfrozen)
+        
+        // remove the points
+        var iterator:IndexingIterator<[Int]> = removals.makeIterator()
+        var remove:Int? = iterator.next()
+        
         let count:Int = self.markers.count - removals.count
         var filtered:[Marker] = []
-            filtered.reserveCapacity(count)
+            filtered.reserveCapacity(count + interiorMarkers.count)
         var indices:[Int]     = []
             indices.reserveCapacity(self.markers.count)
         
-        for (oldIndex, marker):(Int, Marker) in self.markers.enumerated()
+        for (m, marker):(Int, Marker) in self.markers.enumerated()
         {
-            guard let remove:Int = removals.last 
-            else 
-            {
-                break 
-            }
-            
-            if oldIndex == remove 
+            if m == remove 
             {
                 indices.append(-1) 
-                removals.removeLast()
+                remove = iterator.next()
             }
             else 
             {
@@ -97,9 +155,42 @@ struct Borders
             }
         }
         
-        // replace region indices
-        
+        filtered.append(contentsOf: interiorMarkers)
         self.markers = filtered
+        
+        // replace region indices
+        var index:Regions.Index = self.regions.startIndex 
+        while index != self.regions.endIndex 
+        {
+            if !unfrozen.contains(index)
+            {
+                self.regions[index] = self.regions[index].map
+                { 
+                    let new:Int = indices[$0] 
+                    assert(new != -1)
+                    return new
+                }
+            }
+            
+            index = self.regions.index(after: index)
+        }
+        // replace replaced regions 
+        for (r, selectors):(Regions.Index, [Marker.Selector]) in replacements 
+        {
+            self.regions[r] = selectors.map 
+            {
+                switch $0 
+                {
+                    case .interior(let i):
+                        return count + i
+                    
+                    case .exterior(let m):
+                        let new:Int = indices[m] 
+                        assert(new != -1)
+                        return new
+                }
+            }
+        }
     }
 }
 
