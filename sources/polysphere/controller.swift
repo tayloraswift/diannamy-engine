@@ -15,6 +15,19 @@ struct Sphere
         self.center = center
     }
     
+    private 
+    func index(before index:Int) -> Int 
+    {
+        let initial:Int = index == self.points.startIndex ? self.points.endIndex : index
+        return self.points.index(before: initial)
+    }
+    private 
+    func index(after index:Int) -> Int 
+    {
+        let increment:Int = self.points.index(after: index)
+        return increment == self.points.endIndex ? self.points.startIndex : increment
+    }
+    
     // the two points are not guaranteed to be distinct (i.e. if we have a digon), 
     // but are guaranteed to be different from the input
     private 
@@ -26,29 +39,7 @@ struct Sphere
             return nil 
         }
         
-        let before:Int, 
-            after:Int 
-        
-        if index != self.points.startIndex 
-        {
-            before = self.points.index(before: index)
-        }
-        else 
-        {
-            before = self.points.index(before: self.points.endIndex)
-        }
-        
-        if index != self.points.index(before: self.points.endIndex)
-        {
-            after  = self.points.index(after: index)
-        }
-        else 
-        {
-            after  = self.points.startIndex
-            
-        }
-        
-        return (before, after)
+        return (self.index(before: index), self.index(after: index))
     }
     
     @inline(__always)
@@ -143,24 +134,48 @@ struct Sphere
         return index <= deleted ? index : index - 1
     }
     
-    func movePreview(_ active:Int, ray:ControlPlane.Ray) -> Operation
+    func previewAdd(at index:Int, ray:ControlPlane.Ray) -> Operation
     {
         let destination:Math<Float>.V3 = self.attract(ray: ray)
-        // check if the destination is within the radius of the adjacent points 
-        if let (before, after):(Int, Int) = self.adjacent(to: active)
+        if let nearest:Int = self.nearest(to: destination, threshold: 0.1)
         {
-            if Sphere.proximity(self.points[before], destination, distance: 0.1)
+            // check if the destination is within the radius of the adjacent points 
+            let before:Int = self.index(before: index)
+            if      nearest == before 
             {
-                return .deleted(Sphere.collapse(index: before, around: active))
+                return .deleted(before)
             }
-            if Sphere.proximity(destination, self.points[after],  distance: 0.1)
+            else if nearest == index 
             {
-                return .deleted(Sphere.collapse(index: after,  around: active))
+                return .deleted(index)
             }
+            
+            return .snapped(self.points[nearest])
         }
         
-        if let nearest:Int = nearest(to: destination, threshold: 0.1, without: active)
+        return .unconstrained(destination)
+    }
+    
+    func previewMove(_ index:Int, ray:ControlPlane.Ray) -> Operation
+    {
+        let destination:Math<Float>.V3 = self.attract(ray: ray)
+        if let nearest:Int = self.nearest(to: destination, threshold: 0.1, without: index)
         {
+            // check if the destination is within the radius of the adjacent points 
+            if  self.points.count > 1 
+            {
+                let before:Int = self.index(before: index), 
+                    after:Int  = self.index(after: index)
+                if      nearest == before 
+                {
+                    return .deleted(Sphere.collapse(index: before, around: index))
+                }
+                else if nearest == after 
+                {
+                    return .deleted(Sphere.collapse(index: after,  around: index))
+                }
+            }
+            
             return .snapped(self.points[nearest])
         }
         
@@ -168,29 +183,38 @@ struct Sphere
     }
     
     mutating 
-    func move(_ active:Int, ray:ControlPlane.Ray) -> Operation
+    func add(at index:Int, ray:ControlPlane.Ray) -> Operation
     {
-        let operation:Operation = self.movePreview(active, ray: ray)
+        let operation:Operation = self.previewAdd(at: index, ray: ray)
         switch operation
         {
             case .unconstrained(let destination), 
                  .snapped(      let destination):
-                self.points[active] = destination 
+                self.points.insert(destination, at: index) 
             
             case .deleted:
-                self.points.remove(at: active)
+                break
         }
         
         return operation
     }
     
     mutating 
-    func duplicate(_ active:Int) -> Int 
+    func move(_ index:Int, ray:ControlPlane.Ray) -> Operation
     {
-        self.points.insert(self.points[active], at: active)
-        return active + 1
+        let operation:Operation = self.previewMove(index, ray: ray)
+        switch operation
+        {
+            case .unconstrained(let destination), 
+                 .snapped(      let destination):
+                self.points[index] = destination 
+            
+            case .deleted:
+                self.points.remove(at: index)
+        }
+        
+        return operation
     }
-    
     
     func apply() -> [Math<Float>.V3]
     {
@@ -199,29 +223,39 @@ struct Sphere
             Math.add($0, self.center)
         }
     }
-    func apply(to active:Int, operation:Operation) -> [Math<Float>.V3]
+    
+    func apply(_ operation:Operation, addingAt index:Int) -> [Math<Float>.V3]
     {
+        var vertices:[Math<Float>.V3] = self.apply()
         switch operation 
         {
             case .unconstrained(let destination), 
                  .snapped(      let destination):
-                var vertices:[Math<Float>.V3] = self.points.map 
-                {
-                    Math.add($0, self.center)
-                }
                 
-                vertices[active] = Math.add(destination, self.center)
-                return vertices
+                vertices.insert(Math.add(destination, self.center), at: index)
             
             case .deleted:
-                return self.points.enumerated().filter 
-                {
-                    return $0.0 != active
-                }.map  
-                {
-                    Math.add($0.1, self.center)
-                }
+                break
         }
+        
+        return vertices
+    }
+    
+    func apply(_ operation:Operation, moving index:Int) -> [Math<Float>.V3]
+    {
+        var vertices:[Math<Float>.V3] = self.apply()
+        switch operation 
+        {
+            case .unconstrained(let destination), 
+                 .snapped(      let destination):
+                
+                vertices[index] = Math.add(destination, self.center)
+            
+            case .deleted:
+                vertices.remove(at: index)
+        }
+        
+        return vertices
     }
 }
 
@@ -251,12 +285,30 @@ extension UI
                 {
                     self.vertices = .mutated(sphere.apply())
                 }
+                
+                mutating 
+                func updateIndicators(operation:Sphere.Operation, at index:Int)
+                {
+                    switch operation 
+                    {
+                        case .unconstrained:
+                            self.selected = index
+                        
+                        case .snapped:
+                            self.selected = index
+                            self.snapped  = index 
+                        
+                        case .deleted(let identifier):
+                            self.deleted  = identifier
+                            self.selected = nil
+                    }
+                }
             }
             
             private 
             enum Anchor 
             {
-                case vertex(Int), navigation(Action)
+                case addition(Int), movement(Int), navigation(Action)
             }
             
             private 
@@ -291,14 +343,21 @@ extension UI
             func down(_ position:Math<Float>.V2, action:Action, 
                 scene:inout Scene, plane:inout ControlPlane) -> Mode?
             {
+                @inline(__always)
+                func _reset()
+                {
+                    scene.vertices.push(self.sphere.apply())
+                    scene.snapped      = nil
+                    scene.deleted      = nil
+                }
+                
                 if let anchor:Anchor = self.anchor 
                 {
                     switch (action, anchor)
                     {
-                        case (.tertiary, .vertex):
-                            scene.vertices.push(self.sphere.apply())
-                            scene.snapped      = nil
-                            scene.deleted      = nil
+                        case (.tertiary, .addition), 
+                             (.tertiary, .movement):
+                            _reset()
                             
                             plane.down(position, action: .pan)
                             fallthrough
@@ -308,26 +367,45 @@ extension UI
                             
                             return nil
                         
+                            
                         // confirm a point drag 
-                        case (.double,  .vertex(let active)), 
-                             (.primary, .vertex(let active)):
+                        case (.double,  .addition(let active)), 
+                             (.primary, .addition(let active)), 
+                             (.double,  .movement(let active)), 
+                             (.primary, .movement(let active)):
                             let ray:ControlPlane.Ray = plane.raycast(position)
                             
-                            if case .deleted = self.sphere.move(active, ray: ray)
+                            let outcome:Sphere.Operation
+                            if case .addition = anchor 
+                            {
+                                outcome = self.sphere.add(at: active, ray: ray)
+                            }
+                            else 
+                            {
+                                outcome = self.sphere.move(active, ray: ray)
+                            }
+                            
+                            if case .deleted = outcome
                             {
                                 self.active    = nil
                                 scene.selected = nil 
                             }
                             
+                            self.anchor = nil                                   // → anchor up
+                            _reset()
+                            return nil 
+                            
+                        
+                        // cancel a point addition
+                        case (.secondary, .addition):
+                            self.active    = nil
+                            scene.selected = nil 
                             fallthrough
                             
                         // cancel a point drag
-                        case (.secondary, .vertex):
+                        case (.secondary, .movement):
                             self.anchor = nil                                   // → anchor up
-                            
-                            scene.vertices.push(self.sphere.apply())
-                            scene.snapped      = nil
-                            scene.deleted      = nil
+                            _reset()
                             return nil 
                         
                         
@@ -365,17 +443,20 @@ extension UI
                                 case .local(let identifier):
                                     if action == .double 
                                     {
-                                        let active:Int = self.sphere.duplicate(identifier) 
-                                        self.active = active
-                                        self.anchor = .vertex(active)           // ← anchor down (vertex)
-                                        scene.vertices.push(self.sphere.apply())
+                                        let index:Int = identifier + 1
+                                        self.anchor   = .addition(index)        // ← anchor down (vertex)
+                                        self.active   = index
+                                        let operation:Sphere.Operation = 
+                                            self.sphere.previewAdd(at: index, ray: ray)
+                                        scene.vertices.push(self.sphere.apply(operation, addingAt: index))
+                                        
+                                        scene.updateIndicators(operation: operation, at: identifier)
                                     }
                                     else 
                                     {
-                                        self.active = identifier
+                                        self.active    = identifier
+                                        scene.selected = identifier
                                     }
-                                    
-                                    scene.selected  = self.active 
                             }
                         
                         case .secondary:
@@ -394,7 +475,7 @@ extension UI
                                 
                                 case .local(let identifier):
                                     self.active    = identifier
-                                    self.anchor    = .vertex(identifier)        // ← anchor down (vertex)
+                                    self.anchor    = .movement(identifier)      // ← anchor down (vertex)
                                     
                                     scene.selected = self.active 
                             } 
@@ -415,29 +496,29 @@ extension UI
                 scene.snapped     = nil
                 scene.deleted     = nil
                 
+                let ray:ControlPlane.Ray = plane.raycast(position)
                 if let anchor:Anchor = self.anchor 
                 {
                     switch anchor 
                     {
-                        case .vertex(let active):
-                            let ray:ControlPlane.Ray = plane.raycast(position)
-                            let operation:Sphere.Operation = self.sphere.movePreview(active, ray: ray)
+                        case .addition(let index), 
+                             .movement(let index):
                             
-                            scene.vertices.push(self.sphere.apply(to: active, operation: operation))
-                            
-                            switch operation 
+                            let operation:Sphere.Operation, 
+                                vertices:[Math<Float>.V3]
+                            if case .addition = anchor 
                             {
-                                case .unconstrained:
-                                    scene.selected = active
-                                
-                                case .snapped:
-                                    scene.selected = active
-                                    scene.snapped  = active 
-                                
-                                case .deleted(let identifier):
-                                    scene.deleted  = identifier
-                                    scene.selected = nil
+                                operation = self.sphere.previewAdd(at: index, ray: ray)
+                                vertices  = self.sphere.apply(operation, addingAt: index)
                             }
+                            else 
+                            {
+                                operation = self.sphere.previewMove(index, ray: ray)
+                                vertices  = self.sphere.apply(operation, moving: index)
+                            }
+                            
+                            scene.vertices.push(vertices)
+                            scene.updateIndicators(operation: operation, at: index)
                             
                             return 
                         
@@ -454,7 +535,6 @@ extension UI
                 }
                 else 
                 {
-                    let ray:ControlPlane.Ray = plane.raycast(position)
                     guard let hit:Hit = self.probe(ray)
                     else 
                     {
@@ -484,7 +564,8 @@ extension UI
                             Log.unreachable()
                         
                         
-                        case (_, .vertex):
+                        case (_, .addition), 
+                             (_, .movement):
                             break 
                             
                         case (_, .navigation(let beginning)):
