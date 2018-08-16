@@ -20,6 +20,7 @@ in Vertex
 {
     bool facing;
     vec3 color;
+    int  index;
 } vertex[1];
 
 out Vertex
@@ -39,21 +40,20 @@ vec4 clip(vec2 screen)
 
 void main()
 {
-    vec3 color  = vertex[0].facing ? vertex[0].color : vec3(0.2, 0.2, 0.2);
     vec2 center = screen(gl_in[0].gl_Position);
-    geometry.color = color;
+    geometry.color = vertex[0].color;
     geometry.uv    = vec2(-1, -1); 
     gl_Position    = clip(center + vec2(-8, -8));
     EmitVertex();
-    geometry.color = color;
+    geometry.color = vertex[0].color;
     geometry.uv    = vec2( 1, -1); 
     gl_Position    = clip(center + vec2( 8, -8));
     EmitVertex();
-    geometry.color = color;
+    geometry.color = vertex[0].color;
     geometry.uv    = vec2(-1,  1); 
     gl_Position    = clip(center + vec2(-8,  8));
     EmitVertex();
-    geometry.color = color;
+    geometry.color = vertex[0].color;
     geometry.uv    = vec2( 1,  1); 
     gl_Position    = clip(center + vec2( 8,  8));
     EmitVertex();

@@ -177,7 +177,7 @@ enum GL
             var id:OpenGL.UInt = 0
             OpenGL.glGenBuffers(1, &id)
             
-            return Buffer(id: id)
+            return .init(id: id)
         }
         
         func destroy() 

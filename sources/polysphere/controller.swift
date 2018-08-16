@@ -187,9 +187,8 @@ struct Sphere
     mutating 
     func duplicate(_ active:Int) -> Int 
     {
-        let index:Int = self.points.count
-        self.points.append(self.points[active])
-        return index
+        self.points.insert(self.points[active], at: active)
+        return active + 1
     }
     
     

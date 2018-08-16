@@ -9,7 +9,8 @@ class Window
 
     private
     var ui:UI, 
-        height:Double // need to store this to flip y axis
+        height:Double, // need to store this to flip y axis
+        lastPrimary:Double 
 
     init(size:Math<Float>.V2, name:String)
     {
@@ -25,6 +26,7 @@ class Window
         self.window = window
         self.ui     = .init()
         self.height = Double(size.y)
+        self.lastPrimary = glfwGetTime()
         
         self.ui.resize(to: size)
 
@@ -66,37 +68,39 @@ class Window
         {
             (context:OpaquePointer?, code:CInt, direction:CInt, mods:CInt) in
 
-            let window:Window = .reconstitute(from: context),
-                action:UI.Action
-
-            switch code
-            {
-            case GLFW_MOUSE_BUTTON_LEFT:
-                action = .primary
-            case GLFW_MOUSE_BUTTON_MIDDLE:
-                action = .tertiary
-            case GLFW_MOUSE_BUTTON_RIGHT:
-                action = .secondary
-            
-            default:
-                Log.note("unrecognized mouse button (\(code))")
-                return
-            }
-
-            var position:Math<Double>.V2 = (0, 0)
-            glfwGetCursorPos(context, &position.x, &position.y)
-            position.y = window.height - position.y
-            
-            switch direction 
-            {
-                case GLFW_PRESS:
-                    window.ui.down(Math.cast(position, as: Float.self), action: action)
+            let window:Window = .reconstitute(from: context), 
+                position:Math<Float>.V2 = window.cursorPosition(context: context)
                 
-                case GLFW_RELEASE:
-                    window.ui.up(Math.cast(position, as: Float.self),   action: action)
+            switch (code, direction)
+            {
+                case (GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS):
+                    let timestamp:Double = glfwGetTime(), 
+                        delta:Double     = timestamp - window.lastPrimary
+                    
+                    window.lastPrimary = timestamp 
+                    if delta < 0.3 
+                    {
+                        window.ui.down(position, action: .double)
+                    }
+                    else 
+                    {
+                        window.ui.down(position, action: .primary)
+                    }
+                case (GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE):
+                    window.ui.up(position, action: .primary)
+                    
+                case (GLFW_MOUSE_BUTTON_MIDDLE, GLFW_PRESS):
+                    window.ui.down(position, action: .tertiary)
+                case (GLFW_MOUSE_BUTTON_MIDDLE, GLFW_RELEASE):
+                    window.ui.up(position, action: .tertiary)
+                
+                case (GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS):
+                    window.ui.down(position, action: .secondary)
+                case (GLFW_MOUSE_BUTTON_RIGHT, GLFW_RELEASE):
+                    window.ui.up(position, action: .secondary)
                 
                 default:
-                    Log.note("unrecognized mouse action (\(direction))")
+                    Log.note("unrecognized mouse action (\(code), \(direction)")
             }
         }
 
@@ -125,6 +129,15 @@ class Window
         }
         
         GL.enableDebugOutput()
+    }
+    
+    func cursorPosition(context:OpaquePointer?) -> Math<Float>.V2 
+    {
+        var position:Math<Double>.V2 = (0, 0)
+        glfwGetCursorPos(context, &position.x, &position.y)
+        position.y = self.height - position.y
+        
+        return Math.cast(position, as: Float.self)
     }
 
     func loop()

@@ -23,6 +23,7 @@ out Vertex
 {
     bool facing;
     vec3 color;
+    int  index;
 } vertex;
 
 void main()
@@ -38,6 +39,7 @@ void main()
     
     vec3 normal   = position; // only because these are sphere points
     vertex.facing = dot(camera.position - position, normal) < 0 ? false : true;
-    
+    vertex.color  = vertex.facing ? vertex.color : vec3(0.2, 0.2, 0.2);
+    vertex.index  = index;
     gl_Position   = camera.U * vec4(position, 1);
 }

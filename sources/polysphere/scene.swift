@@ -4,6 +4,26 @@ extension UI
     {
         enum Programs
         {
+            static 
+            let monofont:(metrics:Math<Float>.V4, texture:GL.Texture<UInt8>) = 
+            {
+                let font:Assets.BasicMonospaceFont = Assets.Libraries.freetype
+                    .renderBasicMonospaceFont("assets/fonts/SourceCodePro-Medium.otf", size: 16) 
+                
+                let texture:GL.Texture<UInt8> = .generate()
+                texture.bind(to: .texture2d)
+                {
+                    $0.data(font.atlas, layout: .r8, storage: .r8)
+                    $0.setMagnificationFilter(.nearest)
+                    $0.setMinificationFilter(.nearest, mipmap: nil)
+                }
+                
+                let fraction:Float = Float(font.metrics.advance) / Float(font.atlas.shape.x), 
+                    bounds:Math<Float>.V2 = Math.cast(font.metrics.bounds, as: Float.self)
+                return ((bounds.x, bounds.y, fraction, Float(font.metrics.advance)), texture)
+            }()
+            
+            
             static
             let debug:GL.Program = .create(
                 shaders:
@@ -58,6 +78,26 @@ extension UI
                     .int("preselected"), 
                     .int("snapped"), 
                     .int("deleted")
+                ]
+            )!
+            static
+            let borderlabels:GL.Program = .create(
+                shaders:
+                [
+                    (.vertex  , "shaders/border.vert"),
+                    (.geometry, "shaders/borderlabel.geom"),
+                    (.fragment, "shaders/borderlabel.frag")
+                ],
+                uniforms:
+                [
+                    .block("Camera", binding: 0), 
+                    .int("selected"), 
+                    .int("preselected"), 
+                    .int("snapped"), 
+                    .int("deleted"), 
+                    
+                    .float4("monoFontMetrics"), 
+                    .texture("monoFontAtlas", binding: 0)
                 ]
             )!
         }
@@ -127,6 +167,20 @@ extension UI
                         $0.set(int: "snapped",     Int32(self.snapped     ?? -1))
                         $0.set(int: "deleted",     Int32(self.deleted     ?? -1))
                         self.vao.draw(0 ..< self.vvo.count, as: .points)
+                    }
+                    
+                    Programs.borderlabels.bind 
+                    {
+                        $0.set(int: "selected",    Int32(self.selected    ?? -1))
+                        $0.set(int: "preselected", Int32(self.preselected ?? -1))
+                        $0.set(int: "snapped",     Int32(self.snapped     ?? -1))
+                        $0.set(int: "deleted",     Int32(self.deleted     ?? -1))
+                        
+                        $0.set(float4: "monoFontMetrics", Programs.monofont.metrics)
+                        Programs.monofont.texture.bind(to: .texture2d, index: 0)
+                        {
+                            self.vao.draw(0 ..< self.vvo.count, as: .points)
+                        }
                     }
                 }
             }

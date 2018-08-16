@@ -14,7 +14,8 @@ let package = Package(
     targets: 
     [
         .target(name: "generator" , dependencies: ["XML"], path: "sources/generator"), 
-        .target(name: "GLFW", path: "sources/GLFW"), 
-        .target(name: "polysphere", dependencies: ["GLFW"], path: "sources/polysphere"),
+        .target(name: "GLFW", path: "sources/c/glfw"), 
+        .systemLibrary(name: "FreeType", path: "sources/c/freetype", pkgConfig: "freetype2"), 
+        .target(name: "polysphere", dependencies: ["GLFW", "FreeType"], path: "sources/polysphere"),
     ]
 )

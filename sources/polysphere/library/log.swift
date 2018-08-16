@@ -2,7 +2,7 @@ enum Log
 {
     enum Source 
     {
-        case diannamy, opengl, glsl, glfw
+        case diannamy, opengl, glsl, glfw, freetype
     }
     
     static 
