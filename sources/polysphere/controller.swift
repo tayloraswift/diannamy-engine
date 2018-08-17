@@ -1,18 +1,16 @@
 struct Sphere 
 {
     private 
-    var points:[Math<Float>.V3], 
-        center:Math<Float>.V3
+    var points:[Math<Float>.V3]
     
     enum Operation 
     {
         case unconstrained(Math<Float>.V3), snapped(Math<Float>.V3), deleted(Int)
     }
     
-    init(_ points:[Math<Float>.V3] = [], center:Math<Float>.V3 = (0, 0, 0))
+    init(_ points:[Math<Float>.V3] = [])
     {
         self.points = points 
-        self.center = center
     }
     
     private 
@@ -93,7 +91,7 @@ struct Sphere
     private 
     func intersect(ray:ControlPlane.Ray) -> Math<Float>.V3? 
     {
-        let c:Math<Float>.V3 = Math.sub(self.center, ray.source), 
+        let c:Math<Float>.V3 = ray.source, 
             l:Float          = Math.dot(c, ray.vector)
         
         let discriminant:Float = 1 * 1 + l * l - Math.eusq(c)
@@ -109,7 +107,7 @@ struct Sphere
     private 
     func attract(ray:ControlPlane.Ray) -> Math<Float>.V3
     {
-        let c:Math<Float>.V3 = Math.sub(self.center, ray.source), 
+        let c:Math<Float>.V3 = ray.source, 
             l:Float          = Math.dot(c, ray.vector)
         
         let discriminant:Float    = max(1 * 1 + l * l - Math.eusq(c), 0), 
@@ -220,10 +218,7 @@ struct Sphere
     
     func apply() -> [Math<Float>.V3]
     {
-        return self.points.map 
-        {
-            Math.add($0, self.center)
-        }
+        return self.points
     }
     
     func apply(_ operation:Operation, addingAt index:Int) -> [Math<Float>.V3]
@@ -234,7 +229,7 @@ struct Sphere
             case .unconstrained(let destination), 
                  .snapped(      let destination):
                 
-                vertices.insert(Math.add(destination, self.center), at: index)
+                vertices.insert(destination, at: index)
             
             case .deleted:
                 break
@@ -251,7 +246,7 @@ struct Sphere
             case .unconstrained(let destination), 
                  .snapped(      let destination):
                 
-                vertices[index] = Math.add(destination, self.center)
+                vertices[index] = destination
             
             case .deleted:
                 vertices.remove(at: index)
@@ -291,14 +286,6 @@ extension UI
                 init(sphere:Sphere) 
                 {
                     self.vertices = .mutated(sphere.apply())
-                }
-                
-                // needed to prevent truly unwieldy enum case spellings 
-                // (“Scene.Indicator.unconfirmed(snapped: true)”)
-                mutating 
-                func set(indicator:(index:Int, type:Indicator)) 
-                {
-                    self.indicator = indicator 
                 }
             }
             
@@ -479,11 +466,11 @@ extension UI
                                         switch operation 
                                         {
                                             case .unconstrained:
-                                                scene.set(indicator: (index, .unconfirmed(snapped: false)))
+                                                scene.indicator = (index, .unconfirmed(snapped: false))
                                             case .snapped:
-                                                scene.set(indicator: (index, .unconfirmed(snapped: true)))
+                                                scene.indicator = (index, .unconfirmed(snapped: true))
                                             case .deleted(let identifier):
-                                                scene.set(indicator: (identifier, .deleted))
+                                                scene.indicator = (identifier, .deleted)
                                         }
                                     }
                                     else 
@@ -535,11 +522,11 @@ extension UI
                             switch operation
                             {
                                 case .unconstrained:
-                                    scene.set(indicator: (index, .unconfirmed(snapped: false)))
+                                    scene.indicator = (index, .unconfirmed(snapped: false))
                                 case .snapped:
-                                    scene.set(indicator: (index, .unconfirmed(snapped: true)))
+                                    scene.indicator = (index, .unconfirmed(snapped: true))
                                 case .deleted(let identifier):
-                                    scene.set(indicator: (identifier, .deleted))
+                                    scene.indicator = (identifier, .deleted)
                             }
                             
                             scene.vertices.push(vertices)
@@ -553,13 +540,13 @@ extension UI
                             switch operation
                             {
                                 case .unconstrained:
-                                    scene.set(indicator: (index, .selected(snapped: false)))
+                                    scene.indicator    = (index, .selected(snapped: false))
                                     scene.preselection = index
                                 case .snapped:
-                                    scene.set(indicator: (index, .selected(snapped: true)))
+                                    scene.indicator    = (index, .selected(snapped: true))
                                     scene.preselection = index
                                 case .deleted(let identifier):
-                                    scene.set(indicator: (identifier, .deleted))
+                                    scene.indicator    = (identifier, .deleted)
                                     scene.preselection = nil
                             }
                             
