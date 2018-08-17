@@ -182,6 +182,7 @@ struct Sphere
         return .unconstrained(destination)
     }
     
+    @discardableResult
     mutating 
     func add(at index:Int, ray:ControlPlane.Ray) -> Operation
     {
@@ -199,6 +200,7 @@ struct Sphere
         return operation
     }
     
+    @discardableResult
     mutating 
     func move(_ index:Int, ray:ControlPlane.Ray) -> Operation
     {
@@ -274,34 +276,29 @@ extension UI
             // view interface
             struct Scene 
             {
+                enum Indicator 
+                {
+                    case unconfirmed(snapped:Bool), 
+                         selected(snapped:Bool), 
+                         deleted
+                }
+                
                 var vertices:Lazy<[Math<Float>.V3]>
                 
-                var selected:Int?, 
-                    preselected:Int?, 
-                    snapped:Int?, 
-                    deleted:Int?
+                var indicator:(index:Int, type:Indicator)?, 
+                    preselection:Int?
                 
                 init(sphere:Sphere) 
                 {
                     self.vertices = .mutated(sphere.apply())
                 }
                 
+                // needed to prevent truly unwieldy enum case spellings 
+                // (“Scene.Indicator.unconfirmed(snapped: true)”)
                 mutating 
-                func updateIndicators(operation:Sphere.Operation, at index:Int)
+                func set(indicator:(index:Int, type:Indicator)) 
                 {
-                    switch operation 
-                    {
-                        case .unconstrained:
-                            self.selected = index
-                        
-                        case .snapped:
-                            self.selected = index
-                            self.snapped  = index 
-                        
-                        case .deleted(let identifier):
-                            self.deleted  = identifier
-                            self.selected = nil
-                    }
+                    self.indicator = indicator 
                 }
             }
             
@@ -313,12 +310,36 @@ extension UI
             
             private 
             var sphere:Sphere, 
-                active:Int?, 
+                _selection:Int?, 
                 anchor:Anchor?
+            
+            private 
+            var selection:Int? 
+            {
+                return self._selection
+            }
             
             init(sphere:Sphere)
             {
                 self.sphere = sphere
+            }
+            
+            private mutating  
+            func select(_ index:Int?, scene:inout Scene)
+            {
+                self._selection = index                 
+                scene.indicator = index.flatMap
+                { 
+                    ($0, Scene.Indicator.selected(snapped: false))
+                }
+            }
+            private  
+            func selectionSync(scene:inout Scene)
+            {            
+                scene.indicator = self.selection.flatMap
+                { 
+                    ($0, Scene.Indicator.selected(snapped: false))
+                }
             }
             
             private 
@@ -343,12 +364,10 @@ extension UI
             func down(_ position:Math<Float>.V2, action:Action, 
                 scene:inout Scene, plane:inout ControlPlane) -> Mode?
             {
-                @inline(__always)
-                func _reset()
+                let ray:ControlPlane.Ray = plane.raycast(position)
+                defer 
                 {
-                    scene.vertices.push(self.sphere.apply())
-                    scene.snapped      = nil
-                    scene.deleted      = nil
+                    self.move(position, scene: &scene, plane: &plane)
                 }
                 
                 if let anchor:Anchor = self.anchor 
@@ -357,7 +376,9 @@ extension UI
                     {
                         case (.tertiary, .addition), 
                              (.tertiary, .movement):
-                            _reset()
+                            
+                            self.selectionSync(scene: &scene)
+                            scene.vertices.push(self.sphere.apply())
                             
                             plane.down(position, action: .pan)
                             fallthrough
@@ -369,43 +390,46 @@ extension UI
                         
                             
                         // confirm a point drag 
-                        case (.double,  .addition(let active)), 
-                             (.primary, .addition(let active)), 
-                             (.double,  .movement(let active)), 
-                             (.primary, .movement(let active)):
-                            let ray:ControlPlane.Ray = plane.raycast(position)
-                            
-                            let outcome:Sphere.Operation
+                        case (.double,  .addition(let index)), 
+                             (.primary, .addition(let index)), 
+                             (.double,  .movement(let index)), 
+                             (.primary, .movement(let index)):
                             if case .addition = anchor 
                             {
-                                outcome = self.sphere.add(at: active, ray: ray)
+                                if case .deleted = self.sphere.add(at: index, ray: ray) 
+                                {
+                                    self.selectionSync(scene: &scene)
+                                }
+                                else 
+                                {
+                                    self.select(index, scene: &scene)
+                                }
                             }
                             else 
                             {
-                                outcome = self.sphere.move(active, ray: ray)
+                                if case .deleted = self.sphere.move(index, ray: ray)
+                                {
+                                    self.select(nil, scene: &scene)
+                                }
+                                else 
+                                {
+                                    self.selectionSync(scene: &scene)
+                                }
                             }
                             
-                            if case .deleted = outcome
-                            {
-                                self.active    = nil
-                                scene.selected = nil 
-                            }
+                            scene.vertices.push(self.sphere.apply())
                             
                             self.anchor = nil                                   // → anchor up
-                            _reset()
                             return nil 
                             
                         
-                        // cancel a point addition
-                        case (.secondary, .addition):
-                            self.active    = nil
-                            scene.selected = nil 
-                            fallthrough
+                        // cancel a point addition/drag
+                        case (.secondary, .addition), 
+                             (.secondary, .movement):
+                            self.selectionSync(scene: &scene)
+                            scene.vertices.push(self.sphere.apply())
                             
-                        // cancel a point drag
-                        case (.secondary, .movement):
                             self.anchor = nil                                   // → anchor up
-                            _reset()
                             return nil 
                         
                         
@@ -423,13 +447,14 @@ extension UI
                 }
                 else 
                 {
-                    let ray:ControlPlane.Ray = plane.raycast(position)
                     switch action 
                     {
                         case .double, .primary:
                             guard let hit:Hit = self.probe(ray)
                             else 
                             {
+                                self.select(nil, scene: &scene)
+                                
                                 plane.down(position, action: .pan)
                                 self.anchor = .navigation(.primary)             // ← anchor down (navigation)
                                 break
@@ -445,17 +470,25 @@ extension UI
                                     {
                                         let index:Int = identifier + 1
                                         self.anchor   = .addition(index)        // ← anchor down (vertex)
-                                        self.active   = index
                                         let operation:Sphere.Operation = 
                                             self.sphere.previewAdd(at: index, ray: ray)
+                                        
                                         scene.vertices.push(self.sphere.apply(operation, addingAt: index))
                                         
-                                        scene.updateIndicators(operation: operation, at: identifier)
+                                        self.select(nil, scene: &scene)
+                                        switch operation 
+                                        {
+                                            case .unconstrained:
+                                                scene.set(indicator: (index, .unconfirmed(snapped: false)))
+                                            case .snapped:
+                                                scene.set(indicator: (index, .unconfirmed(snapped: true)))
+                                            case .deleted(let identifier):
+                                                scene.set(indicator: (identifier, .deleted))
+                                        }
                                     }
                                     else 
                                     {
-                                        self.active    = identifier
-                                        scene.selected = identifier
+                                        self.select(identifier, scene: &scene)
                                     }
                             }
                         
@@ -474,10 +507,8 @@ extension UI
                                     return mode 
                                 
                                 case .local(let identifier):
-                                    self.active    = identifier
-                                    self.anchor    = .movement(identifier)      // ← anchor down (vertex)
-                                    
-                                    scene.selected = self.active 
+                                    self.select(identifier, scene: &scene)
+                                    self.anchor = .movement(identifier)         // ← anchor down (vertex)
                             } 
                         
                         case .tertiary:
@@ -492,34 +523,47 @@ extension UI
             func move(_ position:Math<Float>.V2, 
                 scene:inout Scene, plane:inout ControlPlane)
             {
-                scene.preselected = nil
-                scene.snapped     = nil
-                scene.deleted     = nil
-                
                 let ray:ControlPlane.Ray = plane.raycast(position)
                 if let anchor:Anchor = self.anchor 
                 {
                     switch anchor 
                     {
-                        case .addition(let index), 
-                             .movement(let index):
+                        case .addition(let index):
+                            let operation:Sphere.Operation = self.sphere.previewAdd(at: index, ray: ray), 
+                                vertices:[Math<Float>.V3]  = self.sphere.apply(operation, addingAt: index)
                             
-                            let operation:Sphere.Operation, 
-                                vertices:[Math<Float>.V3]
-                            if case .addition = anchor 
+                            switch operation
                             {
-                                operation = self.sphere.previewAdd(at: index, ray: ray)
-                                vertices  = self.sphere.apply(operation, addingAt: index)
-                            }
-                            else 
-                            {
-                                operation = self.sphere.previewMove(index, ray: ray)
-                                vertices  = self.sphere.apply(operation, moving: index)
+                                case .unconstrained:
+                                    scene.set(indicator: (index, .unconfirmed(snapped: false)))
+                                case .snapped:
+                                    scene.set(indicator: (index, .unconfirmed(snapped: true)))
+                                case .deleted(let identifier):
+                                    scene.set(indicator: (identifier, .deleted))
                             }
                             
                             scene.vertices.push(vertices)
-                            scene.updateIndicators(operation: operation, at: index)
+                            return 
+                        
+                        case .movement(let index):
                             
+                            let operation:Sphere.Operation = self.sphere.previewMove(index, ray: ray), 
+                                vertices:[Math<Float>.V3]  = self.sphere.apply(operation, moving: index)
+                            
+                            switch operation
+                            {
+                                case .unconstrained:
+                                    scene.set(indicator: (index, .selected(snapped: false)))
+                                    scene.preselection = index
+                                case .snapped:
+                                    scene.set(indicator: (index, .selected(snapped: true)))
+                                    scene.preselection = index
+                                case .deleted(let identifier):
+                                    scene.set(indicator: (identifier, .deleted))
+                                    scene.preselection = nil
+                            }
+                            
+                            scene.vertices.push(vertices)
                             return 
                         
                         case .navigation:
@@ -527,34 +571,20 @@ extension UI
                     }
                 }
                 
-                // purpose of preselect is to indicate what would happen in a 
-                // primary or secondary action is taken at the current position 
-                if self.intersectsFloating(position)
-                {
-                    
-                }
-                else 
-                {
-                    guard let hit:Hit = self.probe(ray)
-                    else 
-                    {
-                        return 
-                    }
-                    switch hit 
-                    {
-                        case .gate:
-                            break 
-                        
-                        case .local(let identifier):
-                            scene.preselected = identifier
-                    }
-                }
+                self.selectionSync(scene: &scene)
+                self.preselect(position, ray, scene: &scene)
             }
             
             mutating 
             func up(_ position:Math<Float>.V2, action:Action, 
                 scene:inout Scene, plane:inout ControlPlane) 
             {
+                let ray:ControlPlane.Ray = plane.raycast(position)
+                defer 
+                {
+                    self.preselect(position, ray, scene: &scene)
+                }
+                
                 if let anchor:Anchor = self.anchor 
                 {
                     switch (action, anchor)
@@ -577,6 +607,51 @@ extension UI
                             
                             plane.up(position, action: .pan)
                             self.anchor = nil 
+                    }
+                }
+            }
+            
+            private 
+            func preselect(_ position:Math<Float>.V2, _ ray:ControlPlane.Ray, scene:inout Scene)
+            {
+                if let anchor:Anchor = self.anchor 
+                {
+                    switch anchor 
+                    {
+                        case .addition:
+                            scene.preselection = nil
+                            return
+                        
+                        case .movement(let index):
+                            scene.preselection = index
+                            return
+                        
+                        case .navigation:
+                            break
+                    }
+                }
+                
+                // purpose of preselect is to indicate what would happen in a 
+                // primary or secondary action is taken at the current position 
+                scene.preselection = nil
+                if self.intersectsFloating(position)
+                {
+                    
+                }
+                else 
+                {
+                    guard let hit:Hit = self.probe(ray)
+                    else 
+                    {
+                        return 
+                    }
+                    switch hit 
+                    {
+                        case .gate:
+                            break 
+                        
+                        case .local(let identifier):
+                            scene.preselection = identifier
                     }
                 }
             }

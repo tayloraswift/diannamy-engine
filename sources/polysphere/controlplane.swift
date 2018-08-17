@@ -70,7 +70,7 @@ struct ControlPlane
         switch action
         {
             case .pan:
-                let delta:Math<Float>.V2 = Math.scale(displacement, by: -1/128)
+                let delta:Math<Float>.V2 = Math.scale(displacement, by: -1/192)
                 head.angle.φ =            base.angle.φ + delta.x
                 head.angle.θ = max(0, min(base.angle.θ - delta.y, Float.pi))
 

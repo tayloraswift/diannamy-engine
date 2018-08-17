@@ -74,10 +74,8 @@ extension UI
                 uniforms:
                 [
                     .block("Camera", binding: 0), 
-                    .int("selected"), 
-                    .int("preselected"), 
-                    .int("snapped"), 
-                    .int("deleted")
+                    .int("indicator"), 
+                    .int("preselection")
                 ]
             )!
             static
@@ -91,10 +89,8 @@ extension UI
                 uniforms:
                 [
                     .block("Camera", binding: 0), 
-                    .int("selected"), 
-                    .int("preselected"), 
-                    .int("snapped"), 
-                    .int("deleted"), 
+                    .int("indicator"), 
+                    .int("preselection"), 
                     
                     .float4("monoFontMetrics"), 
                     .texture("monoFontAtlas", binding: 0)
@@ -120,10 +116,8 @@ extension UI
                 var vvo:GL.Vector<Vertex>
                 
                 private 
-                var selected:Int?, 
-                    preselected:Int?, 
-                    snapped:Int?, 
-                    deleted:Int?
+                var indicator:Int32    = -1, 
+                    preselection:Int32 = -1
                 
                 init()
                 {
@@ -152,29 +146,67 @@ extension UI
                         self.vvo.assign(data: buffer, in: .array, usage: .dynamic)
                     }
                     
-                    self.selected    = scene.selected
-                    self.preselected = scene.preselected
-                    self.snapped     = scene.snapped
-                    self.deleted     = scene.deleted
+                    self.indicator    = Borders.encode(indicator:    scene.indicator)
+                    self.preselection = Borders.encode(preselection: scene.preselection)
+                }
+                
+                private static 
+                func encode(indicator:(Int, Controller.Geo.Scene.Indicator)?) -> Int32 
+                {
+                    // lowest 3 bits encode type information 
+                    //  3       2       1       0
+                    //  [      case     ][ snapped ]
+                    //  
+                    //  0 0 0 = unconfirmed, not snapped 
+                    //  0 0 1 = unconfirmed, snapped 
+                    //  0 1 0 = selected, not snapped 
+                    //  0 1 1 = selected, snapped 
+                    //  1 0 0 = deleted 
+                    //  1 0 1 = deleted 
+                    //  1 1 0 = deleted 
+                    //  1 1 1 = deleted
+                    //
+                    // roughly, bit 0 = snapping, bit 1 = confirmation, bit 2 = deletion
+                    guard let (index, type):(Int, Controller.Geo.Scene.Indicator) = indicator 
+                    else 
+                    {
+                        return -1
+                    }
+                    
+                    let code:Int32
+                    switch type 
+                    {
+                        case .unconfirmed(let snapping):
+                            code = 0b00 << 1 | (snapping ? 1 : 0) 
+                        
+                        case .selected(let snapping):
+                            code = 0b01 << 1 | (snapping ? 1 : 0) 
+                        
+                        case .deleted:
+                            code = 0b10 << 1
+                    }
+                    
+                    return Int32(index) << 3 | code
+                }
+                private static 
+                func encode(preselection:Int?) -> Int32 
+                {
+                    return Int32(preselection ?? -1)
                 }
                 
                 func draw() 
                 {
                     Programs.borders.bind 
                     {
-                        $0.set(int: "selected",    Int32(self.selected    ?? -1))
-                        $0.set(int: "preselected", Int32(self.preselected ?? -1))
-                        $0.set(int: "snapped",     Int32(self.snapped     ?? -1))
-                        $0.set(int: "deleted",     Int32(self.deleted     ?? -1))
+                        $0.set(int: "indicator",    self.indicator)
+                        $0.set(int: "preselection", self.preselection)
                         self.vao.draw(0 ..< self.vvo.count, as: .points)
                     }
                     
                     Programs.borderlabels.bind 
                     {
-                        $0.set(int: "selected",    Int32(self.selected    ?? -1))
-                        $0.set(int: "preselected", Int32(self.preselected ?? -1))
-                        $0.set(int: "snapped",     Int32(self.snapped     ?? -1))
-                        $0.set(int: "deleted",     Int32(self.deleted     ?? -1))
+                        $0.set(int: "indicator",    self.indicator)
+                        $0.set(int: "preselection", self.preselection)
                         
                         $0.set(float4: "monoFontMetrics", Programs.monofont.metrics)
                         Programs.monofont.texture.bind(to: .texture2d, index: 0)
