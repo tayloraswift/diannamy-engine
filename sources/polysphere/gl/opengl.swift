@@ -294,7 +294,9 @@ enum GL
                  lineStrip, 
                  triangles, 
                  triangleStrip, 
-                 triangleFan
+                 triangleFan, 
+                 
+                 linesAdjacency = 0xA
         }
         
         // GL vertex attribute pointer stuff 

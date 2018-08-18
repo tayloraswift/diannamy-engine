@@ -91,7 +91,8 @@ struct Sphere
     private 
     func intersect(ray:ControlPlane.Ray) -> Math<Float>.V3? 
     {
-        let c:Math<Float>.V3 = ray.source, 
+        // need to deal with case of sphere not centered at origin
+        let c:Math<Float>.V3 = Math.sub((0, 0, 0), ray.source), 
             l:Float          = Math.dot(c, ray.vector)
         
         let discriminant:Float = 1 * 1 + l * l - Math.eusq(c)
@@ -107,7 +108,8 @@ struct Sphere
     private 
     func attract(ray:ControlPlane.Ray) -> Math<Float>.V3
     {
-        let c:Math<Float>.V3 = ray.source, 
+        // need to deal with case of sphere not centered at origin
+        let c:Math<Float>.V3 = Math.sub((0, 0, 0), ray.source), 
             l:Float          = Math.dot(c, ray.vector)
         
         let discriminant:Float    = max(1 * 1 + l * l - Math.eusq(c), 0), 

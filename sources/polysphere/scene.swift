@@ -79,7 +79,7 @@ extension UI
                 ]
             )!
             static
-            let borderlabels:GL.Program = .create(
+            let borderLabels:GL.Program = .create(
                 shaders:
                 [
                     (.vertex  , "shaders/border.vert"),
@@ -96,24 +96,52 @@ extension UI
                     .texture("monoFontAtlas", binding: 0)
                 ]
             )!
+            static
+            let borderPolyline:GL.Program = .create(
+                shaders:
+                [
+                    (.vertex  , "shaders/border-to-polyline.vert"),
+                    (.geometry, "shaders/polyline.geom"),
+                    (.fragment, "shaders/polyline.frag")
+                ],
+                uniforms:
+                [
+                    .block("Camera", binding: 0), 
+                    .float("thickness"), 
+                    .float4("frontColor"), 
+                    .float4("backColor")
+                ]
+            )!
         }
         
         struct Geo 
         {
-            struct Borders 
+            struct Borders
             {
+                typealias Index = UInt16 
+                
                 @_fixed_layout
                 @usableFromInline 
                 struct Vertex 
                 {
                     let position:Math<Float>.V3, 
                         id:Int32
+                    
+                    init(_ position:Math<Float>.V3, id:Int)
+                    {
+                        self.position = position 
+                        self.id       = Int32(truncatingIfNeeded: id)
+                    }
                 }
                 
                 private 
                 let vao:GL.VertexArray
                 private 
-                var vvo:GL.Vector<Vertex>
+                var vvo:GL.Vector<Vertex>, 
+                    evo:GL.Vector<Index>
+                    
+                private 
+                var indexSegments:Indices.Segments = .init(fixed: 0 ..< 0, interpolated: 0 ..< 0)
                 
                 private 
                 var indicator:Int32    = -1, 
@@ -121,16 +149,101 @@ extension UI
                 
                 init()
                 {
-                    self.vvo   = .generate()
-                    self.vao   = .generate()
+                    self.evo = .generate()
+                    self.vvo = .generate()
+                    self.vao = .generate()
                     
                     self.vvo.buffer.bind(to: .array)
                     {
-                        self.vao.bind 
+                        self.vao.bind().setVertexLayout(.float(from: .float3), .int(from: .int))
+                        self.evo.buffer.bind(to: .elementArray)
                         {
-                            $0.setVertexLayout(.float(from: .float3), .int(from: .int))
+                            self.vao.unbind()
                         }
                     }
+                }
+                
+                struct Indices
+                {
+                    struct Segments 
+                    {
+                        let fixed:Range<Int>, 
+                            interpolated:Range<Int>
+                    }
+                    
+                    let indices:[Index]
+                    
+                    private 
+                    let partition:Int 
+                    
+                    var segments:Segments
+                    {
+                        let fixed:Range<Int>        = 0              ..< self.partition, 
+                            interpolated:Range<Int> = self.partition ..< indices.count
+                        return .init(fixed: fixed, interpolated: interpolated)
+                    }
+                    
+                    init(fixed:[Index], interpolated:[Index]) 
+                    {
+                        self.partition = fixed.count 
+                        self.indices   = fixed + interpolated
+                    }
+                }
+                                
+                private static 
+                func subdivide(_ loops:[[Math<Float>.V3]], resolution:Float = 0.1) 
+                    -> (vertices:[Vertex], indices:Indices)
+                {
+                    var vertices:[Vertex] = [], 
+                        indices:(fixed:[Index], interpolated:[Index]) = ([], []) 
+                    for loop:[Math<Float>.V3] in loops
+                    {
+                        let base:Index = Index(vertices.count) 
+                        for j:Int in loop.indices
+                        {
+                            let i:Int = loop.index(before: j == loop.startIndex ? loop.endIndex : j)
+                            // get two vertices and angle between
+                            let edge:Math<Math<Float>.V3>.V2 = (loop[i], loop[j])
+                            let d:Float     = Math.dot(edge.0, edge.1), 
+                                φ:Float     = .acos(d), 
+                                scale:Float = 1 / (1 - d * d).squareRoot()
+                            // determine subdivisions 
+                            let subdivisions:Int = Int(φ / resolution) + 1
+                            
+                            // push the fixed vertex 
+                            indices.fixed.append(Index(vertices.count))
+                            vertices.append(.init(edge.0, id: i))
+                            // push the interpolated vertices 
+                            for s:Int in 1 ..< subdivisions
+                            {
+                                let t:Float = Float(s) / Float(subdivisions)
+                                
+                                // slerp!
+                                let sines:Math<Float>.V2   = (.sin(φ - φ * t), .sin(φ * t)), 
+                                    factors:Math<Float>.V2 = Math.scale(sines, by: scale)
+                                
+                                let components:Math<Math<Float>.V3>.V2 
+                                components.0 = Math.scale(edge.0, by: factors.0) 
+                                components.1 = Math.scale(edge.1, by: factors.1) 
+                                
+                                let interpolated:Math<Float>.V3 = Math.add(components.0, components.1)
+                                
+                                vertices.append(.init(interpolated, id: i))
+                            }
+                        }
+                        
+                        // compute lines-adjacency indices
+                        let totalDivisions:Index = Index(vertices.count) - base
+                        for primitive:Index in 0 ..< totalDivisions
+                        {
+                            indices.interpolated.append(base +  primitive    )
+                            indices.interpolated.append(base + (primitive + 1) % totalDivisions)
+                            indices.interpolated.append(base + (primitive + 2) % totalDivisions)
+                            indices.interpolated.append(base + (primitive + 3) % totalDivisions)
+                        }
+                    }
+                    
+                    return (vertices, .init(fixed: indices.fixed, interpolated: indices.interpolated))
                 }
                 
                 mutating 
@@ -138,12 +251,11 @@ extension UI
                 {
                     if let vertices = scene.vertices.pop()
                     {
-                        let buffer:[Vertex] = vertices.enumerated().map 
-                        {
-                            .init(position: $0.1, id: Int32(truncatingIfNeeded: $0.0))
-                        }
+                        let (vertices, indices):([Vertex], Indices) = Borders.subdivide([vertices])
+                        self.vvo.assign(data: vertices,        in: .array,        usage: .dynamic)
+                        self.evo.assign(data: indices.indices, in: .elementArray, usage: .dynamic)
                         
-                        self.vvo.assign(data: buffer, in: .array, usage: .dynamic)
+                        self.indexSegments = indices.segments
                     }
                     
                     self.indicator    = Borders.encode(indicator:    scene.indicator)
@@ -196,14 +308,22 @@ extension UI
                 
                 func draw() 
                 {
+                    Programs.borderPolyline.bind 
+                    {
+                        $0.set(float:  "thickness", 2)
+                        $0.set(float4: "frontColor", (1, 1, 1, 1))
+                        $0.set(float4: "backColor",  (1, 1, 1, 0))
+                        self.vao.drawElements(self.indexSegments.interpolated, as: .linesAdjacency, indexType: Index.self)
+                    }
+                    
                     Programs.borders.bind 
                     {
                         $0.set(int: "indicator",    self.indicator)
                         $0.set(int: "preselection", self.preselection)
-                        self.vao.draw(0 ..< self.vvo.count, as: .points)
+                        self.vao.drawElements(self.indexSegments.fixed, as: .points, indexType: Index.self)
                     }
                     
-                    Programs.borderlabels.bind 
+                    Programs.borderLabels.bind 
                     {
                         $0.set(int: "indicator",    self.indicator)
                         $0.set(int: "preselection", self.preselection)
@@ -211,7 +331,7 @@ extension UI
                         $0.set(float4: "monoFontMetrics", Programs.monofont.metrics)
                         Programs.monofont.texture.bind(to: .texture2d, index: 0)
                         {
-                            self.vao.draw(0 ..< self.vvo.count, as: .points)
+                            self.vao.drawElements(self.indexSegments.fixed, as: .points, indexType: Index.self)
                         }
                     }
                 }
@@ -309,12 +429,12 @@ extension UI
             {
                 GL.enable(.culling)
                 
-                GL.enable(.blending)
-                GL.blend(.mix)
                 GL.disable(.multisampling)
                 
+                GL.enable(.blending)
+                GL.blend(.mix)
                 self.globe.draw()
-                
+                GL.enable(.multisampling)
                 GL.blend(.add)
                 self.borders.draw()
             }
