@@ -25,18 +25,6 @@ extension UI
             
             
             static
-            let debug:GL.Program = .create(
-                shaders:
-                [
-                    (.vertex  , "shaders/debug.vert"),
-                    (.fragment, "shaders/debug.frag")
-                ],
-                uniforms:
-                [
-                    .block("Camera", binding: 0)
-                ]
-            )!
-            static
             let sphere:GL.Program = .create(
                 shaders:
                 [
@@ -50,26 +38,12 @@ extension UI
                 ]
             )!
             static
-            let point:GL.Program = .create(
-                shaders:
-                [
-                    (.vertex  , "shaders/point.vert"),
-                    (.geometry, "shaders/point.geom"),
-                    (.fragment, "shaders/point.frag")
-                ],
-                uniforms:
-                [
-                    .block("Camera", binding: 0), 
-                    .int("preselected")
-                ]
-            )!
-            static
             let borders:GL.Program = .create(
                 shaders:
                 [
                     (.vertex  , "shaders/border.vert"),
-                    (.geometry, "shaders/point.geom"),
-                    (.fragment, "shaders/point.frag")
+                    (.geometry, "shaders/border.geom"),
+                    (.fragment, "shaders/border.frag")
                 ],
                 uniforms:
                 [
