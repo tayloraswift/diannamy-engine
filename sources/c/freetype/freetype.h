@@ -1,3 +1,6 @@
+#ifndef __FREETYPE_H_SHIM
+#define __FREETYPE_H_SHIM
+
 #include <ft2build.h>
 
 // just, don’t ask. it’s stupid. (relevant bug: SR-3999)
@@ -21,8 +24,10 @@ typedef struct
   const char*  message;
 } FT_ErrorTableEntry;
 
-const FT_ErrorTableEntry FT_ErrorTable[] =
+static const FT_ErrorTableEntry FT_ErrorTable[] =
 
 #include FT_ERRORS_H
 
-const long FT_ErrorTableCount = sizeof(FT_ErrorTable) / sizeof(FT_ErrorTable[0]);
+static const long FT_ErrorTableCount = sizeof(FT_ErrorTable) / sizeof(FT_ErrorTable[0]);
+
+#endif

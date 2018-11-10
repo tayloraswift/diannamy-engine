@@ -41,6 +41,9 @@ struct ControlPlane
         // head while setting it to 1 will allow a transition from base to head
         phase:Float?
     
+    private 
+    var mutated:Bool = true
+    
     init(_ base:Camera.Rig)
     {
         self.head = base
@@ -164,6 +167,7 @@ struct ControlPlane
     mutating
     func down(_ position:Math<Float>.V2, action:Action)
     {
+        print(action)
         // if another action is in progress, end it 
         if let anchor:Anchor = self.anchor 
         {
@@ -212,25 +216,25 @@ struct ControlPlane
 
     // returns true if the view system has changed
     mutating
-    func next(_ delta:Float) -> Bool
+    func process(_ delta:Int) 
     {
         guard let phase:Float = self.phase
         else
         {
-            return false
+            return
         }
 
-        let decremented:Float = phase - delta * 5,
+        let decremented:Float = phase - (1 / 64) * Float(delta),
             interpolation:Camera.Rig
         if decremented > 0
         {
             interpolation = self.interpolate(phase: decremented)
-            self.phase = decremented
+            self.phase    = decremented
         }
         else
         {
             interpolation = self.head
-            self.phase = nil
+            self.phase    = nil
         }
 
         let space:Space = interpolation.space()
@@ -242,7 +246,21 @@ struct ControlPlane
         self.camera.fragment(sensor: self.sensor, space: space)
         self.camera.matrices()
 
-        return true
+        self.mutated = true
+    }
+    
+    mutating 
+    func pop() -> Camera? 
+    {
+        if self.mutated 
+        {
+            self.mutated = false 
+            return self.camera 
+        }
+        else 
+        {
+            return nil
+        }
     }
     
     func raycast(_ position:Math<Float>.V2) -> Ray

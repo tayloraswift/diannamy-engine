@@ -29,13 +29,13 @@ struct Array2D<Element>
     }
     
     mutating 
-    func assign(a:Math<Int>.V2, b:Math<Int>.V2, from source:[Element])
+    func assign(at r0:Math<Int>.V2, from source:Array2D<Element>)
     {
-        for y:Int in a.y ..< b.y 
+        for y:Int in max(0, r0.y) ..< min(r0.y + source.shape.y, self.shape.y) 
         {
-            for x:Int in a.x ..< b.x 
+            for x:Int in max(0, r0.x) ..< min(r0.x + source.shape.x, self.shape.x)
             {
-                self[y: y, x] = source[(y - a.y) * (b.x - a.x) + x - a.x]
+                self[y: y, x] = source[y: y - r0.y, x - r0.x]
             }
         }
     }

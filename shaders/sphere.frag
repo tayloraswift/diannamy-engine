@@ -1,5 +1,9 @@
 #version 330 core
 
+#define PI 3.1415926538
+#define INV_PI (1.0 / 3.1415926538)
+#define INV_2PI (0.5 / 3.1415926538)
+
 layout(std140) uniform Camera
 {
     mat4  U;
@@ -14,6 +18,8 @@ layout(std140) uniform Camera
 } camera;
 
 uniform vec4 sphere;
+
+uniform sampler2D globetex;
 
 out vec4 color;
 
@@ -33,5 +39,8 @@ void main()
     }
     
     vec3 normal = normalize(camera.position + ray * (l - sqrt(discriminant)) - sphere.xyz);
-    color = vec4(0.5 * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1))))), 1);
+    
+    vec2 equirectangular = vec2(atan(normal.y, normal.x) * INV_2PI, acos(normal.z) * INV_PI);
+    vec3 albedo = texture(globetex, equirectangular).rgb;
+    color = vec4(albedo * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1)))) + 0.05), 1);
 }

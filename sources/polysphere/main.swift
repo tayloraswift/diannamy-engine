@@ -8,7 +8,7 @@ class Window
     let window:OpaquePointer
 
     private
-    var ui:UI, 
+    var coordinator:Coordinator, 
         height:Double, // need to store this to flip y axis
         lastPrimary:Double 
 
@@ -23,13 +23,13 @@ class Window
         glfwMakeContextCurrent(window)
         glfwSwapInterval(1)
 
-        self.window = window
-        self.ui     = .init()
-        self.height = Double(size.y)
+        self.window      = window
+        self.coordinator = .init()
+        self.height      = Double(size.y)
         self.lastPrimary = glfwGetTime()
         
-        self.ui.resize(to: size)
-
+        self.coordinator.resize(to: size)
+        
         // attach pointer to self to window
         glfwSetWindowUserPointer(window,
             UnsafeMutableRawPointer(Unmanaged<Window>.passUnretained(self).toOpaque()))
@@ -40,7 +40,7 @@ class Window
             
             let window:Window = .reconstitute(from: context)
             window.height = Double(y)
-            window.ui.resize(to: Math.cast((x, y), as: Float.self))
+            window.coordinator.resize(to: Math.cast((x, y), as: Float.self))
         }
 
         glfwSetKeyCallback(window)
@@ -53,7 +53,7 @@ class Window
                 return
             }
             
-            Window.reconstitute(from: context).ui.keypress(.init(keycode))
+            Window.reconstitute(from: context).coordinator.keypress(.init(keycode))
         }
         
         glfwSetCursorPosCallback(window)
@@ -61,7 +61,7 @@ class Window
             (context:OpaquePointer?, x:Double, y:Double) in
             
             let window:Window = .reconstitute(from: context)
-            window.ui.move(Math.cast((x, window.height - y), as: Float.self))
+            window.coordinator.move(Math.cast((x, window.height - y), as: Float.self))
         }
 
         glfwSetMouseButtonCallback(window)
@@ -70,7 +70,7 @@ class Window
 
             let window:Window = .reconstitute(from: context), 
                 position:Math<Float>.V2 = window.cursorPosition(context: context)
-                
+            
             switch (code, direction)
             {
                 case (GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS):
@@ -80,30 +80,30 @@ class Window
                     window.lastPrimary = timestamp 
                     if delta < 0.3 
                     {
-                        window.ui.down(position, action: .double)
+                        window.coordinator.down(.double, position)
                     }
                     else 
                     {
-                        window.ui.down(position, action: .primary)
+                        window.coordinator.down(.primary, position)
                     }
                 case (GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE):
-                    window.ui.up(position, action: .primary)
+                    window.coordinator.up(.primary, position)
                     
                 case (GLFW_MOUSE_BUTTON_MIDDLE, GLFW_PRESS):
-                    window.ui.down(position, action: .tertiary)
+                    window.coordinator.down(.tertiary, position)
                 case (GLFW_MOUSE_BUTTON_MIDDLE, GLFW_RELEASE):
-                    window.ui.up(position, action: .tertiary)
+                    window.coordinator.up(.tertiary, position)
                 
                 case (GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS):
-                    window.ui.down(position, action: .secondary)
+                    window.coordinator.down(.secondary, position)
                 case (GLFW_MOUSE_BUTTON_RIGHT, GLFW_RELEASE):
-                    window.ui.up(position, action: .secondary)
+                    window.coordinator.up(.secondary, position)
                 
                 default:
                     Log.note("unrecognized mouse action (\(code), \(direction)")
             }
         }
-
+        
         glfwSetScrollCallback(window)
         {
             (window:OpaquePointer?, x:Double, y:Double) in
@@ -112,19 +112,19 @@ class Window
 
             if y > 0
             {
-                interface.ui.scroll(.up)
+                interface.coordinator.scroll(.up)
             }
             else if y < 0
             {
-                interface.ui.scroll(.down)
+                interface.coordinator.scroll(.down)
             }
             else if x > 0
             {
-                interface.ui.scroll(.left)
+                interface.coordinator.scroll(.left)
             }
             else if x < 0
             {
-                interface.ui.scroll(.right)
+                interface.coordinator.scroll(.right)
             }
         }
         
@@ -152,10 +152,11 @@ class Window
             glfwPollEvents()
 
             let t1:Double = glfwGetTime()
-            if self.ui.process(Float(t1 - t0))
-            {
-                glfwSwapBuffers(self.window)
-            }
+            
+            self.coordinator.process(Int(t1 * 256) - Int(t0 * 256))
+            self.coordinator.draw()
+            
+            glfwSwapBuffers(self.window)
 
             t0 = t1
         }
@@ -204,7 +205,7 @@ func main()
 
     OpenGL.loader = unsafeBitCast(glfwGetProcAddress, to: OpenGL.LoaderFunction.self)
 
-    let window:Window = .init(size: (1200, 600), name: "Polysphere")
+    let window:Window = .init(size: (1200, 600), name: "Map Editor")
     window.loop()
 }
 
