@@ -27,6 +27,12 @@ enum Log
     }
     
     static 
+    func dump(_ items:Any..., from source:Source = .diannamy, file:String = #file, line:Int = #line)
+    {
+        print("\u{1B}[1m(\(source)) \u{1B}[38;2;2;255;152mdump \(file):\(line):\u{1B}[39m \n\(items.map{ "\($0)" }.joined(separator: " "))\u{1B}[0m")
+    }
+    
+    static 
     func error(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
         print("\u{1B}[1m(\(source)) \u{1B}[38;2;255;80;90merror:\u{1B}[39m \(message)\u{1B}[0m")

@@ -2,7 +2,7 @@ import func Glibc.asin
 import func Glibc.acos
 import func Glibc.atan2
 
-protocol _SwiftFloatingPoint:FloatingPoint
+protocol _SwiftFloatingPoint:BinaryFloatingPoint
 {
     static func sin(_:Self) -> Self
     static func cos(_:Self) -> Self
@@ -355,15 +355,15 @@ extension Math where N:Numeric
     
     @inline(__always)
     static
-    func homogenize(_ v:V2) -> V3
+    func extend(_ v:V2, _ s:N) -> V3
     {
-        return (v.x, v.y, 1)
+        return (v.x, v.y, s)
     }
     @inline(__always)
     static
-    func homogenize(_ v:V3) -> V4
+    func extend(_ v:V3, _ s:N) -> V4
     {
-        return (v.x, v.y, v.z, 1)
+        return (v.x, v.y, v.z, s)
     }
 }
 
@@ -533,6 +533,23 @@ extension Math where N:BinaryInteger
                 dividend.z.quotientAndRemainder(dividingBy: divisor.z))
     }
 }
+extension Math where N:FixedWidthInteger
+{
+    @inline(__always)
+    static 
+    func maskUp(_ n:N, exponent:Int) -> N
+    {
+        let mask:N = N.max &<< exponent
+        return (n & mask) | (n & ~mask == 0 ? 0 : 1 &<< exponent)
+    }
+    
+    @inline(__always)
+    static 
+    func maskUp(_ v:V2, exponent:Int) -> V2
+    {
+        return (maskUp(v.x, exponent: exponent), maskUp(v.y, exponent: exponent))
+    }
+}
 
 extension Math where N:FloatingPoint
 {
@@ -634,6 +651,19 @@ extension Math where N:FloatingPoint
     func normalize(_ v:V3) -> V3
     {
         return scale(v, by: 1 / length(v))
+    }
+    
+    @inline(__always)
+    static
+    func round(_ v:V2) -> V2
+    {
+        return (v.x.rounded(), v.y.rounded())
+    }
+    @inline(__always)
+    static
+    func round(_ v:V2, _ rule:FloatingPointRoundingRule) -> V2
+    {
+        return (v.x.rounded(rule), v.y.rounded(rule))
     }
 }
 extension Math where N:BinaryFloatingPoint

@@ -28,6 +28,21 @@ struct Array2D<Element>
         self.buffer = .init(repeating: repeated, count: Math.vol(shape))
     }
     
+    init(shape:Math<Int>.V2, _ generator:(Math<Int>.V2) throws -> Element) rethrows
+    {
+        var mapped:[Element] = []
+            mapped.reserveCapacity(Math.vol(shape))
+        for y:Int in 0 ..< shape.y 
+        {
+            for x:Int in 0 ..< shape.x 
+            {
+                mapped.append(try generator((x, y)))
+            }
+        }
+        
+        self.init(mapped, shape: shape)
+    }
+    
     mutating 
     func assign(at r0:Math<Int>.V2, from source:Array2D<Element>)
     {
@@ -38,6 +53,21 @@ struct Array2D<Element>
                 self[y: y, x] = source[y: y - r0.y, x - r0.x]
             }
         }
+    }
+    
+    func mapEnumerated<Result>(_ body:(Math<Int>.V2, Element) throws -> Result) rethrows -> [Result]
+    {
+        var mapped:[Result] = []
+            mapped.reserveCapacity(Math.vol(self.shape))
+        for y:Int in 0 ..< shape.y 
+        {
+            for x:Int in 0 ..< shape.x 
+            {
+                mapped.append(try body((x, y), self[y: y, x]))
+            }
+        }
+        
+        return mapped
     }
 }
 

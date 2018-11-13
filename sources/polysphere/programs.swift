@@ -35,6 +35,7 @@ enum Programs
             .texture("globetex", binding: 1)
         ]
     )!
+    
     static
     let borders:GL.Program = .create(
         shaders:
@@ -50,6 +51,7 @@ enum Programs
             .int("preselection")
         ]
     )!
+    
     static
     let borderLabels:GL.Program = .create(
         shaders:
@@ -68,6 +70,7 @@ enum Programs
             .texture("monoFontAtlas", binding: 0)
         ]
     )!
+    
     static
     let borderPolyline:GL.Program = .create(
         shaders:
@@ -82,6 +85,21 @@ enum Programs
             .float("thickness"), 
             .float4("frontColor"), 
             .float4("backColor")
+        ]
+    )!
+    
+    static
+    let text:GL.Program = .create(
+        shaders:
+        [
+            (.vertex  , "shaders/text.vert"),
+            (.geometry, "shaders/text.geom"),
+            (.fragment, "shaders/text.frag")
+        ],
+        uniforms:
+        [
+            .float2("viewport"), 
+            .texture("fontatlas", binding: 2)
         ]
     )!
 }

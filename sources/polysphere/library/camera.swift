@@ -158,7 +158,7 @@ struct Camera
         self.storage = .init(.init())
     }
     
-    // all vectors must be normalized
+    /* // all vectors must be normalized
     private static 
     func view(_ space:Space) -> Math<Float>.Mat4
     {
@@ -176,7 +176,7 @@ struct Camera
                 (space.basis.x.z, space.basis.y.z, space.basis.z.z, 0), 
                 Math.homogenize(translation)
             )
-    }
+    } */
     
     private static  
     func projection(_ a:Math<Float>.V3, _ b:Math<Float>.V3) -> Math<Float>.Mat4
@@ -201,7 +201,7 @@ struct Camera
     
     // computes the `F` (“fragment”) matrix. its purpose is to convert `gl_FragCoord`s 
     // into world space rays (not necessarily normalized)
-    private static  
+    /* private static  
     func fragment(_ a:Math<Float>.V3, _ b:Math<Float>.V3, viewport:Math<Float>.V2, space:Space) 
         -> Math<Float>.Mat4
     {
@@ -221,38 +221,50 @@ struct Camera
                 (d.x,  d.y,  d.z,  0), 
                 
                 // the ‘position’ variable in the glsl uniform block
-                Math.homogenize(space.origin)
+                Math.extend(space.origin, 1)
             )
-    }
+    } */
 
     // sets the view matrix. does not update the combined `U` matrix
     mutating 
-    func view(_ space:Space)
+    func view(rotationMatrix R:Math<Float>.Mat3, translation t:Math<Float>.V3)
     {
-        self.V = Camera.view(space)
-    }
-
-    mutating 
-    func view(position:Math<Float>.V3, z:Math<Float>.V3, x:Math<Float>.V3)
-    {
-        let y:Math<Float>.V3 = Math.normalize(Math.cross(z, x))
-        self.view(.init(origin: position, basis: (x, y, z)))
-    }
-    
-    mutating 
-    func view(position:Math<Float>.V3, y:Math<Float>.V3, z:Math<Float>.V3)
-    {
-        let x:Math<Float>.V3 = Math.normalize(Math.cross(y, z))
-        self.view(.init(origin: position, basis: (x, y, z)))
+        // all vectors must be normalized
+        self.V = 
+        (
+            Math.extend(R.0, 0), 
+            Math.extend(R.1, 0), 
+            Math.extend(R.2, 0), 
+            Math.extend(Math.mult(R, t), 1)
+        )
     }
     
     // sets the `F` (“fragment”) matrix. its purpose is to convert `gl_FragCoord`s 
     // into world space vectors (not necessarily normalized)
     mutating 
-    func fragment(sensor:Math<Float>.Rectangle, space:Space)
+    func fragment(rotationMatrix R:Math<Float>.Mat3, translation t:Math<Float>.V3, sensor:Math<Float>.Rectangle)
     {
         self.viewport = Math.sub(sensor.1, sensor.0)
-        self.F = Camera.fragment(self.a, self.b, viewport: self.viewport, space: space)
+        
+        let k:Math<Float>.V2  = Math.div(Math.sub(  (self.b.x, self.b.y), 
+                                                    (self.a.x, self.a.y)), self.viewport)
+        let x:Math<Float>.V3  = (R.0.0, R.1.0, R.2.0), 
+            y:Math<Float>.V3  = (R.0.1, R.1.1, R.2.1)
+        let ξ1:Math<Float>.V3 = Math.scale(x, by: k.x), 
+            ξ2:Math<Float>.V3 = Math.scale(y, by: k.y)
+        
+        let d:Math<Float>.V3
+        d.x = Math.dot(self.a, R.0)
+        d.y = Math.dot(self.a, R.1)
+        d.z = Math.dot(self.a, R.2)
+        
+        self.F =  
+        (
+            Math.extend(         ξ1, 0), 
+            Math.extend(         ξ2, 0), 
+            Math.extend(         d,  0), 
+            Math.extend(Math.neg(t), 1) // the ‘position’ variable in the glsl uniform block
+        )
     }
     
     // sets the frustum parameters. does not compute any matrices
@@ -277,51 +289,107 @@ struct Camera
     
     struct Rig
     {
-        var pivot:Math<Float>.V3, 
-            angle:Math<Float>.S2, 
-            distance:Float, // negative is outwards, positive is inwards
+        enum Action 
+        {
+            case    orbit, 
+                    track, 
+                    approach, 
+                    zoom 
+        }
+        
+        var center:Math<Float>.V3, 
+            orientation:Quaternion<Float>, 
+            distance:Float,  // negative is outwards, positive is inwards
             focalLength:Float
 
-        init(pivot:Math<Float>.V3 = (0, 0, 0), angle:Math<Float>.S2 = (0, 0), 
+        init(center:Math<Float>.V3 = (0, 0, 0), orientation:Quaternion<Float> = .init(), 
             distance:Float = 0, focalLength:Float = 35)
         {
-            self.pivot       = pivot
-            self.angle       = angle
+            self.center      = center
+            self.orientation = orientation
             self.distance    = distance
             self.focalLength = focalLength
+        }
+        
+        mutating 
+        func displace(action:Action, _ direction:UI.Direction)
+        {
+            switch action
+            {
+                case .orbit:
+                    let q:Quaternion<Float>
+                    switch direction 
+                    {
+                        case .up:
+                            q = .init(from: (0, 0, 1), to: Math.normalize(( 0,  1, 1)))
+                        
+                        case .down:
+                            q = .init(from: (0, 0, 1), to: Math.normalize(( 0, -1, 1)))
+                        
+                        case .right:
+                            q = .init(from: (0, 0, 1), to: Math.normalize(( 1,  0, 1)))
+                        
+                        case .left:
+                            q = .init(from: (0, 0, 1), to: Math.normalize((-1,  0, 1)))
+                    }
+                    self.orientation = q * self.orientation
+                
+                case .track:
+                    let factor:Float = 0.1
+                    let d:Math<Float>.V3
+                    switch direction 
+                    {
+                        case .up:
+                            d = (0,  factor, 0)
+                        case .down:
+                            d = (0, -factor, 0)
+                        case .right:
+                            d = ( factor, 0, 0)
+                        case .left:
+                            d = (-factor, 0, 0)
+                    }
+                    self.center = Math.add(self.center, self.orientation.rotate(d))
+                
+                case .approach:
+                    break 
+                
+                case .zoom:
+                    switch direction 
+                    {
+                        case .up:
+                            self.focalLength =         self.focalLength + 10
+                        
+                        case .down:
+                            self.focalLength = max(20, self.focalLength - 10)
+                        
+                        default:
+                            break
+                    }
+                    
+                    self.focalLength.round()
+            }
         }
         
         static 
         func lerp(_ a:Rig, _ b:Rig, _ t:Float) -> Rig 
         {
-            // this isn’t quite right for angles, it only works if going along a 
-            // line of latitude or longitude
-            let (θ, φ):(Float, Float) = Math.lerp((a.angle.0, a.angle.1), (b.angle.0, b.angle.1), t)
-            return .init(pivot: Math.lerp(a.pivot, b.pivot, t), 
-                angle: (θ, φ), 
-                distance: Math.lerp(a.distance, b.distance, t), 
-                focalLength: Math.lerp(a.focalLength, b.focalLength, t))
+            // need slerp for orientation
+            return .init(center: Math.lerp(a.center, b.center, t), 
+                    orientation: t < 1 ? a.orientation : b.orientation, 
+                       distance: Math.lerp(a.distance, b.distance, t), 
+                    focalLength: Math.lerp(a.focalLength, b.focalLength, t))
         }
         
-        func basis() -> Math<Math<Float>.V3>.V3 
+        // will rotate the camera (and world) into default position
+        func rotationMatrix() -> Math<Float>.Mat3 
         {
-            // Math.cartesian already evaluates _sin(self.angle.φ) and _cos(self.angle.φ)
-            // so when it gets inlines it this method of computing tangent will get
-            // factored into common sub expressions
-            let basis:Math<Math<Float>.V3>.V3
-            basis.z = Math.cartesian(self.angle)
-            basis.x = (-_sin(self.angle.φ), _cos(self.angle.φ), 0)
-            basis.y = Math.cross(basis.z, basis.x)
-            
-            return basis
+            return self.orientation.inverse.matrix
         }
         
-        func space() -> Space 
+        // will translate the camera (and the world) to the origin
+        func translation() -> Math<Float>.V3 
         {
-            let basis:Math<Math<Float>.V3>.V3 = self.basis()
-            let origin:Math<Float>.V3 = Math.scadd(self.pivot, basis.z, self.distance)
-            
-            return .init(origin: origin, basis: basis)
+            return Math.neg(Math.add(self.orientation.rotate((0, 0, distance)), center))
         }
         
         // focal length is 35mm equivalent

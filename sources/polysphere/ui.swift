@@ -7,6 +7,34 @@ struct UI
     
     enum Key:Int
     {
+        struct Modifiers 
+        {
+            private 
+            let bitfield:UInt8 
+            
+            init<T>(_ bitfield:T) where T:BinaryInteger 
+            {
+                self.bitfield = .init(truncatingIfNeeded: bitfield)
+            }
+            
+            var shift:Bool 
+            {
+                return self.bitfield & 1 != 0
+            }
+            var control:Bool 
+            {
+                return self.bitfield & 2 != 0
+            }
+            var alt:Bool 
+            {
+                return self.bitfield & 4 != 0
+            }
+            var multi:Bool 
+            {
+                return self.bitfield & 8 != 0
+            }
+        }
+        
         case esc     = 256,
              enter,
              tab,

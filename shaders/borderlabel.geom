@@ -1,7 +1,7 @@
 #version 330 core
 
 layout(points) in;
-layout(triangle_strip, max_vertices = 20) out; // 19 vertices = 3 digits + 1 indicator + degenerate(4)
+layout(triangle_strip, max_vertices = 12) out;
 
 layout(std140) uniform Camera
 {
@@ -71,56 +71,38 @@ void main()
     
     if (n < 0)
     {
-        // construct the indicator to the side
-        vec2 origin = center + vec2(-radius - monoFontMetrics.w, radius);
-        float glyph; 
-        if (n == -1) 
+        float character; 
+        switch (n)
         {
-            glyph = ('U') * monoFontMetrics.z;
-        }
-        else 
-        {
-            glyph = ('X') * monoFontMetrics.z;
-            n = -n - 2;
-        }
+        case -1:
+            character = 43; // '+'
+            break;
         
-        rectangle(origin, glyph);
-        
-        if (n == -1) 
-        {
-            EndPrimitive();
-            return;
+        default:
+            character = 63; // '?'
+            break;
         }
         
-        // construct degenerate triangle 
-        gl_Position    = clip(origin + monoFontMetrics.wy);
-        geometry.color = vec3(1, 1, 1);
-        geometry.uv    = vec2(0, 0);
-        EmitVertex();
+        vec2 origin = center + vec2(radius, radius);
+        rectangle(origin, character * monoFontMetrics.z);
+    }
+    else 
+    {
+        float digits[3];
+        digits[2] = n % 10;
+        n /= 10;
+        digits[1] = n % 10;
+        n /= 10;
+        digits[0] = n % 10;
         
-        origin = center + vec2(radius, radius);
         for (int i = 0; i < 3; ++i)
         {
-            gl_Position    = clip(origin + vec2(0, monoFontMetrics.y));
-            geometry.color = vec3(1, 1, 1);
-            geometry.uv    = vec2(0, 0);
-            EmitVertex();
+            vec2 origin = center + vec2(radius + i * monoFontMetrics.w, radius);
+            float glyph = (48 + digits[i]) * monoFontMetrics.z;
+            
+            rectangle(origin, glyph);
         }
     }
     
-    float digits[3];
-    digits[2] = n % 10;
-    n /= 10;
-    digits[1] = n % 10;
-    n /= 10;
-    digits[0] = n % 10;
-    
-    for (int i = 0; i < 3; ++i)
-    {
-        vec2 origin = center + vec2(radius + i * monoFontMetrics.w, radius);
-        float glyph = ('0' + digits[i]) * monoFontMetrics.z;
-        
-        rectangle(origin, glyph);
-    }
     EndPrimitive();
 }

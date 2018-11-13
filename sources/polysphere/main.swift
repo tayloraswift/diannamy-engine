@@ -28,6 +28,8 @@ class Window
         self.height      = Double(size.y)
         self.lastPrimary = glfwGetTime()
         
+        GL.enableDebugOutput()
+        
         self.coordinator.resize(to: size)
         
         // attach pointer to self to window
@@ -43,6 +45,19 @@ class Window
             window.coordinator.resize(to: Math.cast((x, y), as: Float.self))
         }
 
+        glfwSetCharCallback(window)
+        {
+            (context:OpaquePointer?, value:UInt32) in
+            
+            guard let codepoint:Unicode.Scalar = Unicode.Scalar.init(value)
+            else 
+            {
+                return 
+            }
+            
+            Window.reconstitute(from: context).coordinator.char(codepoint)
+        }
+        
         glfwSetKeyCallback(window)
         {
             (context:OpaquePointer?, keycode:CInt, scancode:CInt, action:CInt, mods:CInt) in
@@ -53,7 +68,7 @@ class Window
                 return
             }
             
-            Window.reconstitute(from: context).coordinator.keypress(.init(keycode))
+            Window.reconstitute(from: context).coordinator.keypress(.init(keycode), .init(mods))
         }
         
         glfwSetCursorPosCallback(window)
@@ -127,8 +142,6 @@ class Window
                 interface.coordinator.scroll(.right)
             }
         }
-        
-        GL.enableDebugOutput()
     }
     
     func cursorPosition(context:OpaquePointer?) -> Math<Float>.V2 
@@ -143,7 +156,7 @@ class Window
     func loop()
     {
         GL.depthTest(.greaterEqual)
-        GL.clearColor((0.1, 0.1, 0.1), 1)
+        GL.clearColor((0.02, 0.02, 0.02), 1)
         GL.clearDepth(-1.0)
         
         var t0:Double = glfwGetTime()
@@ -204,7 +217,7 @@ func main()
     glfwWindowHint(GLFW_SAMPLES, 4)
 
     OpenGL.loader = unsafeBitCast(glfwGetProcAddress, to: OpenGL.LoaderFunction.self)
-
+    
     let window:Window = .init(size: (1200, 600), name: "Map Editor")
     window.loop()
 }

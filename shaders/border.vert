@@ -16,20 +16,6 @@ layout(std140) uniform Camera
     float k;
 } camera;
 
-// lowest 3 bits encode type information 
-//  3       2       1       0
-//  [      case     ][ snapped ]
-//  
-//  0 0 0 = unconfirmed, not snapped 
-//  0 0 1 = unconfirmed, snapped 
-//  0 1 0 = selected, not snapped 
-//  0 1 1 = selected, snapped 
-//  1 0 0 = deleted 
-//  1 0 1 = deleted 
-//  1 1 0 = deleted 
-//  1 1 1 = deleted
-//
-// roughly, bit 0 = snapping, bit 1 = confirmation, bit 2 = deletion
 uniform int indicator;
 uniform int preselection;
 
@@ -42,23 +28,19 @@ out Vertex
 
 void main()
 {
-    if (index == indicator >> 3)
+    if (index == -1) 
     {
-        int flags = indicator & 0x7;
+        // new
+        vertex.color = vec3(1, 0.6, 0);
+        vertex.index = -1;
+    }
+    else if (index == indicator >> 1)
+    {
+        int flags = indicator & 0x1;
         switch (flags)
         {
             case 0:
-                // unconfirmed, not snapped 
-                vertex.color = vec3(0.3, 0.2, 1);
-                vertex.index = index;
-                break;
-            case 1:
-                // unconfirmed, snapped 
-                vertex.color = vec3(0.5, 0, 1);
-                vertex.index = -1;
-                break; 
-            case 2:
-                // selected, not snapped 
+                // selected
                 if (index == preselection)
                 {
                     vertex.color = vec3(1, 0, 0.5);
@@ -69,16 +51,12 @@ void main()
                 }
                 vertex.index = index;
                 break;
-            case 3:
-                // selected, snapped 
-                vertex.color = vec3(0, 0.5, 1);
-                vertex.index = -1;
-                break;
-            
+
             default:
-                // deleted 
-                vertex.color = vec3(1, 0.5, 0);
-                vertex.index = -2 - index;
+                // moving 
+                vertex.color = vec3(0.3, 0.2, 1);
+                vertex.index = index;
+                break;
         }
     }
     else if (index == preselection)

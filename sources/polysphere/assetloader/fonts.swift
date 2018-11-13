@@ -1,5 +1,26 @@
 import FreeType
 
+import PNG 
+
+
+enum Fonts 
+{
+    static let terminal:(atlas:FontAtlas, texture:GL.Texture<UInt8>) = 
+    {    
+        let font:FontAtlas    = .init("assets/fonts/SourceCodePro-Medium.otf", size: 16), 
+            texture:GL.Texture<UInt8> = .generate()
+        
+        texture.bind(to: .texture2d)
+        {
+            $0.data(font.atlas, layout: .r8, storage: .r8)
+            $0.setMagnificationFilter(.nearest)
+            $0.setMinificationFilter(.nearest, mipmap: nil)
+        }
+        
+        return (font, texture)
+    }()
+}
+
 // a basic, grid-based monospace font. good for debug displays, but will probably 
 // not display accents or complex typography well, and some glyphs may be clipped
 struct BasicFontAtlas
@@ -100,13 +121,14 @@ struct FontAtlas
 {
     struct Glyph 
     {
-        let rectangle:Math<Math<Int>.V2>.V2, 
-            uv:Math<Math<Float>.V2>.V2, 
+        let rectangle:Math<Int>.Rectangle, 
+            uv:Math<Float>.Rectangle, 
             advance64:Int
     }
     
     let atlas:Array2D<UInt8>, 
-        charmap:[Unicode.Scalar: Glyph]
+        charmap:[Unicode.Scalar: Glyph], 
+        height64:Int
     
     subscript(u:Unicode.Scalar) -> Glyph
     {
@@ -115,14 +137,14 @@ struct FontAtlas
     
     init(_ fontname:String, size:Int) 
     {
-        (self.atlas, self.charmap) = Libraries.freetype.withFace(fontname, size: size)
+        (self.atlas, self.charmap, self.height64) = Libraries.freetype.withFace(fontname, size: size)
         {
             (face:FT_Face) in 
             
             Libraries.freetype.warnVerticalAdvance(face, fontname: fontname)
             
-            var glyphs:[(Unicode.Scalar, Math<Math<Int>.V2>.V2, Int, Array2D<UInt8>)] = []
-            for codepoint:Unicode.Scalar in (0 ..< 1 << 16).compactMap(Unicode.Scalar.init(_:)) 
+            var glyphs:[(Unicode.Scalar, Math<Int>.Rectangle, Int, Array2D<UInt8>)] = []
+            for codepoint:Unicode.Scalar in (0 ..< 256).compactMap(Unicode.Scalar.init(_:)) 
             {
                 let index:UInt32 = FT_Get_Char_Index(face, UInt(codepoint.value))
                 // only render codepoints with glyphs in the font
@@ -169,10 +191,10 @@ struct FontAtlas
                 }
                 
                 let origin:Math<Int32>.V2 = (face.pointee.glyph.pointee.bitmap_left,
-                                             face.pointee.glyph.pointee.bitmap_top)
-                let rectangle:Math<Math<Int>.V2>.V2
-                    rectangle.0   = Math.cast(origin, as: Int.self)
-                    rectangle.1   = Math.add(rectangle.0, shape)
+                                            -face.pointee.glyph.pointee.bitmap_top)
+                let rectangle:Math<Int>.Rectangle
+                    rectangle.a   = Math.cast(origin, as: Int.self)
+                    rectangle.b   = Math.add(rectangle.a, shape)
                 let advance64:Int = face.pointee.glyph.pointee.advance.x
                 let image:Array2D<UInt8> = .init(buffer, shape: shape)
                 glyphs.append((codepoint, rectangle, advance64, image))
@@ -181,7 +203,7 @@ struct FontAtlas
             // determine width of atlas 
             let shape:Math<Int>.V2 = 
             (
-                glyphs.map{ $0.3.shape.x }.reduce(0, (+)), 
+                Math.maskUp(glyphs.map{ $0.3.shape.x }.reduce(0, (+)), exponent: 2), 
                 glyphs.map{ $0.3.shape.y }.max() ?? 0
             )
             
@@ -191,20 +213,25 @@ struct FontAtlas
                 charmap:[Unicode.Scalar: Glyph] = [:], 
                 x:Int                           = 0
             for (codepoint, rectangle, advance64, image):
-                (Unicode.Scalar, Math<Math<Int>.V2>.V2, Int, Array2D<UInt8>) in glyphs
+                (Unicode.Scalar, Math<Int>.Rectangle, Int, Array2D<UInt8>) in glyphs
             {
                 atlas.assign(at: (x, 0), from: image)
-                let uv:Math<Math<Float>.V2>.V2 = 
+                let uv:Math<Float>.Rectangle = 
                 (
                     Math.mult(Math.cast(         (x, 0),               as: Float.self), factor),
                     Math.mult(Math.cast(Math.add((x, 0), image.shape), as: Float.self), factor)
                 )
                 
-                charmap[codepoint] = .init(rectangle: rectangle, uv: uv, advance64: advance64)
+                //Log.dump(Math.mult(uv.0, Math.cast(shape, as: Float.self)), Math.mult(uv.1, Math.cast(shape, as: Float.self)))
+                charmap[codepoint] = .init( rectangle: (Math.mult(rectangle.a, (1, -1)), Math.mult(rectangle.b, (1, -1))), 
+                                                   uv: uv, 
+                                            advance64: advance64)
                 x += image.shape.x
             }
             
-            return (atlas, charmap)
+            let height64:Int = size * Int(face.pointee.height) << 6 / Int(face.pointee.units_per_EM)
+            
+            return (atlas, charmap, height64)
         }
     }
 }
