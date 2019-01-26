@@ -1,5 +1,9 @@
 import PNG
 
+import class Foundation.JSONEncoder
+import class Foundation.JSONDecoder
+import struct Foundation.Data
+
 /* struct Sphere 
 {
     private 
@@ -282,33 +286,60 @@ struct Model
     
     struct Map 
     {
-        var points:[Math<Float>.V3]
+        // points are quasi-normalized, meaning we do our best to keep them sensible 
+        // unit-length vectors, but should make no hard assumptions
+        var points:[Math<Float>.V3], 
+            backgroundImage:String?
         
         var background:GL.Texture<PNG.RGBA<UInt8>>
         
-        init(normalizing points:[Math<Float>.V3])
+        init(quasiUnitLengthPoints points:[Math<Float>.V3], backgroundImage:String? = nil) 
         {
-            self.points = points.map(Math.normalize(_:))
-            self.background = .generate()
+            self.points             = points 
+            self.background         = .generate()
+            self.backgroundImage    = backgroundImage
             
-            // generate checkerboard
-            let image:Array2D<PNG.RGBA<UInt8>> = .init(shape: (16, 16)) 
-            {
-                ($0.y & 1 + $0.x) & 1 == 0 ? .init(60, .max) : .init(200, .max)
-            }
-            
-            self.background.bind(to: .texture2d)
-            {
-                $0.data(image, layout: .rgba8, storage: .rgba8)
-                $0.setMagnificationFilter(.nearest)
-                $0.setMinificationFilter(.nearest, mipmap: nil)
-            }
+            self.reloadBackgroundImage()
         }
         
         mutating 
         func replace(background path:String) -> String?
         {
             // "/home/klossy/downloads/world.topo.bathy.png"
+            self.backgroundImage = path
+            return self.reloadBackgroundImage()
+        }
+        
+        mutating 
+        func clear() -> String?
+        {
+            self.backgroundImage = nil 
+            return self.reloadBackgroundImage()
+        }
+        
+        @discardableResult
+        private mutating 
+        func reloadBackgroundImage() -> String?
+        {
+            guard let path:String = self.backgroundImage 
+            else 
+            {
+                // generate checkerboard
+                let image:Array2D<PNG.RGBA<UInt8>> = .init(size: (16, 16)) 
+                {
+                    ($0.y & 1 + $0.x) & 1 == 0 ? .init(60, .max) : .init(200, .max)
+                }
+                
+                self.background.bind(to: .texture2d)
+                {
+                    $0.data(image, layout: .rgba8, storage: .rgba8)
+                    $0.setMagnificationFilter(.nearest)
+                    $0.setMinificationFilter(.nearest, mipmap: nil)
+                }
+                
+                return nil
+            }
+            
             guard let (image, size):([PNG.RGBA<UInt8>], (x:Int, y:Int)) = 
                 try? PNG.rgba(path: path, of: UInt8.self)
             else 
@@ -318,7 +349,7 @@ struct Model
             
             self.background.bind(to: .texture2d)
             {
-                $0.data(.init(image, shape: size), layout: .rgba8, storage: .rgba8)
+                $0.data(.init(image, size: size), layout: .rgba8, storage: .rgba8)
                 $0.setMagnificationFilter(.linear)
                 $0.setMinificationFilter(.linear, mipmap: .linear)
                 $0.generateMipmaps()
@@ -351,7 +382,7 @@ struct Model
     init() 
     {
         self.log = .init()
-        self.map = .init(normalizing: [(0, 1, 1), (1, 0, 1), (0, -1, 1), (-1, 0, 1)])
+        self.map = .init(quasiUnitLengthPoints: [(1, 0, 1), (0, 1, 1), (-1, 0, 1), (0, -1, 1)].map(Math.normalize(_:)))
         
         self.log.print("> ", terminator: "")
     }
@@ -394,16 +425,154 @@ struct Model
             switch second 
             {
             case "background":
-                guard arguments.count == 2
-                else 
+                var suppliedPath:String?    = nil, 
+                    clear:Bool              = false
+                for argument:String in arguments[1...] 
                 {
-                    self.log.print("Usage: mapedit background FILENAME")
-                    return nil
+                    switch argument 
+                    {
+                    case "-c", "--clear":
+                        clear = true 
+                    case "-h", "--help":
+                        self.log.print(
+                            """
+                            Usage: mapedit background [OPTION] FILE
+                            Change the background image on the globe.
+                            
+                              -h, --help        display this message
+                              -c, --clear       remove the background image from the globe
+                            """)
+                        return nil
+                    case "":
+                        break
+                    default:
+                        guard argument[argument.startIndex] != "-" 
+                        else 
+                        {
+                            self.log.print("unrecognized option '\(argument)'")
+                            return nil
+                        }
+                        
+                        if suppliedPath != nil 
+                        {
+                            self.log.print("error: too many outputs specified")
+                            return nil
+                        }
+                        
+                        suppliedPath = argument
+                    }
                 }
                 
-                let filename:String = arguments[1]
+                if clear 
+                {
+                    self.map.clear().map 
+                    {
+                        self.log.print($0)
+                    }
+                }
+                else 
+                {
+                    self.map.replace(background: suppliedPath ?? "mapeditor-background.png").map
+                    { 
+                        self.log.print($0) 
+                    }
+                }
+            
+            case "save":
+                var suppliedPath:String?    = nil, 
+                    force:Bool              = false
+                for argument:String in arguments[1...] 
+                {
+                    switch argument 
+                    {
+                    case "-f", "--force":
+                        force = true 
+                    case "":
+                        break
+                    default:
+                        guard argument[argument.startIndex] != "-" 
+                        else 
+                        {
+                            self.log.print("unrecognized option '\(argument)'")
+                            return nil
+                        }
+                        
+                        if suppliedPath != nil 
+                        {
+                            self.log.print("error: too many outputs specified")
+                            return nil
+                        }
+                        
+                        suppliedPath = argument
+                    }
+                }
                 
-                self.map.replace(background: filename).map{ self.log.print($0) }
+                let encoder:Foundation.JSONEncoder  = .init()
+                encoder.outputFormatting = .prettyPrinted
+                
+                do 
+                {
+                    let data:Foundation.Data = try encoder.encode(self.map), 
+                        buffer:[UInt8]       = .init(data)
+                    
+                    let path:String = suppliedPath ?? "map.json"
+                    do 
+                    {
+                        try File.write(buffer, to: path, overwrite: force)
+                        self.log.print("(mapedit) saved map as '\(path)'")
+                    }
+                    catch
+                    {
+                        self.log.print("(mapedit) \(error)")
+                    }
+                }
+                catch
+                {
+                    self.log.print("(mapedit) error: \(error)")
+                }
+            
+            case "load": 
+                var suppliedPath:String?    = nil
+                for argument:String in arguments[1...] 
+                {
+                    switch argument 
+                    {
+                    case "":
+                        break
+                    default:
+                        guard argument[argument.startIndex] != "-" 
+                        else 
+                        {
+                            self.log.print("unrecognized option '\(argument)'")
+                            return nil
+                        }
+                        
+                        if suppliedPath != nil 
+                        {
+                            self.log.print("error: too many inputs specified")
+                            return nil
+                        }
+                        
+                        suppliedPath = argument
+                    }
+                }
+                
+                let decoder:Foundation.JSONDecoder  = .init()
+                
+                do 
+                {
+                    let path:String          = suppliedPath ?? "map.json"
+                    let data:Foundation.Data = .init(try File.read(path))
+                    
+                    self.map = try decoder.decode(Map.self, from: data)
+                    self.log.print("(mapedit) loaded map '\(path)'")
+                    
+                    return .mapSync(continuity: false)
+                }
+                catch
+                {
+                    self.log.print("(mapedit) error: \(error)")
+                }
             
             default:
                 self.log.print("(mapedit) unrecognized command '\(second)'")
@@ -425,70 +594,158 @@ struct Model
 
 struct Coordinator 
 {
+    struct Base:LayerController 
+    {
+        var viewport:Math<Float>.V2 = (0, 0)
+    }
+    
     enum Event 
     {
         case toggleTerminal
         case terminalInput([Unicode.Scalar])
+        
+        case mapSync(continuity:Bool)
         
         case mapPointMoved(Int, Math<Float>.V3)
         case mapPointAdded(Int, Math<Float>.V3)
         case mapPointRemoved(Int)
     }
     
-    var controller:Controller.Root, 
-        model:Model
-        
+    var model:Model
+    var controllers:[LayerController] 
+    
+    var buttons:UI.Action.BitVector
+    var active:Int 
+    var hover:Int? // only managed by emitLeaveCalls(_:)
+    
+    var activeController:LayerController
+    {
+        get 
+        {
+            return self.controllers[self.active]
+        }
+        set(v)
+        {
+            self.controllers[self.active] = v
+        }
+    }
+    
     init()
     {
-        self.model = .init()
-        self.controller = .init()
+        self.model          = .init()
+        self.controllers    = 
+        [
+            Base.init(), 
+            Controller.MapEditor.init()
+        ]
+        self.buttons        = .init()
+        self.active         = self.controllers.endIndex - 1
+        self.hover          = nil
+    }
+    
+    private mutating 
+    func emitLeaveCalls(newHover index:Int?) 
+    {
+        guard let old:Int = self.hover 
+        else 
+        {
+            self.hover = index 
+            return 
+        }
         
-        self.handle(self.model.input("mapedit background /home/klossy/downloads/world.topo.bathy.png"))
+        guard   let new:Int = index, 
+                    new == old 
+        else 
+        {
+            self.handle(self.controllers[old].leave(self.model))
+            self.hover = index 
+            return 
+        }
+    }
+    
+    private 
+    func find(_ position:Math<Float>.V2) -> Int
+    {
+        // search controllers from top to bottom, 
+        // can bind by let value since `LayerController.test(_:)` is non-mutating
+        for (index, controller):(Int, LayerController) in 
+            zip(self.controllers.indices, self.controllers).reversed() 
+        {
+            if controller.test(position) 
+            {
+                return index 
+            }
+        }
         
-        self.controller.sync(to: self.model)
+        Log.fatal("base layer went missing!")
     }
     
     mutating
-    func resize(to size:Math<Float>.V2)
+    func window(size:Math<Float>.V2)
     {
         GL.viewport(anchor: (0, 0), size: Math.cast(size, as: Int.self))
-        self.controller.setViewport(self.model, size)
+        
+        for index:Int in self.controllers.indices 
+        {
+            self.controllers[index].viewport = size 
+        }
     }
     
     mutating 
-    func char(_ codepoint:Unicode.Scalar) 
+    func paste(_ string:String) 
     {
-        self.handle(self.controller.char(self.model, codepoint))
+        for character:Character in string 
+        {
+            self.character(character)
+        }
+    }
+    
+    mutating 
+    func character(_ character:Character) 
+    {
+        self.handle(self.activeController.character(self.model, character)) 
     }
     
     mutating 
     func keypress(_ key:UI.Key, _ modifiers:UI.Key.Modifiers) 
     {
-        self.handle(self.controller.keypress(self.model, key, modifiers))
+        self.handle(self.activeController.keypress(self.model, key, modifiers)) 
     }
     
     mutating 
-    func scroll(_ direction:UI.Direction) 
+    func scroll(_ direction:UI.Direction, _ position:Math<Float>.V2) 
     {
-        self.handle(self.controller.scroll(self.model, direction))
+        let index:Int = self.find(position) 
+        self.handle(self.controllers[index].scroll(self.model, direction, position))
     }
     
     mutating 
-    func down(_ action:UI.Action, _ position:Math<Float>.V2) 
+    func down(_ action:UI.Action, _ position:Math<Float>.V2, doubled:Bool) 
     {
-        self.handle(self.controller.down(self.model, action, position))
+        self.buttons[action] = true 
+        
+        self.active = self.find(position)  
+        self.handle(self.activeController.down(self.model, action, position, doubled: doubled))
+        
+        self.move(position)
     }
     
     mutating 
     func move(_ position:Math<Float>.V2) 
     {
-        self.handle(self.controller.move(self.model, position))
+        let index:Int = self.buttons.any ? self.active : self.find(position)
+        self.emitLeaveCalls(newHover: index)
+        self.handle(self.controllers[index].move(self.model, position))
     }
     
     mutating 
     func up(_ action:UI.Action, _ position:Math<Float>.V2) 
     {
-        self.handle(self.controller.up(self.model, action, position))
+        self.buttons[action] = false 
+        
+        self.handle(self.activeController.up(self.model, action, position))
+        
+        self.move(position)
     }
     
     private mutating 
@@ -503,189 +760,404 @@ struct Coordinator
         switch event 
         {
         case .toggleTerminal:
-            self.controller.toggleTerminal()
+            break
             
         case .terminalInput(let input):
-            self.handle(self.model.input(input))
-            self.controller.terminal.sync(to: self.model)
+            // self.handle(self.model.input(input))
+            // self.controller.terminal.sync(to: self.model)
+            break 
+        
+        case .mapSync(let continuity):
+            self.sync(.all(Controller.MapEditor.self), to: self.model, continuity: continuity)
         
         case .mapPointMoved(let index, let location):
+            // sync isn’t strictly necessary for this case or .mapPointAdded, 
+            // as the controllers will already be in a clean state, but we sync 
+            // as confirmation anyway
             self.model.map.points[index] = Math.normalize(location)
-            self.controller.mapEditor.sync(to: self.model)
+            self.sync(.all(Controller.MapEditor.self), to: self.model)
         
         case .mapPointAdded(let index, let location):
             self.model.map.points.insert(Math.normalize(location), at: index)
-            self.controller.mapEditor.sync(to: self.model)
+            self.sync(.all(Controller.MapEditor.self), to: self.model)
         
         case .mapPointRemoved(let index):
             self.model.map.points.remove(at: index)
-            self.controller.mapEditor.sync(to: self.model)
+            self.sync(.all(Controller.MapEditor.self), to: self.model)
         }
     }
     
     mutating 
     func process(_ delta:Int) 
     {
-        self.controller.process(self.model, delta)
+        for index:Int in self.controllers.indices 
+        {
+            self.controllers[index].process(self.model, delta)
+        }
     }
     
     mutating 
     func draw() 
     {
-        self.controller.draw(self.model)
+        GL.clear(color: true, depth: true)
+        for index:Int in self.controllers.indices 
+        {
+            self.controllers[index].draw(self.model)
+        }
+    }
+    
+    
+    // broadcasting APIs 
+    enum Target 
+    {
+        case all(LayerController.Type)
+    }
+    
+    private mutating 
+    func sync(_ target:Target, to model:Model, continuity:Bool = true) 
+    {
+        switch target 
+        {
+        case .all(let metatype):
+            for index:Int in self.controllers.indices where type(of: self.controllers[index]) == metatype
+            {
+                self.controllers[index].sync(to: self.model, continuity: continuity)
+            }
+        }
+    }
+}
+
+protocol LayerController 
+{
+    var viewport:Math<Float>.V2 
+    { 
+        get 
+        set 
+    }
+    
+    func test(_ position:Math<Float>.V2) -> Bool 
+    
+    mutating 
+    func character(_ model:Model, _ character:Character) -> Coordinator.Event?
+    
+    mutating 
+    func keypress(_ model:Model, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
+    
+    mutating
+    func scroll(_ model:Model, _ direction:UI.Direction, _ position:Math<Float>.V2) -> Coordinator.Event?
+    
+    mutating 
+    func down(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
+    
+    mutating 
+    func move(_ model:Model, _ position:Math<Float>.V2) -> Coordinator.Event?
+    
+    mutating 
+    func leave(_ model:Model) -> Coordinator.Event?
+    
+    mutating 
+    func up(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+    
+    mutating 
+    func sync(to model:Model, continuity:Bool)
+    
+    mutating 
+    func process(_ model:Model, _ delta:Int) 
+    
+    mutating 
+    func draw(_ model:Model)
+}
+extension LayerController 
+{
+    // default implementations (ignore all events)
+    func test(_ position:Math<Float>.V2) -> Bool 
+    {
+        return true 
+    }
+    
+    func character(_:Model, _:Character) -> Coordinator.Event?
+    {
+        return nil 
+    }
+    
+    func keypress(_:Model, _:UI.Key, _:UI.Key.Modifiers) -> Coordinator.Event?
+    {
+        return nil
+    }
+    
+    func scroll(_:Model, _:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
+    {
+        return nil
+    }
+    
+    func down(_:Model, _:UI.Action, _:Math<Float>.V2, doubled _:Bool) -> Coordinator.Event?
+    {
+        return nil
+    }
+    
+    func move(_:Model, _:Math<Float>.V2) -> Coordinator.Event?
+    {
+        return nil
+    }
+    
+    func leave(_:Model) -> Coordinator.Event?
+    {
+        return nil
+    }
+    
+    func up(_:Model, _:UI.Action, _:Math<Float>.V2) -> Coordinator.Event?
+    {
+        return nil
+    }
+    
+    func sync(to _:Model, continuity _:Bool) { }
+    
+    func process(_:Model, _:Int) { }
+    
+    func draw(_:Model) { }
+}
+
+// Equatable conformance not required in base type definition to allow Latest<Void> 
+// to work. Basic definition does not expose self.value, but there’s no point in 
+// reading self.value if T is Void.
+protocol ViewEquatable 
+{
+    static 
+    func viewEquivalent(_:Self, _:Self) -> Bool 
+}
+struct Latest<T>
+{
+    private 
+    var _value:T, 
+        dirty:Bool 
+    
+    var isDirty:Bool 
+    {
+        return self.dirty
+    }
+    
+    init(_ value:T) 
+    {
+        self._value = value 
+        self.dirty  = true 
+    }
+    
+    mutating 
+    func reset() 
+    {
+        self.dirty = true
+    }
+    
+    mutating 
+    func pop() -> T? 
+    {
+        if self.dirty 
+        {
+            self.dirty = false 
+            return self._value 
+        }
+        else 
+        {
+            return nil 
+        }        
+    }
+    
+    mutating 
+    func get() -> T 
+    {
+        self.dirty = false 
+        return self._value
+    }
+}
+extension Latest where T:Equatable 
+{
+    var value:T 
+    {
+        get 
+        {
+            return self._value 
+        }
+        set(value)
+        {
+            if value != self._value  
+            {
+                self.dirty  = true 
+            }
+            self._value = value 
+        }
+    }
+}
+extension Latest where T:ViewEquatable
+{
+    var value:T 
+    {
+        get 
+        {
+            return self._value 
+        }
+        set(value)
+        {
+            if !T.viewEquivalent(value, self._value)  
+            {
+                self.dirty  = true 
+            }
+            self._value = value 
+        }
     }
 }
 
 enum Controller
 {
-    struct Root 
-    {
-        enum State 
-        {
-            case    terminal, 
-                    mapEditor 
-        }
-        var terminal:Terminal, 
-            mapEditor:MapEditor, 
-            
-            state:State
-        
-        init() 
-        {
-            self.terminal  = .init()
-            self.mapEditor = .init()
-            
-            self.state     = .terminal
-        }
-        
-        mutating 
-        func setViewport(_ model:Model, _ viewport:Math<Float>.V2) 
-        {
-            self.terminal .setViewport(model, viewport)
-            self.mapEditor.setViewport(model, viewport)
-        }
-        
-        mutating 
-        func toggleTerminal() 
-        {
-            switch self.state 
-            {
-                case .terminal:
-                    self.state = .mapEditor 
-                case .mapEditor:
-                    self.state = .terminal
-            }
-        }
-        
-        mutating 
-        func char(_ model:Model, _ codepoint:Unicode.Scalar) -> Coordinator.Event?
-        {
-            switch self.state
-            {
-                case .mapEditor:
-                    return nil 
-                case .terminal:
-                    return self.terminal.char(model, codepoint)
-            }
-        }
-        
-        mutating 
-        func keypress(_ model:Model, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
-        {
-            if  key == .one, 
-                modifiers.control
-            {
-                return .toggleTerminal
-            }
-            
-            switch self.state
-            {
-                case .mapEditor:
-                    return self.mapEditor.keypress(model, key, modifiers)
-                case .terminal:
-                    return self.terminal.keypress(model, key, modifiers)
-            }
-        }
-        
-        mutating
-        func scroll(_ model:Model, _ direction:UI.Direction) -> Coordinator.Event?
-        {
-            return self.mapEditor.scroll(model, direction)
-        }
-        
-        mutating 
-        func down(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
-        {
-            return self.mapEditor.down(model, action, position)
-        }
-        
-        mutating 
-        func move(_ model:Model, _ position:Math<Float>.V2) -> Coordinator.Event?
-        {
-            return self.mapEditor.move(model, position)
-        }
-        
-        mutating 
-        func up(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
-        {
-            return self.mapEditor.up(model, action, position)
-        }
-        
-        mutating 
-        func sync(to model:Model) 
-        {
-            self.terminal.sync(to: model)
-            self.mapEditor.sync(to: model)
-        }
-        
-        mutating 
-        func process(_ model:Model, _ delta:Int) 
-        {
-            self.mapEditor.process(model, delta)
-        }
-        
-        mutating 
-        func draw(_ model:Model)
-        {
-            GL.clear(color: true, depth: true)
-            self.mapEditor.draw(model)
-            if case .terminal = self.state 
-            {
-                self.terminal.draw(model)
-            }
-        }
-    }
     
-    struct Terminal 
+    /* struct Terminal 
     {
+        struct History 
+        {
+            private 
+            var history:[[Unicode.Scalar]]
+            
+            private(set)
+            var active:Int, 
+                cursor:Int 
+            
+            init() 
+            {
+                self.history = [[]]
+                self.active  = self.history.endIndex - 1
+                self.cursor  = 0
+            }
+            
+            var input:[Unicode.Scalar] 
+            {
+                get 
+                {
+                    return self.history[self.active]
+                }
+                set(value) 
+                {
+                    self.history[self.active] = value
+                }
+            }
+            
+            mutating 
+            func prev() 
+            {
+                guard self.active > self.history.startIndex 
+                else 
+                {
+                    return 
+                }
+                
+                self.active -= 1 
+                self.cursor  = self.input.endIndex
+            }
+            
+            mutating 
+            func next() 
+            {
+                guard self.active < self.history.endIndex - 1 
+                else 
+                {
+                    return 
+                }
+                
+                self.active += 1 
+                self.cursor  = self.input.endIndex
+            }
+            
+            mutating 
+            func new() -> [Unicode.Scalar] 
+            {
+                defer 
+                {
+                    if self.history[self.history.endIndex - 1].isEmpty 
+                    {
+                        self.active = self.history.endIndex - 1
+                    }
+                    else 
+                    {
+                        self.history.append([])
+                        self.active = self.history.endIndex - 1
+                    }
+                }
+                
+                return self.input
+            }
+            
+            mutating 
+            func left()
+            {
+                guard self.cursor > self.input.startIndex 
+                else 
+                {
+                    return 
+                }
+                
+                self.cursor -= 1
+            }
+            
+            mutating 
+            func right()
+            {
+                guard self.cursor < self.input.endIndex 
+                else 
+                {
+                    return 
+                }
+                
+                self.cursor += 1
+            }
+            
+            mutating 
+            func insert(_ codepoint:Unicode.Scalar) 
+            {
+                self.input.insert(codepoint, at: self.cursor)
+                self.cursor += 1
+            }
+            
+            mutating 
+            func backspace() 
+            {
+                guard self.cursor > self.input.startIndex 
+                else 
+                {
+                    return 
+                }
+                
+                self.cursor -= 1
+                self.input.remove(at: self.cursor)
+            }
+            
+            mutating 
+            func clear() 
+            {
+                self.input  = []
+                self.cursor = self.input.endIndex
+            }
+        }
+        
         private 
-        var input:[Unicode.Scalar], 
-            cursor:Int, 
+        var history:History, 
         
             area:Math<Float>.Rectangle, 
             viewport:Math<Float>.V2, 
         
             view:View 
         
-        private 
-        var history:[[Unicode.Scalar]] = [], 
-            historyIndex:Int? = nil
-        
         init()
         {
-            self.input  = []
-            self.cursor = self.input.endIndex
+            self.history    = .init()
             
-            self.area   = ((0, 0), (0, 0))
-            self.viewport = (0, 0)
+            self.area       = ((0, 0), (0, 0))
+            self.viewport   = (0, 0)
             
-            self.view   = .init()
+            self.view       = .init()
         }
         
         private 
         func composeText(_ log:Model.Log) -> [(Unicode.Scalar, Math<UInt8>.V4)] 
         {
-            return log.contents.map{ ($0, (100, 255, 255, 255)) } + self.input.map{ ($0, (.max, .max, .max, .max)) }
+            return log.contents.map{ ($0, (100, 255, 255, 255)) } + self.history.input.map{ ($0, (.max, .max, .max, .max)) }
         }
         
         private 
@@ -695,7 +1167,7 @@ enum Controller
             let delta64:Math<Int>.V2 = Math.maskUp((atlas["\u{0}"].advance64, atlas.height64), exponent: 6), 
                 linelength:Int       = Int(self.area.b.x - self.area.a.x) / (delta64.x >> 6)
             
-            let cursorIndex:Int = text.endIndex - self.input.count + self.cursor
+            let cursorIndex:Int = text.endIndex - self.history.input.count + self.history.cursor
             
             var line:Int = 0, 
                 layout:[(Unicode.Scalar, Math<UInt8>.V4, Math<Int>.V2)] = []
@@ -785,9 +1257,7 @@ enum Controller
         mutating 
         func char(_ model:Model, _ codepoint:Unicode.Scalar) -> Coordinator.Event?
         {
-            self.input.insert(codepoint, at: self.cursor)
-            self.cursor += 1
-            
+            self.history.insert(codepoint)
             self.show(with: model)
             
             return nil
@@ -798,60 +1268,28 @@ enum Controller
             switch key 
             {
                 case .enter:
-                    self.history.append(self.input)
-                    self.historyIndex = nil
-                    
-                    self.input.append("\n")
-                    return .terminalInput(self.input)
+                    let input:[Unicode.Scalar] = self.history.new() + ["\n"]
+                    return .terminalInput(input)
                 
                 case .backspace:
-                    guard self.cursor > self.input.startIndex 
-                    else 
-                    {
-                        break
-                    } 
-                    
-                    self.cursor -= 1
-                    self.input.remove(at: self.cursor)
-                    
+                    self.history.backspace()
                     self.show(with: model)
                 
                 case .left:
-                    guard self.cursor > self.input.startIndex  
-                    else 
-                    {
-                        break
-                    }
-                    
-                    self.cursor -= 1
+                    self.history.left()
                     self.show(with: model)
                 
                 case .right:
-                    guard self.cursor < self.input.endIndex
-                    else 
-                    {
-                        break
-                    }
-                    
-                    self.cursor += 1
+                    self.history.right()
                     self.show(with: model)
                 
                 case .up:
-                    let index:Int = (self.historyIndex ?? self.history.endIndex) - 1 
-                    
-                    guard index >= 0 
-                    else 
-                    {
-                        break 
-                    }
-                    
-                    self.input = self.history[index]
-                    self.cursor = self.input.endIndex
-                    self.historyIndex = index
+                    self.history.prev()
                     self.show(with: model)
                 
                 case .down:
-                    break
+                    self.history.next()
+                    self.show(with: model)
                 
                 default:
                     break
@@ -863,9 +1301,7 @@ enum Controller
         mutating 
         func sync(to model:Model) 
         {
-            self.input  = []
-            self.cursor = self.input.startIndex
-            
+            self.history.clear()
             self.show(with: model)
         }
         
@@ -874,73 +1310,130 @@ enum Controller
         {
             self.view.draw(viewport: self.viewport)
         }
-    }
+    } */
     
-    struct MapEditor 
+    struct MapEditor:LayerController
     {
-        enum State 
+        enum Action:Equatable
         {
             case    none,
                     anchorSelected(Int), 
                     anchorMoving(Int, Math<Float>.V3), 
                     anchorNew(Int, Math<Float>.V3)
+            // adding new case? REMEMBER TO ADD `==` IMPLEMENTATION
+            
+            static 
+            func == (a:Action, b:Action) -> Bool 
+            {
+                switch (a, b) 
+                {
+                    case (.none, .none):
+                        return true 
+                    case (.anchorSelected(let i1), .anchorSelected(let i2)):
+                        return i1 == i2 
+                    case (.anchorMoving(let i1, let p1), .anchorMoving(let i2, let p2)):
+                        return i1 == i2 && p1 == p2 
+                    case (.anchorNew(let i1, let p1), .anchorNew(let i2, let p2)):
+                        return i1 == i2 && p1 == p2
+                    
+                    default:
+                        return false 
+                }
+            }
+        }
+        
+        // interface for communicating with Self.View 
+        struct State 
+        {
+            var model:Latest<Void>
+            
+            var plane:Latest<ControlPlane>
+            var action:Latest<Action> 
+            var preselection:Latest<Int?>
         }
         
         private 
-        var state:State, 
-            preselection:Int?
+        var view:View, 
+            state:State 
         
+        // state variables 
         private 
-        var plane:ControlPlane, 
-            cameraBlock:GL.Buffer<Camera.Storage>, 
-            
-            U:Math<Float>.Mat4, 
-            hotspots:[Math<Float>.V2?]
+        var plane:ControlPlane 
+        {
+            get         { return    self.state.plane.value }
+            set(value)  {           self.state.plane.value = value }
+        }
+        private 
+        var action:Action 
+        {
+            get         { return    self.state.action.value }
+            set(value)  {           self.state.action.value = value }
+        }
+        private 
+        var preselection:Int? 
+        {
+            get         { return    self.state.preselection.value }
+            set(value)  {           self.state.preselection.value = value }
+        }
         
+        // LayerController conformance 
+        var viewport:Math<Float>.V2 = (0, 0)
+        {
+            didSet 
+            {
+                // figure out center point of screen
+                let shift:Math<Float>.V2 = Math.add(Math.scale(viewport, by: -0.5), (200, 0))
+                self.plane.sensor = (shift, Math.add(viewport, shift))
+            }
+        }
+        
+        // other properties 
         private 
-        var view:View 
+        var hotspots:[Math<Float>.V2?]
         
         init()
         {
-            self.state        = .none 
-            self.preselection = nil
-            
-            self.plane = .init(.init(center: (0, 0, 0),
+            let plane:ControlPlane = .init(  .init(center: (0, 0, 0),
                                 orientation: .init(),
                                    distance: 4,
                                 focalLength: 32))
+                                
+            self.state = .init(model: .init(()), 
+                               plane: .init(plane), 
+                              action: .init(.none), 
+                        preselection: .init(nil))
+            self.view  = .init()
             
-            self.cameraBlock = .generate()
-            self.cameraBlock.bind(to: .uniform)
-            {
-                $0.reserve(capacity: 1, usage: .dynamic)
-            }
-            
-            self.U        = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
             self.hotspots = []
-            
-            self.view = .init()
+        }
+        
+        func test(_ position:Math<Float>.V2) -> Bool  
+        {
+            return true 
         }
         
         mutating 
-        func setViewport(_ model:Model, _ viewport:Math<Float>.V2) 
+        func sync(to _:Model, continuity:Bool) 
         {
-            // figure out center point of screen
-            let shift:Math<Float>.V2 = Math.scale(viewport, by: -0.5)
-            self.plane.sensor = (shift, Math.add(viewport, shift))
+            self.state.model.reset() 
+            if !continuity 
+            {
+                self.action         = .none
+                self.preselection   = nil 
+            }
         }
         
+        // project a sphere point into 2D
         private  
         func trace(_ point:Math<Float>.V3) -> Math<Float>.V2?
         {
-            guard Math.dot(Math.sub(point, self.plane.rayfilm.source), Math.sub(point, (0, 0, 0))) < 0 
+            guard Math.dot(Math.sub(point, self.plane.position), Math.sub(point, (0, 0, 0))) < 0 
             else 
             {
                 return nil 
             }
             
-            let h:Math<Float>.V4 = Math.mult(self.U, Math.extend(point, 1))
-            return Math.scale((h.x, h.y), by: 1 / h.w)
+            return self.plane.trace(point)
         }
         
         private mutating 
@@ -977,12 +1470,10 @@ enum Controller
                 if preselection > index 
                 {
                     self.preselection = preselection + offset
-                    self.view.borders.push(preselection: preselection + offset)
                 }
                 else if preselection == index 
                 {
                     self.preselection = nil
-                    self.view.borders.push(preselection: nil)
                 }
             }
         }
@@ -990,10 +1481,7 @@ enum Controller
         private 
         func findHotspot(_ position:Math<Float>.V2, threshold:Float) -> Int? 
         {
-            let scale:Math<Float>.V2 = Math.sub(self.plane.sensor.1, self.plane.sensor.0), 
-                p:Math<Float>.V2     = Math.add(position, self.plane.sensor.0)
-            
-            var g:Float    = .infinity, 
+            var g2:Float   = .infinity, 
                 index:Int? = nil 
             for (i, hotspot):(Int, Math<Float>.V2?) in self.hotspots.enumerated()
             {
@@ -1003,15 +1491,15 @@ enum Controller
                     continue 
                 }
                 
-                let r:Float = Math.length(Math.sub(Math.mult(Math.scale(hotspot, by: 0.5), scale), p))
-                if r < g
+                let r2:Float = Math.eusq(Math.sub(hotspot, position))
+                if  r2 < g2
                 {
-                    g     = r
+                    g2    = r2
                     index = i
                 }
             }
             
-            return g < threshold ? index : nil
+            return g2 < threshold * threshold ? index : nil
         }
         
         mutating 
@@ -1032,21 +1520,46 @@ enum Controller
                 self.plane.jump(to: (0, 0, 0))
             
             case .backspace, .delete:
-                switch self.state 
+                switch self.action 
                 {
                 case .none:
                     break 
                 case .anchorSelected(let index):
-                    self.state = .none 
+                    if case .backspace = key 
+                    {
+                        if model.map.points.count > 1 
+                        {
+                            self.action = .anchorSelected((index == 0 ? model.map.points.count - 1 : index) - 1)
+                        }
+                        else 
+                        {
+                            self.action = .none 
+                        }
+                    }
+                    else 
+                    {
+                        if model.map.points.count > 1 
+                        {
+                            self.action = .anchorSelected(index == model.map.points.count - 1 ? 0 : index)
+                        }
+                        else 
+                        {
+                            self.action = .none 
+                        }
+                    }
                     self.removeHotspot(at: index)
                     return .mapPointRemoved(index)
-                case .anchorMoving, .anchorNew:
-                    self.state = .none 
-                    self.view.borders.push(state: self.state, model: model.map, sync: true)
+                
+                case .anchorMoving(let index, _):
+                    self.action = .none 
+                    self.removeHotspot(at: index)
+                    return .mapPointRemoved(index)
+                case .anchorNew:
+                    self.action = .none 
                 }
             
             case .tab:
-                switch self.state 
+                switch self.action 
                 {
                 case .anchorSelected(let index):
                     let next:Int 
@@ -1058,8 +1571,7 @@ enum Controller
                     {
                         next = index + 1 < model.map.points.count ? index + 1 : 0
                     }
-                    self.state = .anchorSelected(next)
-                    self.view.borders.push(state: self.state, model: model.map)
+                    self.action = .anchorSelected(next)
                 
                 default:
                     break
@@ -1072,81 +1584,69 @@ enum Controller
         }
         
         mutating
-        func scroll(_ model:Model, _ direction:UI.Direction) -> Coordinator.Event?
+        func scroll(_ model:Model, _ direction:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
         {
             self.plane.bump(direction, action: .zoom)
             return nil
         }
         
         mutating 
-        func down(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+        func down(_ model:Model, _ button:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
         {
-            let _ = self.move(model, position)
-            switch action 
+            switch button 
             {
-                case .double:
-                    switch self.state 
+            case .primary:
+                if  doubled, 
+                    case .anchorSelected(let index) = self.action
+                {
+                    let p:Math<Float>.V3 = self.plane.project(position, on: (0, 0, 0), radius: 1)
+                    self.action = .anchorNew(index + 1, Math.normalize(p)) 
+                    break 
+                }
+                
+                switch self.action 
+                {
+                case .none, .anchorSelected:
+                    if let i:Int = self.findHotspot(position, threshold: 8) 
                     {
-                        case .anchorSelected(let index):
-                            let ray:ControlPlane.Ray = self.plane.rayfilm.cast(position), 
-                                p:Math<Float>.V3     = ControlPlane.project(ray: ray, on: (0, 0, 0), radius: 1)
-                            self.state = .anchorNew(index + 1, Math.normalize(p))
-                            self.view.borders.push(state: self.state, model: model.map)
-                        
-                        default:
-                            break 
+                        self.action = .anchorSelected(i)
+                    }
+                    else 
+                    {
+                        self.action = .none
+                        self.plane.down(position, button: button)
                     }
                 
-                case .primary:
-                    switch self.state 
+                case .anchorMoving(let index, let location):
+                    self.action = .anchorSelected(index)
+                    self.updateHotspot(location, at: index)
+                    return .mapPointMoved(index, location)
+                
+                case .anchorNew(let index, let location):
+                    self.action = .anchorSelected(index)
+                    self.insertHotspot(location, at: index)
+                    return .mapPointAdded(index, location)
+                }
+            
+            case .secondary:
+                switch self.action 
+                {
+                case .none, .anchorSelected:
+                    if let i:Int = self.findHotspot(position, threshold: 8) 
                     {
-                        case .none, .anchorSelected:
-                            if let i:Int = self.findHotspot(position, threshold: 8) 
-                            {
-                                self.state = .anchorSelected(i)
-                            }
-                            else 
-                            {
-                                self.state = .none
-                                self.plane.down(position, action: action)
-                            }
-                            
-                            self.view.borders.push(state: self.state, model: model.map)
-                        
-                        case .anchorMoving(let index, let location):
-                            self.state = .anchorSelected(index)
-                            self.updateHotspot(location, at: index)
-                            return .mapPointMoved(index, location)
-                        
-                        case .anchorNew(let index, let location):
-                            self.state = .anchorSelected(index)
-                            self.insertHotspot(location, at: index)
-                            return .mapPointAdded(index, location)
+                        self.action = .anchorMoving(i, model.map.points[i])
+                    }
+                    else 
+                    {
+                        self.action = .none
                     }
                 
-                case .secondary:
-                    switch self.state 
-                    {
-                        case .none, .anchorSelected:
-                            if let i:Int = self.findHotspot(position, threshold: 8) 
-                            {
-                                self.state = .anchorMoving(i, model.map.points[i])
-                            }
-                            else 
-                            {
-                                self.state = .none
-                            }
-                            
-                            self.view.borders.push(state: self.state, model: model.map)
-                        
-                        case .anchorMoving(let index, _), .anchorNew(let index, _):
-                            self.state = .anchorSelected(index)
-                            
-                            self.view.borders.push(state: self.state, model: model.map, sync: true)
-                    }
-                
-                default:
-                    break
+                case .anchorMoving(let index, _), .anchorNew(let index, _):
+                    self.action = .anchorSelected(index)
+                }
+            
+            default:
+                break
             }
             
             return nil
@@ -1155,45 +1655,48 @@ enum Controller
         mutating 
         func move(_ model:Model, _ position:Math<Float>.V2) -> Coordinator.Event?
         {
-            self.preselection = nil
-            self.view.borders.push(preselection: nil)
-            switch self.state 
+            // prevents meaningless preselection toggles, which needlessly set 
+            // dirty flags in the state structure
+            var preselection:Int? = nil 
+            defer 
+            {
+                self.preselection = preselection
+            }
+            
+            switch self.action 
             {
             case .none, .anchorSelected:
                 if let i:Int = self.findHotspot(position, threshold: 8) 
                 {
-                    self.preselection = i
-                    self.view.borders.push(preselection: i)
+                    preselection = i
                 }
             
                 self.plane.move(position)
             
             case .anchorMoving(let index, _):
-                let ray:ControlPlane.Ray = self.plane.rayfilm.cast(position), 
-                    p:Math<Float>.V3 = ControlPlane.project(ray: ray, on: (0, 0, 0), radius: 1)
-                self.state = .anchorMoving(index, Math.normalize(p))
-                self.view.borders.push(state: self.state, model: model.map)
+                let p:Math<Float>.V3 = self.plane.project(position, on: (0, 0, 0), radius: 1)
+                self.action = .anchorMoving(index, Math.normalize(p))
             
             case .anchorNew(let index, _):
-                let ray:ControlPlane.Ray = self.plane.rayfilm.cast(position), 
-                    p:Math<Float>.V3 = ControlPlane.project(ray: ray, on: (0, 0, 0), radius: 1)
-                self.state = .anchorNew(index, Math.normalize(p))
-                self.view.borders.push(state: self.state, model: model.map)
+                let p:Math<Float>.V3 = self.plane.project(position, on: (0, 0, 0), radius: 1)
+                self.action = .anchorNew(index, Math.normalize(p))
             }
+            
             return nil
         }
         
         mutating 
-        func up(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+        func leave(_ model:Model) -> Coordinator.Event? 
         {
-            self.plane.up(position, action: action)
-            return nil
+            self.preselection = nil
+            return nil 
         }
         
         mutating 
-        func sync(to model:Model) 
+        func up(_ model:Model, _ button:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
         {
-            self.view.borders.push(state: self.state, model: model.map, sync: true)
+            self.plane.up(position, button: button)
+            return nil
         }
         
         mutating 
@@ -1205,33 +1708,17 @@ enum Controller
         mutating 
         func draw(_ model:Model) 
         {
-            self.cameraBlock.bind(to: .uniform, index: 0)
+            if self.state.plane.isDirty 
             {
-                (target:GL.Buffer.BoundTarget) in
-
-                // check if camera needs updating
-                if let camera:Camera = self.plane.pop() 
-                {
-                    camera.withUnsafeBytes
-                    {
-                        target.subData($0)
-                    }
-                    
-                    self.view.draw(model)
-                    
-                    self.U = camera.U
-                    self.updateHotspots(model.map.points)
-                }
-                else 
-                {
-                    self.view.draw(model)
-                }
+                self.updateHotspots(model.map.points)
             }
+            
+            self.view.draw(model, state: &self.state)
         }
     }
 }
 
-extension Controller.Terminal 
+/* extension Controller.Terminal 
 {
     struct View 
     {
@@ -1301,7 +1788,7 @@ extension Controller.Terminal
             }
         }
     }
-}
+} */
 
 extension Controller.MapEditor 
 {
@@ -1368,12 +1855,12 @@ extension Controller.MapEditor
                 }
             }
             
-            func draw(_ model:Model)
+            func draw(_ model:Model.Map)
             {
                 Programs.sphere.bind
                 {
                     $0.set(float4: "sphere", (0, 0, 0, 1))
-                    model.map.background.bind(to: .texture2d, index: 1)
+                    model.background.bind(to: .texture2d, index: 1)
                     {
                         self.vao.drawElements(0 ..< 36, as: .triangles, indexType: UInt8.self)
                     }
@@ -1436,8 +1923,11 @@ extension Controller.MapEditor
             
             private 
             var indicator:Int32     = -1, 
-                preselection:Int32  = -1, 
-                fixed:[Vertex]?     = nil
+                preselection:Int32  = -1
+            
+            // whether the constructued border geometry deviates from the model
+            private 
+            var deviance:Bool = false 
             
             init()
             {
@@ -1514,56 +2004,82 @@ extension Controller.MapEditor
             }
             
             mutating 
-            func push(state:State, model:Model.Map, sync:Bool = false) 
+            func rebuild(_ loops:[[Vertex]]) 
             {
-                switch state
+                let (vertices, indices):([Vertex], Indices) = Borders.subdivide(loops)
+                self.vvo.assign(data: vertices,        in: .array,        usage: .dynamic)
+                self.evo.assign(data: indices.indices, in: .elementArray, usage: .dynamic)
+                
+                self.indexSegments = indices.segments
+            }
+            
+            mutating 
+            func draw(_ model:Model.Map, state controllerState:inout State) 
+            {
+                rebuild:
+                if let action:Action = controllerState.action.pop()
                 {
-                    case .none:
-                        if sync 
-                        {
-                            self.fixed = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                        }
-                        self.indicator = -1
+                    let controlPoints:[Vertex]
                     
-                    case .anchorSelected(let index):
-                        if sync 
-                        {
-                            self.fixed = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                        }
-                        self.indicator = .init(index) << 1 | 0
+                    switch action
+                    {
+                        case .none:
+                            self.indicator = -1
+                            if controllerState.model.pop() != nil || self.deviance 
+                            {
+                                controlPoints = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                                self.deviance = false
+                            }
+                            else 
+                            {
+                                break rebuild 
+                            }
+                        
+                        case .anchorSelected(let index):
+                            self.indicator = .init(index) << 1 | 0
+                            if controllerState.model.pop() != nil || self.deviance 
+                            {
+                                controlPoints = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                                self.deviance = false
+                            }
+                            else 
+                            {
+                                break rebuild
+                            }
+                        
+                        case .anchorMoving(let index, let position):
+                            // get() call clears dirty flag
+                            controllerState.model.get() 
+                            
+                            self.indicator          = .init(index) << 1 | 1
+                            var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                            fixed[index].position   = position
+                            controlPoints           = fixed
+                            
+                            self.deviance = true
+                        
+                        case .anchorNew(let index, let position):
+                            controllerState.model.get() 
+                            
+                            self.indicator          = -1
+                            var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                            fixed.insert(.init(position, id: -1), at: index)
+                            controlPoints           = fixed
+                            
+                            self.deviance = true
+                    }
                     
-                    case .anchorMoving(let index, let position):
-                        var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                        fixed[index].position = position
-                        self.fixed = fixed
-                        self.indicator = .init(index) << 1 | 1
-                    
-                    case .anchorNew(let index, let position):
-                        var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                        fixed.insert(.init(position, id: -1), at: index)
-                        self.fixed = fixed
-                        self.indicator = -1
+                    self.rebuild([controlPoints])
                 }
-            }
-            
-            mutating 
-            func push(preselection:Int?) 
-            {
-                self.preselection = .init(preselection ?? -1)
-            }
-            
-            mutating 
-            func draw() 
-            {
-                if let fixed:[Vertex] = self.fixed 
+                else if controllerState.model.pop() != nil
                 {
-                    let (vertices, indices):([Vertex], Indices) = Borders.subdivide([fixed])
-                    self.vvo.assign(data: vertices,        in: .array,        usage: .dynamic)
-                    self.evo.assign(data: indices.indices, in: .elementArray, usage: .dynamic)
-                    
-                    self.indexSegments = indices.segments
-                    
-                    self.fixed = nil
+                    self.rebuild([model.points.enumerated().map{ .init($0.1, id: $0.0) }])
+                    self.deviance = false 
+                }
+                
+                if let preselection:Int? = controllerState.preselection.pop() 
+                {
+                    self.preselection = .init(preselection ?? -1)
                 }
                 
                 Programs.borderPolyline.bind 
@@ -1595,29 +2111,73 @@ extension Controller.MapEditor
             }
         }
         
+        private 
         var globe:Globe, 
             borders:Borders
+        
+        private 
+        var cameraBlock:GL.Buffer<Camera.Storage>
         
         init()
         {
             self.globe   = .init()
             self.borders = .init()
+            
+            self.cameraBlock = .generate()
+            self.cameraBlock.bind(to: .uniform)
+            {
+                $0.reserve(capacity: 1, usage: .dynamic)
+            }
         }
         
         mutating 
-        func draw(_ model:Model)
+        func draw(_ model:Model, state controllerState:inout State)
         {
-            GL.enable(.culling)
-            
-            GL.disable(.multisampling)
-            
-            GL.enable(.blending)
-            GL.blend(.mix)
-            self.globe.draw(model) 
-            
-            GL.enable(.multisampling)
-            GL.blend(.add)
-            self.borders.draw()
+            self.cameraBlock.bind(to: .uniform, index: 0)
+            {
+                (target:GL.Buffer.BoundTarget) in
+
+                // check if camera needs updating
+                if let camera:Camera = controllerState.plane.pop()?.camera
+                {
+                    camera.withUnsafeBytes
+                    {
+                        target.subData($0)
+                    }
+                    print("camera updated")
+                }
+                
+                GL.enable(.culling)
+                
+                GL.disable(.multisampling)
+                
+                GL.enable(.blending)
+                GL.blend(.mix)
+                self.globe.draw(model.map) 
+                
+                GL.enable(.multisampling)
+                GL.blend(.add)
+                self.borders.draw(model.map, state: &controllerState)
+            }
         }
+    }
+}
+
+enum Layout 
+{
+    enum Element 
+    {
+        case block(Block)
+        case inlineBlock(InlineBlock)
+        case inline(Inline)
+    }
+    
+    struct Block 
+    {
+        var children:[Element]
+    }
+    struct InlineBlock 
+    {
+        var children:[Element]
     }
 }

@@ -1,20 +1,17 @@
-struct ControlPlane
+struct ControlPlane:ViewEquatable
 {
+    private 
     struct Ray 
     {
         let source:Math<Float>.V3, 
             vector:Math<Float>.V3
     }
     
+    private 
     struct Rayfilm 
     {
         let matrix:Math<Float>.Mat3, 
             source:Math<Float>.V3
-        
-        init()
-        {
-            self.init(matrix: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), source: (0, 0, 0))
-        }
         
         init(matrix:Math<Float>.Mat3, source:Math<Float>.V3) 
         {
@@ -29,6 +26,7 @@ struct ControlPlane
         }
     }
     
+    private 
     enum State
     {
         case    none, 
@@ -37,20 +35,20 @@ struct ControlPlane
                 zoom(Float)
     }
     
-    var sensor:Math<Float>.Rectangle
+    
+    var position:Math<Float>.V3 
     {
-        didSet 
-        {
-            if self.phase == nil 
-            {
-                self.phase = 0
-            }
-        }
+        return self.camera.position
+    }
+    
+    private 
+    var rayfilm:Rayfilm 
+    {
+        return .init(matrix: Math.mat3(from: self.camera.F), source: self.camera.position)
     }
 
     internal private(set)
-    var camera:Camera, 
-        rayfilm:Rayfilm
+    var camera:Camera
     
     private
     var head:Camera.Rig,
@@ -61,6 +59,28 @@ struct ControlPlane
         // animation: setting the phase to 0 will immediately update the state to 
         // head while setting it to 1 will allow a transition from base to head
         phase:Float?
+        
+    var sensor:Math<Float>.Rectangle
+    {
+        didSet 
+        {
+            if self.phase == nil 
+            {
+                self.phase = 0
+            }
+        }
+    }
+    
+    static 
+    func viewEquivalent(_ a:ControlPlane, _ b:ControlPlane) -> Bool 
+    {
+        // self.camera is a cache property for storing animation interpolations 
+        // self.state is only used for internal book-keeping
+        return  a.head   == b.head && 
+                a.base   == b.base && 
+                a.phase  == b.phase && 
+                a.sensor == b.sensor 
+    }
     
     private 
     var mutated:Bool = true
@@ -75,21 +95,17 @@ struct ControlPlane
         self.base   = base
         
         self.state  = .none 
-        self.rayfilm    = .init()
         
         self.phase  = 0
     }
     
-    private static 
-    func attract(_ anchor:Math<Float>.V3, on center:Math<Float>.V3, to ray:Ray) 
-        -> Quaternion<Float>
+    // project a point into 2D (pixel coordinates )
+    func trace(_ point:Math<Float>.V3) -> Math<Float>.V2
     {
-        let a:Math<Float>.V3 = Math.sub(anchor, center), 
-            r:Float          = Math.length(a), 
-            s:Math<Float>.V3 = Math.scale(a, by: 1 / r), 
-            t:Math<Float>.V3 = Math.normalize(ControlPlane.project(ray: ray, on: center, radius: r))
-        
-        return .init(from: s, to: t)
+        let h:Math<Float>.V4    = Math.mult(self.camera.U, Math.extend(point, 1))
+        let clip:Math<Float>.V2 = Math.scale((h.x, h.y), by: 1 / h.w) 
+        return Math.mult(   Math.sub(self.sensor.b, self.sensor.a), 
+                            Math.add(Math.scale(clip, by: 0.5), (0.5, 0.5)))
     }
     
     // kills any current animation and synchronizes the 2 current keyframes
@@ -144,13 +160,12 @@ struct ControlPlane
     }
 
     mutating
-    func down(_ position:Math<Float>.V2, action:UI.Action)
+    func down(_ position:Math<Float>.V2, button:UI.Action)
     {
         self.rebase()
-        switch (action, self.state) 
+        switch (button, self.state) 
         {
-            case    (.double,   .none), 
-                    (.primary,  .none):
+            case    (.primary,  .none):
                 // save the current rayfilm
                 let rayfilm:Rayfilm  = self.rayfilm, 
                     ray:Ray          = rayfilm.cast(position), 
@@ -186,13 +201,12 @@ struct ControlPlane
     }
 
     mutating
-    func up(_ position:Math<Float>.V2, action:UI.Action)
+    func up(_ position:Math<Float>.V2, button:UI.Action)
     {
         self.move(position)
-        switch (action, self.state) 
+        switch (button, self.state) 
         {
-            case    (.double,   .orbit), 
-                    (.primary,  .orbit):
+            case    (.primary,  .orbit):
                 self.rebase()
             
             default:
@@ -252,9 +266,6 @@ struct ControlPlane
         self.camera.frustum(a, b)
         self.camera.fragment(rotationMatrix: R, translation: t, sensor: self.sensor)
         self.camera.matrices()
-        
-        let matrix:Math<Float>.Mat3 = Math.mat3(from: self.camera.F)
-        self.rayfilm = .init(matrix: matrix, source: self.camera.position)
     }
     
     mutating 
@@ -271,7 +282,19 @@ struct ControlPlane
         }
     }
     
-    static 
+    private static 
+    func attract(_ anchor:Math<Float>.V3, on center:Math<Float>.V3, to ray:Ray) 
+        -> Quaternion<Float>
+    {
+        let a:Math<Float>.V3 = Math.sub(anchor, center), 
+            r:Float          = Math.length(a), 
+            s:Math<Float>.V3 = Math.scale(a, by: 1 / r), 
+            t:Math<Float>.V3 = Math.normalize(Math.sub(project(ray: ray, on: center, radius: r), center))
+        
+        return .init(from: s, to: t)
+    }
+    
+    private static 
     func project(ray:Ray, on center:Math<Float>.V3, radius r:Float) -> Math<Float>.V3
     {
         // need to deal with case of sphere not centered at origin
@@ -306,5 +329,12 @@ struct ControlPlane
         
         let offset:Math<Float>.V3 = Math.scale(ray.vector, by: l - discriminant.squareRoot())
         return Math.add(ray.source, offset)
+    }
+    
+    func project(_ position:Math<Float>.V2, on center:Math<Float>.V3, radius r:Float) -> Math<Float>.V3
+    {
+        let ray:Ray             = self.rayfilm.cast(position), 
+            p:Math<Float>.V3    = ControlPlane.project(ray: ray, on: center, radius: r)
+        return p
     }
 }

@@ -15,7 +15,7 @@ enum Programs
             $0.setMinificationFilter(.nearest, mipmap: nil)
         }
         
-        let fraction:Float = Float(font.metrics.advance) / Float(font.atlas.shape.x), 
+        let fraction:Float = Float(font.metrics.advance) / Float(font.atlas.size.x), 
             bounds:Math<Float>.V2 = Math.cast(font.metrics.bounds, as: Float.self)
         return ((bounds.x, bounds.y, fraction, Float(font.metrics.advance)), texture)
     }()

@@ -10,7 +10,7 @@ class Window
     private
     var coordinator:Coordinator, 
         height:Double, // need to store this to flip y axis
-        lastPrimary:Double 
+        lastDown:(left:Double, middle:Double, right:Double)
 
     init(size:Math<Float>.V2, name:String)
     {
@@ -25,12 +25,12 @@ class Window
 
         self.window      = window
         self.coordinator = .init()
-        self.height      = Double(size.y)
-        self.lastPrimary = glfwGetTime()
+        self.height      = .init(size.y)
+        self.lastDown    = (glfwGetTime(), glfwGetTime(), glfwGetTime())
         
         GL.enableDebugOutput()
         
-        self.coordinator.resize(to: size)
+        self.coordinator.window(size: size)
         
         // attach pointer to self to window
         glfwSetWindowUserPointer(window,
@@ -40,9 +40,9 @@ class Window
         {
             (context:OpaquePointer?, x:CInt, y:CInt) in
             
-            let window:Window = .reconstitute(from: context)
-            window.height = Double(y)
-            window.coordinator.resize(to: Math.cast((x, y), as: Float.self))
+            let window:Window   = .reconstitute(from: context)
+            window.height       = .init(y)
+            window.coordinator.window(size: Math.cast((x, y), as: Float.self))
         }
 
         glfwSetCharCallback(window)
@@ -55,20 +55,33 @@ class Window
                 return 
             }
             
-            Window.reconstitute(from: context).coordinator.char(codepoint)
+            Window.reconstitute(from: context).coordinator.character(.init(codepoint))
         }
         
         glfwSetKeyCallback(window)
         {
-            (context:OpaquePointer?, keycode:CInt, scancode:CInt, action:CInt, mods:CInt) in
+            (context:OpaquePointer?, keycode:CInt, scancode:CInt, action:CInt, modifiers:CInt) in
 
-            guard action == GLFW_PRESS
+            let key:UI.Key                  = .init(keycode), 
+                modifiers:UI.Key.Modifiers  = .init(modifiers)
+            
+            guard action == GLFW_PRESS || action == GLFW_REPEAT && key.isArrowKey
             else
             {
                 return
             }
             
-            Window.reconstitute(from: context).coordinator.keypress(.init(keycode), .init(mods))
+            let window:Window               = .reconstitute(from: context)
+            
+            if  modifiers.control, 
+                key == .V 
+            {
+                let string:String = .init(cString: glfwGetClipboardString(window.window))
+                window.coordinator.paste(string)
+                return                 
+            }
+            
+            window.coordinator.keypress(key, modifiers)
         }
         
         glfwSetCursorPosCallback(window)
@@ -86,60 +99,103 @@ class Window
             let window:Window = .reconstitute(from: context), 
                 position:Math<Float>.V2 = window.cursorPosition(context: context)
             
-            switch (code, direction)
+            outer: 
+            switch direction 
             {
-                case (GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS):
-                    let timestamp:Double = glfwGetTime(), 
-                        delta:Double     = timestamp - window.lastPrimary
-                    
-                    window.lastPrimary = timestamp 
-                    if delta < 0.3 
-                    {
-                        window.coordinator.down(.double, position)
-                    }
-                    else 
-                    {
-                        window.coordinator.down(.primary, position)
-                    }
-                case (GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE):
-                    window.coordinator.up(.primary, position)
-                    
-                case (GLFW_MOUSE_BUTTON_MIDDLE, GLFW_PRESS):
-                    window.coordinator.down(.tertiary, position)
-                case (GLFW_MOUSE_BUTTON_MIDDLE, GLFW_RELEASE):
-                    window.coordinator.up(.tertiary, position)
+            case GLFW_PRESS:
+                let timestamp:Double = glfwGetTime(), 
+                    delta:Double, 
+                    action:UI.Action
                 
-                case (GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS):
-                    window.coordinator.down(.secondary, position)
-                case (GLFW_MOUSE_BUTTON_RIGHT, GLFW_RELEASE):
-                    window.coordinator.up(.secondary, position)
+                let threshold:Double = 0.3 
+                switch code 
+                {
+                case    GLFW_MOUSE_BUTTON_LEFT:
+                    delta                   = timestamp - window.lastDown.left
+                    action                  = .primary
+                    window.lastDown.left    = delta < threshold ? window.lastDown.left   : timestamp 
+                    
+                case    GLFW_MOUSE_BUTTON_MIDDLE:
+                    delta                   = timestamp - window.lastDown.middle
+                    action                  = .tertiary
+                    window.lastDown.middle  = delta < threshold ? window.lastDown.middle : timestamp 
+                
+                case    GLFW_MOUSE_BUTTON_RIGHT:
+                    delta                   = timestamp - window.lastDown.right
+                    action                  = .secondary
+                    window.lastDown.right   = delta < threshold ? window.lastDown.right  : timestamp 
+                
+                case    GLFW_MOUSE_BUTTON_4, 
+                        GLFW_MOUSE_BUTTON_5, 
+                        GLFW_MOUSE_BUTTON_6, 
+                        GLFW_MOUSE_BUTTON_7, 
+                        GLFW_MOUSE_BUTTON_8:
+                    return 
                 
                 default:
-                    Log.note("unrecognized mouse action (\(code), \(direction)")
+                    break outer 
+                }
+                
+                window.coordinator.down(action, position, doubled: delta < threshold)
+                return 
+                
+            case GLFW_RELEASE:
+                let action:UI.Action
+                
+                switch code 
+                {
+                case GLFW_MOUSE_BUTTON_LEFT:
+                    action = .primary
+                    
+                case GLFW_MOUSE_BUTTON_MIDDLE:
+                    action = .tertiary
+                
+                case GLFW_MOUSE_BUTTON_RIGHT:
+                    action = .secondary
+                
+                case    GLFW_MOUSE_BUTTON_4, 
+                        GLFW_MOUSE_BUTTON_5, 
+                        GLFW_MOUSE_BUTTON_6, 
+                        GLFW_MOUSE_BUTTON_7, 
+                        GLFW_MOUSE_BUTTON_8:
+                    return 
+                
+                default:
+                    break outer 
+                }
+                
+                window.coordinator.up(action, position)
+                return 
+            
+            default:
+                break 
             }
+            
+            Log.warning("unrecognized mouse action (\(code), \(direction)")
         }
         
         glfwSetScrollCallback(window)
         {
-            (window:OpaquePointer?, x:Double, y:Double) in
+            (context:OpaquePointer?, x:Double, y:Double) in
 
-            let interface:Window = Window.reconstitute(from: window)
+            let window:Window           = .reconstitute(from: context), 
+                position:Math<Float>.V2 = window.cursorPosition(context: context)
 
             if y > 0
             {
-                interface.coordinator.scroll(.up)
+                window.coordinator.scroll(.up, position)
             }
             else if y < 0
             {
-                interface.coordinator.scroll(.down)
+                window.coordinator.scroll(.down, position)
             }
             else if x > 0
             {
-                interface.coordinator.scroll(.left)
+                window.coordinator.scroll(.left, position)
             }
             else if x < 0
             {
-                interface.coordinator.scroll(.right)
+                window.coordinator.scroll(.right, position)
             }
         }
     }
@@ -219,6 +275,12 @@ func main()
     OpenGL.loader = unsafeBitCast(glfwGetProcAddress, to: OpenGL.LoaderFunction.self)
     
     let window:Window = .init(size: (1200, 600), name: "Map Editor")
+    
+    
+    
+    let font:Font = .create("assets/fonts/SourceSansPro-Regular.ttf", size: 18)
+    font.hbfont.shape("efficiently")
+    
     window.loop()
 }
 

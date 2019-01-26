@@ -17,7 +17,7 @@ enum Libraries
 
 class FreeType
 {
-    private
+    //private
     let library:OpaquePointer
 
     private static
@@ -49,7 +49,8 @@ class FreeType
         {
             return nil
         }
-
+        
+        
         self.library = library
     }
 
@@ -74,7 +75,7 @@ class FreeType
         }
     }
     
-    func withFace<Result>(_ fontname:String, size:Int, _ body:(FT_Face) throws -> Result) rethrows -> Result
+    func withFace<Result>(_ fontname:String, _ body:(FT_Face) throws -> Result) rethrows -> Result
     {
         guard let face:FT_Face =
         {
@@ -89,11 +90,6 @@ class FreeType
         else
         {
             Log.fatal("failed to load font '\(fontname)'")
-        }
-        
-        FreeType.checkError
-        {
-            FT_Set_Pixel_Sizes(face, 0, UInt32(size))
         }
 
         defer 

@@ -1,4 +1,4 @@
-import Glibc
+import func Glibc.getenv
 
 extension GL
 {
@@ -392,24 +392,26 @@ struct Program
     private static
     func compileShader(type:ShaderType, path:String) -> OpenGL.UInt?
     {
-        guard let source:UnsafeBufferPointer<CChar> = openTextFile(posixPath(path))
+        guard let source:[UInt8] = try? File.read(posixPath(path))
         else
         {
-            Log.error("could not open shader '\(path)'")
+            Log.error("could not read shader '\(path)'")
             return nil
-        }
-        defer
-        {
-            source.deallocate()
         }
 
         let shader:OpenGL.UInt = OpenGL.glCreateShader(type.typeCode)
-
-        var string:UnsafePointer<CChar>? = source.baseAddress,
-                                        // the null terminator does not count
-            length:OpenGL.Int            = OpenGL.Int(source.count - 1)
-
-        OpenGL.glShaderSource(shader, 1, &string, &length)
+        
+        source.withUnsafeBufferPointer 
+        {
+            $0.withMemoryRebound(to: Int8.self) 
+            {
+                var length:OpenGL.Int           = .init(source.count), 
+                    string:UnsafePointer<Int8>? = $0.baseAddress
+                
+                OpenGL.glShaderSource(shader, 1, &string, &length)
+            }
+        }
+        
         OpenGL.glCompileShader(shader)
         
         // always print the shader log for now
@@ -527,7 +529,8 @@ struct Program
 
         return String(cString: message)
     }
-
+    
+    // fix this to actually be a shell expansion
     private static
     func posixPath(_ path:String) -> String
     {
@@ -546,52 +549,6 @@ struct Program
             }
         }
         return expandedPath
-    }
-
-    // allocates and returns a null-terminated char buffer containing the contents
-    // of the text file. the caller is responsible for deallocating the buffer
-    private static
-    func openTextFile(_ posixPath:String) -> UnsafeBufferPointer<CChar>?
-    {
-        guard let f:UnsafeMutablePointer<FILE> = fopen(posixPath, "rb")
-        else
-        {
-            Log.error("could not open '\(posixPath)'")
-            return nil
-        }
-        defer { fclose(f) }
-
-        let fseekStatus:CInt = fseek(f, 0, SEEK_END)
-        guard fseekStatus == 0
-        else
-        {
-            Log.error("fseek() on '\(posixPath)' failed with error code \(fseekStatus)")
-            return nil
-        }
-
-        let n:CLong = ftell(f)
-        guard 0 ..< CLong.max ~= n
-        else
-        {
-            Log.error("ftell() on '\(posixPath)' returned too large file size (\(n) bytes)")
-            return nil
-        }
-        rewind(f)
-
-        let buffer = UnsafeMutableBufferPointer<CChar>(start:
-            UnsafeMutablePointer<CChar>.allocate(capacity: n + 1), count: n + 1)
-
-        let nRead = fread(buffer.baseAddress, 1, n, f)
-        guard nRead == n
-        else
-        {
-            buffer.deallocate()
-            Log.error("fread() on file '\(posixPath)' read \(nRead) characters out of \(n)")
-            return nil
-        }
-
-        buffer[n] = 0 // cap with sentinel
-        return UnsafeBufferPointer(buffer)
     }
 }
 

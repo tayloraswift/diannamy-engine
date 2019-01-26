@@ -1,4 +1,4 @@
-struct Quaternion<F> where F:BinaryFloatingPoint
+struct Quaternion<F>:Equatable where F:BinaryFloatingPoint
 {
     var a:F, 
         b:Math<F>.V3
@@ -80,6 +80,12 @@ struct Quaternion<F> where F:BinaryFloatingPoint
             Math.add(   Math.add(Math.scale(q2.b, by: q1.a), Math.scale(q1.b, by: q2.a)), 
                         Math.cross(q1.b, q2.b))
         return Quaternion(a, b).normalized()
+    }
+    
+    static
+    func == (q1:Quaternion, q2:Quaternion) -> Bool
+    {
+        return q1.a == q2.a && q1.b == q2.b
     }
 }
 

@@ -1,0 +1,5 @@
+module HarfBuzz 
+{
+    umbrella header "harfbuzz.h"
+    link "harfbuzz"
+}

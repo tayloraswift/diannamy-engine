@@ -85,6 +85,11 @@ extension Double:_SwiftFloatingPoint
     }
 }
 
+func ==<N> (a:Math<N>.Rectangle, b:Math<N>.Rectangle) -> Bool where N:Equatable
+{
+    return a.a == b.a && a.b == b.b
+}
+
 enum Math<N>
 {
     typealias V2 = (x:N, y:N)

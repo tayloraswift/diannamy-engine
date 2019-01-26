@@ -47,6 +47,9 @@ struct UI
              up,
 
              zero = 48, one, two, three, four, five, six, seven, eight, nine,
+             
+             A = 65, 
+             B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, 
 
              f1 = 290, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12,
 
@@ -58,10 +61,56 @@ struct UI
         {
             self = Key.init(rawValue: Int(keycode)) ?? .unknown
         }
+        
+        var isArrowKey:Bool 
+        {
+            switch self 
+            {
+            case .right, .left, .up, .down:
+                return true 
+            default:
+                return false
+            }
+        }
     }
     
-    enum Action 
+    enum Action:UInt8 
     {
-        case double, primary, secondary, tertiary
+        case primary = 1, secondary, tertiary
+        
+        struct BitVector 
+        {
+            private 
+            var bitvector:UInt8 
+            
+            var any:Bool 
+            {
+                return self.bitvector == 0
+            }
+            
+            init() 
+            {
+                self.bitvector = 0
+            }
+            
+            subscript(action:Action) -> Bool 
+            {
+                get 
+                {
+                    return self.bitvector & 1 << (action.rawValue - 1) == 0 
+                }
+                set(v) 
+                {
+                    if v 
+                    {
+                        self.bitvector |=   1 << (action.rawValue - 1)
+                    }
+                    else 
+                    {
+                        self.bitvector &= ~(1 << (action.rawValue - 1))
+                    }
+                }
+            }
+        }
     }
 }

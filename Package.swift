@@ -9,14 +9,15 @@ let package = Package(
     ],
     dependencies: 
     [
-        .package(url: "https://github.com/kelvin13/png", .branch("master")), 
+        .package(url: "https://github.com/kelvin13/png", .exact("3.0.0")), 
 //        .package(url: "https://github.com/kelvin13/swiftxml", .branch("master")), 
     ],
     targets: 
     [
 //        .target(name: "generator" , dependencies: ["XML"], path: "sources/generator"), 
-        .target(name: "GLFW", path: "sources/c/glfw"), 
         .systemLibrary(name: "FreeType", path: "sources/c/freetype", pkgConfig: "freetype2"), 
-        .target(name: "polysphere", dependencies: ["GLFW", "FreeType", "PNG"], path: "sources/polysphere"),
+        .systemLibrary(name: "HarfBuzz", path: "sources/c/harfbuzz", pkgConfig: "harfbuzz"), 
+        .target(name: "GLFW", path: "sources/c/glfw"), 
+        .target(name: "polysphere", dependencies: ["FreeType", "HarfBuzz", "GLFW", "PNG"], path: "sources/polysphere"),
     ]
 )

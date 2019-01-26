@@ -2,8 +2,22 @@ enum Log
 {
     enum Source 
     {
-        case diannamy, opengl, glsl, glfw, freetype
+        case diannamy, opengl, glsl, glfw, freetype, harfbuzz
     }
+    
+    /* enum Problem:CustomStringConvertible 
+    {
+        case cNull(String)
+        
+        var description:String 
+        {
+            switch self 
+            {
+            case .cNull(let function):
+                return "unexpected nil value from \(function)()"
+            }
+        }
+    } */
     
     static 
     func note(splitting messages:String, from source:Source, file:String = #file, line:Int = #line)
@@ -44,6 +58,13 @@ enum Log
         print("\u{1B}[1m(\(source)) \u{1B}[38;2;255;80;90mfatal error:\u{1B}[39m \(message)\u{1B}[0m")
         fatalError()
     }
+    
+    /* static 
+    func fatal(_ problem:Problem, file:String = #file, line:Int = #line)  -> Never
+    {
+        print("\u{1B}[1m\(file):\(line): \u{1B}[38;2;255;80;90mfatal error:\u{1B}[39m \(problem)\u{1B}[0m")
+        fatalError()
+    } */
     
     static 
     func unreachable(file:String = #file, line:Int = #line) -> Never

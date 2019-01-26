@@ -287,7 +287,7 @@ struct Camera
     }
     
     
-    struct Rig
+    struct Rig:Equatable
     {
         enum Action 
         {
@@ -301,7 +301,16 @@ struct Camera
             orientation:Quaternion<Float>, 
             distance:Float,  // negative is outwards, positive is inwards
             focalLength:Float
-
+        
+        static 
+        func == (a:Rig, b:Rig) -> Bool 
+        {
+            return  a.center        == b.center && 
+                    a.orientation   == b.orientation && 
+                    a.distance      == b.distance && 
+                    a.focalLength   == b.focalLength
+        }
+        
         init(center:Math<Float>.V3 = (0, 0, 0), orientation:Quaternion<Float> = .init(), 
             distance:Float = 0, focalLength:Float = 35)
         {

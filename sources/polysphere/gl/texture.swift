@@ -83,9 +83,9 @@ extension GL
             {
                 assert(target == .texture2d)
                 
-                let shape:Math<OpenGL.Size>.V2 = Math.cast(data.shape, as: OpenGL.Size.self)
+                let size:Math<OpenGL.Size>.V2 = Math.cast(data.size, as: OpenGL.Size.self)
                 OpenGL.glTexImage2D(self.target.rawValue, 0, storage.rawValue, 
-                    shape.x, shape.y, 0, layout.ordering, layout.type, data.buffer)
+                    size.x, size.y, 0, layout.ordering, layout.type, data.buffer)
             }
             
             func setMagnificationFilter(_ filter:Filter)
