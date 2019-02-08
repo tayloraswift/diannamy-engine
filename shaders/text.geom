@@ -16,12 +16,7 @@ out Vertex
 } geometry;
 
 void main()
-{
-    float cursor = (line[0].uv.x < 0 && 
-                    line[0].uv.y < 0 && 
-                    line[1].uv.x < 0 && 
-                    line[1].uv.y < 0) ? 1 : 0;
-    
+{    
     gl_Position = gl_in[0].gl_Position;
     geometry.uv = line[0].uv;
     geometry.color = line[0].color;

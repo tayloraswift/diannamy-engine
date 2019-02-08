@@ -2,7 +2,7 @@ import FreeType
 
 import PNG 
 
-
+/* 
 enum Fonts 
 {
     static let terminal:(atlas:FontAtlas, texture:GL.Texture<UInt8>) = 
@@ -19,7 +19,7 @@ enum Fonts
         
         return (font, texture)
     }()
-}
+} */
 
 // a basic, grid-based monospace font. good for debug displays, but will probably 
 // not display accents or complex typography well, and some glyphs may be clipped
@@ -36,7 +36,7 @@ struct BasicFontAtlas
     
     init(_ fontname:String, size:Int, codepoints:Int = 128)
     {
-        (self.atlas, self.metrics) = Libraries.freetype.withFace(fontname)
+        (self.atlas, self.metrics) = FreeType.withFace(fontname)
         {
             (face:FT_Face) in 
             
@@ -45,8 +45,8 @@ struct BasicFontAtlas
                 FT_Set_Pixel_Sizes(face, 0, UInt32(size))
             }
             
-            Libraries.freetype.warnMonospace(face, fontname: fontname)
-            Libraries.freetype.warnVerticalAdvance(face, fontname: fontname)
+            FreeType.warnMonospace(face, fontname: fontname)
+            FreeType.warnVerticalAdvance(face, fontname: fontname)
             
             // round x advance up to nearest multiple of 64 and divide by 64
             let advance64:Int = face.pointee.glyph.pointee.advance.x,
@@ -122,227 +122,144 @@ struct BasicFontAtlas
     }
 }
 
-struct FontAtlas 
+class Atlas 
 {
-    struct Glyph 
+    let texture:GL.Texture<UInt8> 
+    
+    private 
+    let sprites:[Math<Float>.Rectangle]
+    
+    subscript(index:Int) -> Math<Float>.Rectangle 
     {
-        let rectangle:Math<Int>.Rectangle, 
-            uv:Math<Float>.Rectangle, 
-            advance64:Int
+        return self.sprites[index]
     }
     
-    let atlas:Array2D<UInt8>, 
-        charmap:[Unicode.Scalar: Glyph], 
-        height64:Int
-    
-    subscript(u:Unicode.Scalar) -> Glyph
+    init(_ bitmaps:[Array2D<UInt8>])
     {
-        return self.charmap[u] ?? self.charmap["\u{0}"]!
-    }
-    
-    init(_ fontname:String, fontsize:Int) 
-    {
-        (self.atlas, self.charmap, self.height64) = Libraries.freetype.withFace(fontname)
+        // sort rectangles in increasing height 
+        let sorted:[(Int, Array2D<UInt8>)] = zip(bitmaps.indices, bitmaps).sorted 
         {
-            (face:FT_Face) in 
-            
-            FreeType.checkError
-            {
-                FT_Set_Pixel_Sizes(face, 0, UInt32(fontsize))
-            }
-            
-            Libraries.freetype.warnVerticalAdvance(face, fontname: fontname)
-            
-            var glyphs:[(Unicode.Scalar, Math<Int>.Rectangle, Int, Array2D<UInt8>)] = []
-            for codepoint:Unicode.Scalar in (0 ..< 256).compactMap(Unicode.Scalar.init(_:)) 
-            {
-                let index:UInt32 = FT_Get_Char_Index(face, UInt(codepoint.value))
-                // only render codepoints with glyphs in the font
-                guard index > 0 || codepoint == "\u{0}" 
-                else 
-                {
-                    continue 
-                }
-                
-                guard 
-                (
-                    FreeType.checkError
-                    {
-                        // dumb integer cast because Freetype defines all the bitfield
-                        // constants (except for FT_LOAD_DEFAULT) as `long`s
-                        FT_Load_Glyph(face, index, Int32(FT_LOAD_RENDER))
-                    }
-                )
-                else
-                {
-                    continue 
-                }
-                
-                let bitmap:FT_Bitmap   = face.pointee.glyph.pointee.bitmap
-                let size:Math<Int>.V2 = Math.cast((bitmap.width, bitmap.rows), as: Int.self),
-                    buffer:[UInt8]     = .init(unsafeUninitializedCapacity: Math.vol(size))
-                {
-                    $1 = Math.vol(size)
-                    
-                    let pitch:Int = .init(bitmap.pitch)
-                    
-                    guard   let base:UnsafeMutablePointer<UInt8>   = $0.baseAddress, 
-                            let buffer:UnsafeMutablePointer<UInt8> = bitmap.buffer
-                    else 
-                    {
-                        $0.initialize(repeating: 0)
-                        return 
-                    }
-                    
-                    for row:Int in 0 ..< size.y
-                    {
-                        (base + row * size.x).initialize(from: buffer + row * pitch, count: size.x)
-                    }
-                }
-                
-                let origin:Math<Int32>.V2 = (face.pointee.glyph.pointee.bitmap_left,
-                                            -face.pointee.glyph.pointee.bitmap_top)
-                let rectangle:Math<Int>.Rectangle
-                    rectangle.a   = Math.cast(origin, as: Int.self)
-                    rectangle.b   = Math.add(rectangle.a, size)
-                let advance64:Int = face.pointee.glyph.pointee.advance.x
-                let image:Array2D<UInt8> = .init(buffer, size: size)
-                glyphs.append((codepoint, rectangle, advance64, image))
-            }
-            
-            // determine width of atlas 
-            let size:Math<Int>.V2 = 
-            (
-                Math.maskUp(glyphs.map{ $0.3.size.x }.reduce(0, (+)), exponent: 2), 
-                glyphs.map{ $0.3.size.y }.max() ?? 0
-            )
-            
-            let factor:Math<Float>.V2 = Math.reciprocal(Math.cast(size, as: Float.self))
-            
-            var atlas:Array2D<UInt8>            = .init(repeating: 0, size: size), 
-                charmap:[Unicode.Scalar: Glyph] = [:], 
-                x:Int                           = 0
-            for (codepoint, rectangle, advance64, image):
-                (Unicode.Scalar, Math<Int>.Rectangle, Int, Array2D<UInt8>) in glyphs
-            {
-                atlas.assign(at: (x, 0), from: image)
-                let uv:Math<Float>.Rectangle = 
-                (
-                    Math.mult(Math.cast(         (x, 0),              as: Float.self), factor),
-                    Math.mult(Math.cast(Math.add((x, 0), image.size), as: Float.self), factor)
-                )
-                
-                //Log.dump(Math.mult(uv.0, Math.cast(size, as: Float.self)), Math.mult(uv.1, Math.cast(size, as: Float.self)))
-                charmap[codepoint] = .init( rectangle: (Math.mult(rectangle.a, (1, -1)), Math.mult(rectangle.b, (1, -1))), 
-                                                   uv: uv, 
-                                            advance64: advance64)
-                x += image.size.x
-            }
-            
-            let height64:Int = fontsize * Int(face.pointee.height) << 6 / Int(face.pointee.units_per_EM)
-            
-            return (atlas, charmap, height64)
+            $0.1.size.y < $1.1.size.y
         }
+        
+        // guaranteed to be at least the width of the widest glyph
+        let width:Int                       = Atlas.optimalWidth(sizes: sorted.map{ $0.1.size }) 
+        var rows:[[(Int, Array2D<UInt8>)]]  = [], 
+            row:[(Int, Array2D<UInt8>)]     = [], 
+            x:Int                           = 0
+        for (index, bitmap):(Int, Array2D<UInt8>) in sorted 
+        {        
+            x += bitmap.size.x 
+            if x > width 
+            {
+                rows.append(row)
+                row = []
+                x   = bitmap.size.x
+            }
+            
+            row.append((index, bitmap))
+        }
+        rows.append(row)
+        
+        let height:Int              = rows.reduce(0){ $0 + ($1.last?.1.size.y ?? 0) }
+        var packed:Array2D<UInt8>   = .init(repeating: 0, size: (width, height)), 
+            position:Math<Int>.V2   = (0, 0)
+        var sprites:[Math<Float>.Rectangle] = .init(repeating: ((0, 0), (0, 0)), count: bitmaps.count)
+        
+        let divisor:Math<Float>.V2  = Math.cast((width, height), as: Float.self)
+        for row:[(Int, Array2D<UInt8>)] in rows 
+        {
+            for (index, bitmap):(Int, Array2D<UInt8>) in row 
+            {
+                packed.assign(at: position, from: bitmap)
+                sprites[index] = 
+                (
+                    Math.div(Math.cast(         position,               as: Float.self), divisor),
+                    Math.div(Math.cast(Math.add(position, bitmap.size), as: Float.self), divisor)
+                )
+                
+                position.x += bitmap.size.x
+            }
+            
+            position.x  = 0
+            position.y += row.last?.1.size.y ?? 0
+        }
+        
+        try! PNG.encode(v: packed.buffer, size: packed.size, as: .v8, path: "fontatlas-debug.png")
+        Log.note("rendered font atlas of \(sprites.count) glyphs, \(packed.buffer.count >> 10) KB")
+        
+        let texture:GL.Texture<UInt8> = .generate()
+        texture.bind(to: .texture2d)
+        {
+            $0.data(packed, layout: .r8, storage: .r8)
+            $0.setMagnificationFilter(.nearest)
+            $0.setMinificationFilter(.nearest, mipmap: nil)
+        }
+        
+        self.texture = texture 
+        self.sprites = sprites 
+    }
+    
+    deinit 
+    {
+        self.texture.destroy()
+    }
+    
+    private static 
+    func optimalWidth(sizes:[Math<Int>.V2]) -> Int 
+    {
+        let slate:Math<Int>.V2 = 
+        (
+            sizes.reduce(0){ $0 + $1.x }, 
+            sizes.last?.y ?? 0
+        )
+        let minWidth:Int    = Math.nextPowerOfTwo(sizes.map{ $0.x }.max() ?? 0)
+        var width:Int       = minWidth
+        while width * width < slate.y * slate.x 
+        {
+            width <<= 1
+        }
+        
+        return max(minWidth, width >> 1)
     }
 }
 
-struct Font 
+class Typeface 
 {
-    struct Text 
+    private 
+    let ftface:FreeType.Face
+     
+    let family:String, 
+        style:String 
+    
+    init?(_ fontname:String) 
     {
-        @_fixed_layout
-        @usableFromInline
-        struct Vertex 
+        guard let ftface:FreeType.Face = .create(fontname) 
+        else 
         {
-            var xy:Math<Float>.V2, 
-                uv:Math<Float>.V2, 
-                
-                color:Math<UInt8>.V4
-            
-            init(_ xy:Math<Float>.V2, uv:Math<Float>.V2, color:Math<UInt8>.V4)
-            {
-                self.xy = xy
-                self.uv = uv
-                self.color = color
-            }
+            return nil 
         }
         
-        private 
-        let vao:GL.VertexArray 
-        private 
-        var vvo:GL.Vector<Math<Vertex>.V2>
+        self.ftface = ftface 
         
-        init() 
-        {
-            self.vao = .generate()
-            self.vvo = .generate()
-            
-            self.vvo.buffer.bind(to: .array)
-            {
-                self.vao.bind().setVertexLayout(.float(from: .float2), .float(from: .float2), .float(from: .ubyte4_rgba))
-                self.vao.unbind()
-            }
-        }
-    }
-    enum TextAlign 
-    {
-        case left, center, right
+        self.family = .init(cString: ftface.object.pointee.family_name)
+        self.style  = .init(cString: ftface.object.pointee.style_name)
     }
     
-    struct Glyph 
+    deinit 
     {
-        let rectangle:Math<Int>.Rectangle, 
-            uv:Math<Float>.Rectangle
+        self.ftface.release()
     }
     
-    let glyphs:[Glyph], 
-        texture:GL.Texture<UInt8>, 
-        hbfont:HarfBuzz.Font 
-    
-    static 
-    func create(_ fontname:String, size fontsize:Int) -> Font 
-    {
-        return Libraries.freetype.withFace(fontname)
-        {
-            (face:FT_Face) in 
-            
-            return create(face: face, size: fontsize)
-        }
-    }
-    
-    func shape(_ text:String, origin:Math<Int>.V2, align:TextAlign = .left) 
-    {
-        let line:[(Int, Math<Int>.V2)] = self.hbfont.shape(text)
-        let width:Int = (line.last?.1.x ?? 0) - (line.first?.1.x ?? 0)
-        let offset:Math<Int>.V2 
-        switch align 
-        {
-            case .left:
-                offset =  origin 
-            case .center:
-                offset = (origin.x - width / 2, origin.y)
-            case .right:
-                offset = (origin.x - width,     origin.y)
-        }
-        
-        /* return line.map 
-        {
-            let position:Math<Int>.V2 = Math.add($0.1, offset) 
-            
-        } */
-    }
-
-    private static 
-    func create(face:FT_Face, size fontsize:Int) -> Font 
+    func render(size fontsize:Int) -> Font.Unassembled 
     {
         FreeType.checkError
         {
-            FT_Set_Pixel_Sizes(face, 0, .init(fontsize))
+            FT_Set_Pixel_Sizes(self.ftface.object, 0, .init(fontsize))
         }
         
         // load ALL the glyphs         
-        let glyphImages:[(Math<Int>.Rectangle, Array2D<UInt8>)] = 
-            (0 ..< face.pointee.num_glyphs).map 
+        let sprites:[(Math<Int>.V2, Array2D<UInt8>)] = (0 ..< self.ftface.object.pointee.num_glyphs).map 
         {
             (index:Int) in
             
@@ -352,138 +269,182 @@ struct Font
                 {
                     // dumb integer cast because Freetype defines all the bitfield
                     // constants (except for FT_LOAD_DEFAULT) as `long`s
-                    FT_Load_Glyph(face, .init(index), .init(FT_LOAD_RENDER))
+                    FT_Load_Glyph(self.ftface.object, .init(index), .init(FT_LOAD_RENDER | FT_LOAD_NO_HINTING))
                 }
             )
             else
             {
-                return (((0, 0), (0, 0)), .init()) 
+                return ((0, 0), .init()) 
             }
             
-            let bitmap:FT_Bitmap    = face.pointee.glyph.pointee.bitmap, 
+            let bitmap:FT_Bitmap    = self.ftface.object.pointee.glyph.pointee.bitmap, 
                 size:Math<Int>.V2   = Math.cast((bitmap.width, bitmap.rows), as: Int.self), 
                 pitch:Int           = .init(bitmap.pitch)
             let buffer:UnsafeBufferPointer<UInt8> = .init(start: bitmap.buffer, count: pitch * size.y)
             let image:Array2D<UInt8>    = .init(buffer, pitch: pitch, size: size)
             
-            let origin:Math<Int32>.V2   = (face.pointee.glyph.pointee.bitmap_left,
-                                          -face.pointee.glyph.pointee.bitmap_top)
-            let rectangle:Math<Int>.Rectangle
-                rectangle.a   = Math.cast(origin, as: Int.self)
-                rectangle.b   = Math.add(rectangle.a, size)
+            let origin:Math<Int32>.V2   = (self.ftface.object.pointee.glyph.pointee.bitmap_left,
+                                          -self.ftface.object.pointee.glyph.pointee.bitmap_top)
             
-            return (rectangle, image)
+            return (Math.cast(origin, as: Int.self), image)
         }
         
-        let (offsets, atlas):([Math<Int>.V2], Array2D<UInt8>) = pack(glyphImages.map{ $0.1 }) 
-        
-        // debug 
-        do 
+        return .init(sprites, hbfont: .create(fromFreetype: self.ftface))
+    }
+    
+    class Font 
+    {
+        // used to hold glyph images, which are combined among many fonts to make 
+        // one atlas 
+        struct Unassembled 
         {
-            try PNG.encode(v: atlas.buffer, size: (atlas.size.x, atlas.size.y), as: .v8, path: "font.png")
+            fileprivate 
+            let buffer:[(Math<Int>.V2, Array2D<UInt8>)], 
+                hbfont:HarfBuzz.Font // hbfonts are preretained +1
+            
+            var bitmaps:[Array2D<UInt8>] 
+            {
+                return self.buffer.map{ $0.1 }
+            }
+            
+            var glyphCount:Int 
+            {
+                return self.buffer.count
+            }
+            
+            fileprivate 
+            init(_ buffer:[(Math<Int>.V2, Array2D<UInt8>)], hbfont:HarfBuzz.Font) 
+            {
+                self.buffer = buffer 
+                self.hbfont = hbfont 
+            }
         }
-        catch 
+        
+        struct Glyph 
         {
-            print(error)
+            let vertices:Math<Int>.Rectangle, 
+                sprite:Int
         }
         
-        let divisor:Math<Float>.V2  = Math.cast(atlas.size, as: Float.self)
-        let glyphs:[Glyph]          = zip(glyphImages.map{ $0.0 }, offsets).map 
+        let glyphs:[Glyph], 
+            hbfont:HarfBuzz.Font 
+        
+        init(_ unassembled:Unassembled, indices:Range<Int>) 
         {
-            let a:Math<Float>.V2    = Math.cast($0.1,                       as: Float.self), 
-                size:Math<Float>.V2 = Math.cast(Math.sub($0.0.b, $0.0.a),   as: Float.self)
-            let uv:Math<Float>.Rectangle = 
+            self.glyphs = zip(indices, unassembled.buffer).map 
+            {
+                let vertices:Math<Int>.Rectangle  = 
+                (
+                             $0.1.0, 
+                    Math.add($0.1.0, $0.1.1.size)
+                )
+                
+                return .init(vertices: vertices, sprite: $0.0)
+            }
+            
+            self.hbfont  = unassembled.hbfont 
+        }
+        
+        deinit 
+        {
+            self.hbfont.release()
+        }
+    }
+}
+
+struct Text 
+{
+    struct Glyph 
+    {
+        let physicalCoordinates:Math<Float>.Rectangle,  
+            textureCoordinates:Math<Float>.Rectangle 
+    }
+    
+    @_fixed_layout
+    @usableFromInline
+    struct Vertex 
+    {
+        var physicalCoordinates:Math<Float>.V2, 
+            textureCoordinates:Math<Float>.V2, 
+            
+            color:Math<UInt8>.V4
+        
+        init(_ physical:Math<Float>.V2, texture:Math<Float>.V2, color:Math<UInt8>.V4)
+        {
+            self.physicalCoordinates    = physical
+            self.textureCoordinates     = texture
+            self.color                  = color
+        }
+    }
+    
+    private 
+    let glyphs:[Glyph]
+    
+    var color:Math<UInt8>.V4
+    
+    static 
+    func paragraph(_ runs:[(Style.Definitions.Inline.Computed, String)], linebox:Math<Int>.V2, indent:Int = 0, atlas:Atlas) -> [Text]
+    {
+        var texts:[Text] = []
+        var lineorigin:Math<Int>.V2 = (indent, 0) 
+        for (style, text):(Style.Definitions.Inline.Computed, String) in runs 
+        {
+            var glyphs:[Glyph]  = []
+            var cursor:Int?     = lineorigin.x
+            for line:[HarfBuzz.Glyph] in style.font.hbfont.paragraph(text, features: style.features, indent: &cursor, width: linebox.x) 
+            {
+                for reference:HarfBuzz.Glyph in line 
+                {
+                    let fontglyph:Typeface.Font.Glyph = style.font.glyphs[reference.index], 
+                        position:Math<Int>.V2 = Math.add(reference.position, lineorigin)
+                    
+                    let physicalCoordinates:Math<Float>.Rectangle = 
+                    (
+                        Math.cast(Math.add(fontglyph.vertices.a, position), as: Float.self), 
+                        Math.cast(Math.add(fontglyph.vertices.b, position), as: Float.self)
+                    )
+                    
+                    let glyph:Glyph    = .init(physicalCoordinates: physicalCoordinates, 
+                                                textureCoordinates: atlas[fontglyph.sprite])
+                    glyphs.append(glyph)
+                }
+                
+                lineorigin.x  = 0 
+                lineorigin.y += linebox.y
+            }
+            
+            if let cursor:Int = cursor 
+            {
+                lineorigin.x  = cursor 
+                lineorigin.y -= linebox.y 
+            } 
+            else 
+            {
+                lineorigin.x  = 0
+            }
+            
+            texts.append(.init(glyphs: glyphs, color: style.color))
+        }
+        
+        return texts
+    }
+    
+    func vertices(at origin:Math<Int>.V2) -> [Vertex] 
+    {
+        let offset:Math<Float>.V2   = Math.cast(origin, as: Float.self)
+        var vertices:[Vertex]       = []
+            vertices.reserveCapacity(self.glyphs.count * 2)
+        for glyph:Glyph in self.glyphs
+        {
+            let physical:Math<Float>.Rectangle = 
             (
-                Math.div(         a,        divisor), 
-                Math.div(Math.add(a, size), divisor)
+                Math.add(glyph.physicalCoordinates.a, offset),
+                Math.add(glyph.physicalCoordinates.b, offset)
             )
-            
-            return .init(rectangle: $0.0, uv: uv)
+            vertices.append(.init(physical.a, texture: glyph.textureCoordinates.a, color: self.color))
+            vertices.append(.init(physical.b, texture: glyph.textureCoordinates.b, color: self.color))
         }
         
-        let texture:GL.Texture<UInt8> = .generate()
-        
-        texture.bind(to: .texture2d)
-        {
-            $0.data(atlas, layout: .r8, storage: .r8)
-            $0.setMagnificationFilter(.nearest)
-            $0.setMinificationFilter(.nearest, mipmap: nil)
-        }
-        
-        let family:String = .init(cString: face.pointee.family_name), 
-            style:String  = .init(cString: face.pointee.style_name)
-        Log.note("loaded \(glyphs.count) glyphs @ \(fontsize) px from font '\(family):\(style)' (\(atlas.buffer.count >> 10) KB)")
-        
-        let hbface:HarfBuzz.Face = .create(fromFreetype: face), 
-            hbfont:HarfBuzz.Font = hbface.font(size: fontsize) 
-        hbface.destroy()
-        
-        return .init(glyphs: glyphs, texture: texture, hbfont: hbfont)
-    }
-    
-    private static 
-    func pack(_ sprites:[Array2D<UInt8>]) -> ([Math<Int>.V2], Array2D<UInt8>)
-    {
-        // sort rectangles in increasing height 
-        let sorted:[Array2D<UInt8>] = sprites.sorted 
-        {
-            $0.size.y < $1.size.y
-        }
-        
-        // guaranteed to be at least the width of the widest glyph
-        let width:Int               = optimalWidth(sorted: sorted) 
-        var rows:[[Array2D<UInt8>]] = [], 
-            row:[Array2D<UInt8>]    = [], 
-            x:Int                   = 0
-        for sprite:Array2D<UInt8> in sorted 
-        {        
-            x += sprite.size.x 
-            if x > width 
-            {
-                rows.append(row)
-                row = []
-                x   = sprite.size.x
-            }
-            
-            row.append(sprite)
-        }
-        rows.append(row)
-        
-        let height:Int              = rows.reduce(0){ $0 + ($1.last?.size.y ?? 0) }
-        var packed:Array2D<UInt8>   = .init(repeating: 0, size: (width, height)), 
-            position:Math<Int>.V2   = (0, 0)
-        var positions:[Math<Int>.V2] = []
-        for row:[Array2D<UInt8>] in rows 
-        {
-            for sprite:Array2D<UInt8> in row 
-            {
-                packed.assign(at: position, from: sprite)
-                positions.append(position)
-                position.x += sprite.size.x
-            }
-            
-            position.x  = 0
-            position.y += row.last?.size.y ?? 0
-        }
-        
-        return (positions, packed)
-    }
-    
-    private static 
-    func optimalWidth(sorted:[Array2D<UInt8>]) -> Int 
-    {
-        let slate:Math<Int>.V2 = 
-        (
-            sorted.reduce(0){ $0 + $1.size.x }, 
-            sorted.last?.size.y ?? 0
-        )
-        let minWidth:Int    = Math.nextPowerOfTwo(sorted.map{ $0.size.x }.max() ?? 0)
-        var width:Int       = minWidth
-        while width * width < slate.y * slate.x 
-        {
-            width <<= 1
-        }
-        
-        return max(minWidth, width >> 1)
+        return vertices
     }
 }

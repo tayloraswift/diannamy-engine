@@ -1,24 +1,73 @@
 import FreeType
 
-enum Libraries 
+enum FreeType
 {
-    static 
-    let freetype:FreeType = 
+    private 
+    class Library 
     {
-        guard let library:FreeType = FreeType.init() 
-        else 
+        let handle:OpaquePointer  
+        
+        init()
         {
-            Log.fatal("failed to initialize freetype library")
+            guard let handle:FT_Library =
+            {
+                var handle:FT_Library?
+                FT_Init_FreeType(&handle)
+                return handle
+            }()
+            else
+            {
+                Log.fatal("failed to initialize freetype library")
+            }
+            
+            self.handle = handle
+        }
+
+        deinit
+        {
+            FT_Done_FreeType(self.handle)
+        }
+    }
+    
+    struct Face 
+    {
+        let object:FT_Face 
+        
+        static 
+        func create(_ fontname:String) -> Face?
+        {
+            guard let face:FT_Face =
+            {
+                var face:FT_Face?
+                FreeType.checkError
+                {
+                    FT_New_Face(FreeType.freetype.handle, fontname, 0, &face)
+                }
+
+                return face
+            }()
+            else
+            {
+                Log.error("failed to load font '\(fontname)'")
+                return nil 
+            }
+            
+            return .init(object: face)
         }
         
-        return library
-    }()
-}
-
-class FreeType
-{
-    //private
-    let library:OpaquePointer
+        func retain() 
+        {
+            FT_Reference_Face(self.object)
+        }
+        
+        func release() 
+        {
+            FT_Done_Face(self.object)
+        }
+    }
+    
+    private static 
+    let freetype:Library = .init() 
 
     private static
     let errors:[Int32: String] =
@@ -37,27 +86,6 @@ class FreeType
         })
     }()
 
-    init?()
-    {
-        guard let library:FT_Library =
-        {
-            var library:FT_Library?
-            FT_Init_FreeType(&library)
-            return library
-        }()
-        else
-        {
-            return nil
-        }
-        
-        
-        self.library = library
-    }
-
-    deinit
-    {
-        FT_Done_FreeType(self.library)
-    }
 
     @discardableResult
     static
@@ -75,6 +103,7 @@ class FreeType
         }
     }
     
+    static 
     func withFace<Result>(_ fontname:String, _ body:(FT_Face) throws -> Result) rethrows -> Result
     {
         guard let face:FT_Face =
@@ -82,7 +111,7 @@ class FreeType
             var face:FT_Face?
             FreeType.checkError
             {
-                FT_New_Face(self.library, fontname, 0, &face)
+                FT_New_Face(FreeType.freetype.handle, fontname, 0, &face)
             }
 
             return face
@@ -100,6 +129,7 @@ class FreeType
         return try body(face)
     }
     
+    static 
     func warnMonospace(_ face:FT_Face, fontname:String = "<anonymous>") 
     {
         if face.pointee.face_flags & FT_FACE_FLAG_FIXED_WIDTH == 0
@@ -108,6 +138,7 @@ class FreeType
         }
     }
     
+    static 
     func warnVerticalAdvance(_ face:FT_Face, fontname:String = "<anonymous>") 
     {
         // determine cell width of the glyphs

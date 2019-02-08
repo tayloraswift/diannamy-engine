@@ -14,7 +14,7 @@ out Vertex
 
 void main()
 {
-    gl_Position  = vec4(2 * position / viewport - 1, 0, 1);
+    gl_Position  = vec4(2 * vec2(position.x, viewport.y - position.y) / viewport - 1, 1, 1);
     vertex.uv    = uv;
     vertex.color = color;
 }

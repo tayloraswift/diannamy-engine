@@ -614,9 +614,11 @@ struct Coordinator
     var model:Model
     var controllers:[LayerController] 
     
-    var buttons:UI.Action.BitVector
-    var active:Int 
-    var hover:Int? // only managed by emitLeaveCalls(_:)
+    var definitions:Style.Definitions 
+    
+    var buttons:UI.Action.BitVector, 
+        active:Int, 
+        hover:Int? // only managed by emitLeaveCalls(_:)
     
     var activeController:LayerController
     {
@@ -638,6 +640,18 @@ struct Coordinator
             Base.init(), 
             Controller.MapEditor.init()
         ]
+        
+        let faceinfo:[Style.Definitions.Face: (String, Int)] = 
+        [
+            .mono55:    ("assets/fonts/SourceCodePro-Medium.otf",      16), 
+            .text55:    ("assets/fonts/SourceSansPro-Regular.ttf",     16), 
+            .text56:    ("assets/fonts/SourceSansPro-Italic.ttf",      16), 
+            .text75:    ("assets/fonts/SourceSansPro-Bold.ttf",        16), 
+            .text76:    ("assets/fonts/SourceSansPro-BoldItalic.ttf",  16)
+        ]
+        
+        self.definitions    = .init(faces: faceinfo)
+        
         self.buttons        = .init()
         self.active         = self.controllers.endIndex - 1
         self.hover          = nil
@@ -688,6 +702,12 @@ struct Coordinator
         for index:Int in self.controllers.indices 
         {
             self.controllers[index].viewport = size 
+        }
+        
+        // set viewport uniform in text rendering shader 
+        Programs.text.bind 
+        {
+            $0.set(float2: "viewport", size)
         }
     }
     
@@ -802,7 +822,7 @@ struct Coordinator
         GL.clear(color: true, depth: true)
         for index:Int in self.controllers.indices 
         {
-            self.controllers[index].draw(self.model)
+            self.controllers[index].draw(self.model, definitions: self.definitions)
         }
     }
     
@@ -865,7 +885,7 @@ protocol LayerController
     func process(_ model:Model, _ delta:Int) 
     
     mutating 
-    func draw(_ model:Model)
+    func draw(_ model:Model, definitions:Style.Definitions)
 }
 extension LayerController 
 {
@@ -914,7 +934,7 @@ extension LayerController
     
     func process(_:Model, _:Int) { }
     
-    func draw(_:Model) { }
+    func draw(_:Model, definitions _:Style.Definitions) { }
 }
 
 // Equatable conformance not required in base type definition to allow Latest<Void> 
@@ -1706,14 +1726,14 @@ enum Controller
         }
         
         mutating 
-        func draw(_ model:Model) 
+        func draw(_ model:Model, definitions:Style.Definitions) 
         {
             if self.state.plane.isDirty 
             {
                 self.updateHotspots(model.map.points)
             }
             
-            self.view.draw(model, state: &self.state)
+            self.view.draw(model, definitions: definitions, state: &self.state)
         }
     }
 }
@@ -2118,6 +2138,11 @@ extension Controller.MapEditor
         private 
         var cameraBlock:GL.Buffer<Camera.Storage>
         
+        private 
+        var textvao:GL.VertexArray, 
+            textvvo:GL.Vector<Text.Vertex>, 
+            textRendered:Bool = false 
+        
         init()
         {
             self.globe   = .init()
@@ -2128,11 +2153,45 @@ extension Controller.MapEditor
             {
                 $0.reserve(capacity: 1, usage: .dynamic)
             }
+            
+            self.textvao = .generate()
+            self.textvvo = .generate()
+            
+            self.textvvo.buffer.bind(to: .array)
+            {
+                self.textvao.bind().setVertexLayout(.float(from: .float2), .float(from: .float2), .float(from: .ubyte4_rgba))
+                self.textvao.unbind()
+            }
         }
         
         mutating 
-        func draw(_ model:Model, state controllerState:inout State)
+        func draw(_ model:Model, definitions:Style.Definitions, state controllerState:inout State)
         {
+            if !textRendered 
+            {
+                let blockSelectors:Set<Style.Selector>   = [.paragraph]
+                let runs:[(Set<Style.Selector>, String)] = 
+                [
+                    ([],                    "012345 Hello world! "), 
+                    ([.emphasis],           "This text is italic! There once was a girl known by "), 
+                    ([.emphasis, .strong],  "everyone"), 
+                    ([.strong],             " and no one. efficiency. 012345") 
+                ]
+                
+                let computed:[(Style.Definitions.Inline.Computed, String)] = runs.map 
+                {
+                    (definitions.compute(inline: $0.0.union(blockSelectors)), $0.1)
+                }
+                
+                let text:[Text] = Text.paragraph(computed, linebox: (150, 20), atlas: definitions.atlas)
+                let vertices:[Text.Vertex] = text.flatMap 
+                {
+                    $0.vertices(at: (20, 20))
+                }
+                self.textvvo.assign(data: vertices, in: .array, usage: .static)
+                textRendered = true 
+            }
+            
             self.cameraBlock.bind(to: .uniform, index: 0)
             {
                 (target:GL.Buffer.BoundTarget) in
@@ -2159,11 +2218,20 @@ extension Controller.MapEditor
                 GL.blend(.add)
                 self.borders.draw(model.map, state: &controllerState)
             }
+            
+            Programs.text.bind 
+            {
+                _ in 
+                definitions.atlas.texture.bind(to: .texture2d, index: 2)
+                {
+                    self.textvao.draw(0 ..< self.textvvo.count, as: .lines)
+                }
+            }
         }
     }
 }
 
-enum Layout 
+/* enum Layout 
 {
     enum Element 
     {
@@ -2180,4 +2248,4 @@ enum Layout
     {
         var children:[Element]
     }
-}
+} */

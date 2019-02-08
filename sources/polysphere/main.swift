@@ -278,8 +278,8 @@ func main()
     
     
     
-    let font:Font = .create("assets/fonts/SourceSansPro-Regular.ttf", size: 18)
-    font.hbfont.shape("efficiently")
+    //let font:Font = .create("assets/fonts/SourceSansPro-Regular.ttf", size: 18)
+    //print(font.hbfont.paragraph("there once was a girl known by everyone and no one", indent: 0, width: 1024))
     
     window.loop()
 }
