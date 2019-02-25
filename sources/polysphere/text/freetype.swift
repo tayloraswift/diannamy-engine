@@ -2,7 +2,7 @@ import FreeType
 
 enum FreeType
 {
-    private 
+    private final 
     class Library 
     {
         let handle:OpaquePointer  

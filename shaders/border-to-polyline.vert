@@ -5,15 +5,10 @@ layout(location = 1) in int index;
 
 layout(std140) uniform Camera
 {
-    mat4  U;
-    mat4  V;
-    mat3  F;
-    vec3  position;
-    
-    vec3  a;
-    float h;
-    vec3  b;
-    float k;
+    mat4 U;         // P × V
+    mat4 V;         // V
+    mat3 F;         // F[0 ..< 3]
+    vec3 position;  // F[3]
 } camera;
 
 out Vertex

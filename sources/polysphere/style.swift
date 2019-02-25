@@ -152,7 +152,7 @@ struct Style
         }
         
         private(set)
-        var atlas:Atlas 
+        var atlas:Typeface.Font.Atlas 
         private 
         var fonts:[Typeface.Font]
         
@@ -180,6 +180,31 @@ struct Style
             .init(
                 font:       .text76_12
             )), 
+            
+            
+            .init([.mapeditor, .label], 
+            .init(
+                font:       .text55_12, 
+                features:   [.kern(true), .onum(true), .tnum(true)], 
+                color:      (255, 0, 0, .max)
+            )), 
+            .init([.mapeditor, .label, .strong], 
+            .init(
+                font:       .text75_12
+            )), 
+            
+            .init([.mapeditor, .label, .move], 
+            .init(
+                color:      (255, 153, 0, .max)
+            )), 
+            .init([.mapeditor, .label, .new], 
+            .init(
+                color:      (77, 51, 255, .max)
+            )), 
+            .init([.mapeditor, .label, .preselection], 
+            .init(
+                color:      (255, 0, 255, .max)
+            ))
         ]
         
         private 
@@ -198,7 +223,6 @@ struct Style
         
         init(faces specifications:[Face: (String, Int)] = [:]) 
         {
-            var fallback:Typeface? = nil 
             let typefaces:[Face: (Typeface, Int)] = specifications.compactMapValues
             {
                 (specification:(String, Int)) in 
@@ -209,44 +233,7 @@ struct Style
                 }
             }
             
-            let unassembled:[Typeface.Font.Unassembled] = Font.allCases.map
-            {
-                let typeface:Typeface 
-                if let lookup:Typeface = typefaces[$0.face]?.0 ?? fallback
-                {
-                    typeface = lookup 
-                }
-                else 
-                {
-                    fallback = Typeface.init("assets/fonts/fallback") 
-                    
-                    guard let fallback:Typeface = fallback 
-                    else 
-                    {
-                        Log.fatal("failed to load fallback font")
-                    }
-                    
-                    typeface = fallback 
-                }
-                
-                let scale:Int = typefaces[$0.face]?.1 ?? 16
-                return typeface.render(size: $0.size * scale / 16)
-            }
-            
-            var indices:[Range<Int>]        = [], 
-                bitmaps:[Array2D<UInt8>]    = []
-            for unassembled:Typeface.Font.Unassembled in unassembled
-            {
-                let base:Int = bitmaps.endIndex 
-                bitmaps.append(contentsOf: unassembled.bitmaps)
-                indices.append(base ..< bitmaps.endIndex) 
-            }
-            
-            self.atlas = .init(bitmaps)
-            self.fonts = zip(unassembled, indices).map 
-            {
-                return .init($0.0, indices: $0.1)
-            }
+            (self.atlas, self.fonts) = Typeface.Font.assemble(Font.allCases, from: typefaces)
         }
         
         func compute(inline selectors:Set<Selector>) -> Inline.Computed 
@@ -274,13 +261,39 @@ struct Style
             
             return .init(lineheight: lineheight)
         }
+        
+        func line(_ runs:[(Set<Selector>, String)]) -> [Text]
+        {
+            let computed:[(Inline.Computed, String)] = runs.map 
+            {
+                (self.compute(inline: $0.0), $0.1)
+            }
+            
+            return Text.line(computed, atlas: self.atlas)
+        }
+        func paragraph(_ runs:[(Set<Selector>, String)], linebox:Math<Int>.V2, block:Set<Selector> = []) -> [Text]
+        {
+            let computed:[(Inline.Computed, String)] = runs.map 
+            {
+                (self.compute(inline: $0.0.union(block)), $0.1)
+            }
+            
+            return Text.paragraph(computed, linebox: linebox, atlas: self.atlas)
+        }
     }
     
     enum Selector 
     {
         case paragraph 
+        case mapeditor 
         
         case emphasis 
         case strong 
+        
+        case label 
+        case selection 
+        case preselection
+        case move 
+        case new 
     }
 }

@@ -5,15 +5,10 @@ layout(location = 1) in int index;
 
 layout(std140) uniform Camera
 {
-    mat4  U;
-    mat4  V;
-    mat3  F;
-    vec3  position;
-    
-    vec3  a;
-    float h;
-    vec3  b;
-    float k;
+    mat4 U;         // P × V
+    mat4 V;         // V
+    mat3 F;         // F[0 ..< 3]
+    vec3 position;  // F[3]
 } camera;
 
 uniform int indicator;
@@ -31,7 +26,7 @@ void main()
     if (index == -1) 
     {
         // new
-        vertex.color = vec3(1, 0.6, 0);
+        vertex.color = vec3(0.3, 0.2, 1);
         vertex.index = -1;
     }
     else if (index == indicator >> 1)
@@ -41,23 +36,16 @@ void main()
         {
             case 0:
                 // selected
-                if (index == preselection)
-                {
-                    vertex.color = vec3(1, 0, 0.5);
-                }
-                else 
-                {
-                    vertex.color = vec3(1, 0, 0);
-                }
-                vertex.index = index;
+                vertex.color = vec3(1, 0, 0);
                 break;
 
             default:
                 // moving 
-                vertex.color = vec3(0.3, 0.2, 1);
-                vertex.index = index;
+                vertex.color = vec3(1, 0.6, 0);
                 break;
         }
+        
+        vertex.index = index;
     }
     else if (index == preselection)
     {
@@ -66,7 +54,7 @@ void main()
     }
     else 
     {
-        vertex.color = vec3(1, 1, 1); 
+        vertex.color = vec3(0.5, 0.5, 0.5); 
         vertex.index = index;
     }
     

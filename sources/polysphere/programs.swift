@@ -30,44 +30,26 @@ enum Programs
         ],
         uniforms:
         [
-            .block("Camera", binding: 0), 
+            .block("Camera", binding: 1), 
             .float4("sphere"), 
             .texture("globetex", binding: 1)
         ]
     )!
     
     static
-    let borders:GL.Program = .create(
+    let borderNodes:GL.Program = .create(
         shaders:
         [
-            (.vertex  , "shaders/border.vert"),
-            (.geometry, "shaders/border.geom"),
-            (.fragment, "shaders/border.frag")
+            (.vertex  , "shaders/border-to-bordernodes.vert"),
+            (.geometry, "shaders/bordernodes.geom"),
+            (.fragment, "shaders/bordernodes.frag")
         ],
         uniforms:
         [
-            .block("Camera", binding: 0), 
+            .block("Display", binding: 0), 
+            .block("Camera", binding: 1), 
             .int("indicator"), 
             .int("preselection")
-        ]
-    )!
-    
-    static
-    let borderLabels:GL.Program = .create(
-        shaders:
-        [
-            (.vertex  , "shaders/border.vert"),
-            (.geometry, "shaders/borderlabel.geom"),
-            (.fragment, "shaders/borderlabel.frag")
-        ],
-        uniforms:
-        [
-            .block("Camera", binding: 0), 
-            .int("indicator"), 
-            .int("preselection"), 
-            
-            .float4("monoFontMetrics"), 
-            .texture("monoFontAtlas", binding: 0)
         ]
     )!
     
@@ -81,7 +63,8 @@ enum Programs
         ],
         uniforms:
         [
-            .block("Camera", binding: 0), 
+            .block("Display", binding: 0), 
+            .block("Camera", binding: 1), 
             .float("thickness"), 
             .float4("frontColor"), 
             .float4("backColor")
@@ -98,7 +81,23 @@ enum Programs
         ],
         uniforms:
         [
-            .float2("viewport"), 
+            .block("Display", binding: 0), 
+            .texture("fontatlas", binding: 2)
+        ]
+    )!
+    
+    static
+    let tracingText:GL.Program = .create(
+        shaders:
+        [
+            (.vertex  , "shaders/tracingtext.vert"),
+            (.geometry, "shaders/tracingtext.geom"),
+            (.fragment, "shaders/text.frag")
+        ],
+        uniforms:
+        [
+            .block("Display", binding: 0), 
+            .block("Camera", binding: 1), 
             .texture("fontatlas", binding: 2)
         ]
     )!

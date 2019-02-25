@@ -2,7 +2,7 @@
 
 in Vertex
 {
-    noperspective vec2 uv;
+    noperspective vec2 anchor;
     vec4 color;
 } vertex;
 
@@ -12,5 +12,5 @@ out vec4 color;
 
 void main()
 {
-    color = vec4(vertex.color.rgb, vertex.color.a * texture(fontatlas, vertex.uv).r);
+    color = vec4(vertex.color.rgb, vertex.color.a * texture(fontatlas, vertex.anchor).r);
 }

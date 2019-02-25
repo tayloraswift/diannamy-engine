@@ -8,10 +8,20 @@ class Window
     let window:OpaquePointer
 
     private
-    var coordinator:Coordinator, 
-        height:Double, // need to store this to flip y axis
+    var coordinator:Coordinator 
+    {
+        didSet 
+        {
+            self.eventsProcessed = true 
+        }
+    }
+    private 
+    var height:Double, // need to store this to flip y axis
         lastDown:(left:Double, middle:Double, right:Double)
-
+    
+    private 
+    var eventsProcessed:Bool = true 
+    
     init(size:Math<Float>.V2, name:String)
     {
         guard let window:OpaquePointer = glfwCreateWindow(CInt(size.x), CInt(size.y), name, nil, nil)
@@ -55,7 +65,8 @@ class Window
                 return 
             }
             
-            Window.reconstitute(from: context).coordinator.character(.init(codepoint))
+            let window:Window   = .reconstitute(from: context)
+            window.coordinator.character(.init(codepoint))
         }
         
         glfwSetKeyCallback(window)
@@ -72,7 +83,6 @@ class Window
             }
             
             let window:Window               = .reconstitute(from: context)
-            
             if  modifiers.control, 
                 key == .V 
             {
@@ -222,11 +232,14 @@ class Window
 
             let t1:Double = glfwGetTime()
             
-            self.coordinator.process(Int(t1 * 256) - Int(t0 * 256))
-            self.coordinator.draw()
+            if  self.coordinator.process(Int(t1 * 1000) - Int(t0 * 1000)) || 
+                self.eventsProcessed
+            {
+                self.eventsProcessed = false 
+                self.coordinator.draw()
+                glfwSwapBuffers(self.window)
+            }
             
-            glfwSwapBuffers(self.window)
-
             t0 = t1
         }
     }
@@ -275,11 +288,6 @@ func main()
     OpenGL.loader = unsafeBitCast(glfwGetProcAddress, to: OpenGL.LoaderFunction.self)
     
     let window:Window = .init(size: (1200, 600), name: "Map Editor")
-    
-    
-    
-    //let font:Font = .create("assets/fonts/SourceSansPro-Regular.ttf", size: 18)
-    //print(font.hbfont.paragraph("there once was a girl known by everyone and no one", indent: 0, width: 1024))
     
     window.loop()
 }

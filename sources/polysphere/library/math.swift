@@ -153,6 +153,25 @@ enum Math<N>
     {
         return (ptr[0], ptr[1], ptr[2], ptr[3])
     }
+    
+    @inline(__always)
+    static
+    func extend(_ v:V2, _ s:N) -> V3
+    {
+        return (v.x, v.y, s)
+    }
+    @inline(__always)
+    static
+    func extend(_ v:V2, _ s1:N, _ s2:N) -> V4
+    {
+        return (v.x, v.y, s1, s2)
+    }
+    @inline(__always)
+    static
+    func extend(_ v:V3, _ s:N) -> V4
+    {
+        return (v.x, v.y, v.z, s)
+    }
 }
 
 extension Math where N:Numeric
@@ -356,19 +375,6 @@ extension Math where N:Numeric
                 (dot(AT.0, B.2), dot(AT.1, B.2), dot(AT.2, B.2), dot(AT.3, B.2)), 
                 (dot(AT.0, B.3), dot(AT.1, B.3), dot(AT.2, B.3), dot(AT.3, B.3))
             )
-    }
-    
-    @inline(__always)
-    static
-    func extend(_ v:V2, _ s:N) -> V3
-    {
-        return (v.x, v.y, s)
-    }
-    @inline(__always)
-    static
-    func extend(_ v:V3, _ s:N) -> V4
-    {
-        return (v.x, v.y, v.z, s)
     }
 }
 

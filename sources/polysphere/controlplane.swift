@@ -1,4 +1,4 @@
-struct ControlPlane:ViewEquatable
+struct ControlPlane
 {
     private 
     struct Ray 
@@ -38,17 +38,17 @@ struct ControlPlane:ViewEquatable
     
     var position:Math<Float>.V3 
     {
-        return self.camera.position
+        return self.matrices.position
     }
     
     private 
     var rayfilm:Rayfilm 
     {
-        return .init(matrix: Math.mat3(from: self.camera.F), source: self.camera.position)
+        return .init(matrix: self.matrices.F, source: self.matrices.position)
     }
 
     internal private(set)
-    var camera:Camera
+    var matrices:Camera.Matrices
     
     private
     var head:Camera.Rig,
@@ -59,53 +59,44 @@ struct ControlPlane:ViewEquatable
         // animation: setting the phase to 0 will immediately update the state to 
         // head while setting it to 1 will allow a transition from base to head
         phase:Float?
-        
-    var sensor:Math<Float>.Rectangle
+    
+    mutating 
+    func viewport(_ size:Math<Float>.V2) 
     {
-        didSet 
+        self.matrices._viewport = size 
+        self.queueUpdate()
+    }
+    
+    mutating 
+    func queueUpdate() 
+    {
+        if self.phase == nil 
         {
-            if self.phase == nil 
-            {
-                self.phase = 0
-            }
+            self.phase = 0
         }
     }
     
-    static 
-    func viewEquivalent(_ a:ControlPlane, _ b:ControlPlane) -> Bool 
-    {
-        // self.camera is a cache property for storing animation interpolations 
-        // self.state is only used for internal book-keeping
-        return  a.head   == b.head && 
-                a.base   == b.base && 
-                a.phase  == b.phase && 
-                a.sensor == b.sensor 
-    }
-    
-    private 
+    private(set)
     var mutated:Bool = true
     
     init(_ base:Camera.Rig)
     {
-        self.sensor = ((0, 0), (0, 0))
+        self.matrices   = .identity
         
-        self.camera = .init()
+        self.head       = base
+        self.base       = base
         
-        self.head   = base
-        self.base   = base
+        self.state      = .none 
         
-        self.state  = .none 
-        
-        self.phase  = 0
+        self.phase      = 0
     }
     
-    // project a point into 2D (pixel coordinates )
+    // project a point into 2D (normalized 0 ... 1 x 0 ... 1 coordinates )
     func trace(_ point:Math<Float>.V3) -> Math<Float>.V2
     {
-        let h:Math<Float>.V4    = Math.mult(self.camera.U, Math.extend(point, 1))
+        let h:Math<Float>.V4    = Math.mult(self.matrices.U, Math.extend(point, 1))
         let clip:Math<Float>.V2 = Math.scale((h.x, h.y), by: 1 / h.w) 
-        return Math.mult(   Math.sub(self.sensor.b, self.sensor.a), 
-                            Math.add(Math.scale(clip, by: 0.5), (0.5, 0.5)))
+        return Math.add(Math.scale(clip, by: 0.5), (0.5, 0.5))
     }
     
     // kills any current animation and synchronizes the 2 current keyframes
@@ -229,15 +220,15 @@ struct ControlPlane:ViewEquatable
 
     // returns true if the view system has changed
     mutating
-    func process(_ delta:Int) 
+    func process(_ delta:Int, viewport:Math<Float>.V2, frame:Math<Float>.Rectangle) -> Bool 
     {
         guard let phase:Float = self.phase
         else
         {
-            return
+            return self.mutated
         }
 
-        let decremented:Float = phase - (1 / 64) * Float(delta),
+        let decremented:Float = phase - (1.0 / 250.0) * .init(delta),
             interpolation:Camera.Rig
         if decremented > 0
         {
@@ -250,31 +241,24 @@ struct ControlPlane:ViewEquatable
             self.phase    = nil
         }
         
-        self.updateCamera(interpolation)
-        self.mutated = true
+        self.updateMatrices(interpolation, viewport: viewport, frame: frame)
+        return self.mutated
     }
     
     private mutating 
-    func updateCamera(_ rig:Camera.Rig) 
+    func updateMatrices(_ rig:Camera.Rig, viewport:Math<Float>.V2, frame:Math<Float>.Rectangle) 
     {
-        let R:Math<Float>.Mat3 = rig.rotationMatrix(), 
-            t:Math<Float>.V3   = rig.translation()
-        let (a, b):(Math<Float>.V3, Math<Float>.V3) =
-            rig.frustum(sensor: self.sensor, clip: (-0.1, -100))
-
-        self.camera.view(rotationMatrix: R, translation: t)
-        self.camera.frustum(a, b)
-        self.camera.fragment(rotationMatrix: R, translation: t, sensor: self.sensor)
-        self.camera.matrices()
+        self.matrices = rig.matrices(frame: frame, viewport: viewport, clip: (-0.1, -100))
+        self.mutated  = true
     }
     
     mutating 
-    func pop() -> Camera? 
+    func pop() -> Camera.Matrices? 
     {
         if self.mutated 
         {
             self.mutated = false 
-            return self.camera 
+            return self.matrices
         }
         else 
         {

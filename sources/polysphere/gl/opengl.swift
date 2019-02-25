@@ -237,7 +237,8 @@ enum GL
             }
         }
         
-        func bind<Result>(to target:Target, body:(BoundTarget) -> Result) -> Result
+        func bind<Result>(to target:Target, _ body:(BoundTarget) throws -> Result) 
+            rethrows -> Result
         {
             OpenGL.glBindBuffer(target.rawValue, self.id)
             defer 
@@ -245,9 +246,10 @@ enum GL
                 OpenGL.glBindBuffer(target.rawValue, 0)
             }
             
-            return body(.init(rawValue: target.rawValue))
+            return try body(.init(rawValue: target.rawValue))
         }
-        func bind<Result>(to target:Target, body:() -> Result) -> Result
+        func bind<Result>(to target:Target, _ body:() throws -> Result) 
+            rethrows -> Result
         {
             OpenGL.glBindBuffer(target.rawValue, self.id)
             defer 
@@ -255,10 +257,11 @@ enum GL
                 OpenGL.glBindBuffer(target.rawValue, 0)
             }
             
-            return body()
+            return try body()
         }
         
-        func bind<Result>(to target:Target, index:Int, body:(BoundTarget) -> Result) -> Result
+        func bind<Result>(to target:Target, index:Int, _ body:(BoundTarget) throws -> Result) 
+            rethrows -> Result
         {
             assert(target == .uniform)
             
@@ -268,9 +271,10 @@ enum GL
                 OpenGL.glBindBufferBase(target.rawValue, OpenGL.UInt(index), 0)
             }
             
-            return body(.init(rawValue: target.rawValue))
+            return try body(.init(rawValue: target.rawValue))
         }
-        func bind<Result>(to target:Target, index:Int, body:() -> Result) -> Result
+        func bind<Result>(to target:Target, index:Int, _ body:() throws -> Result) 
+            rethrows -> Result
         {
             assert(target == .uniform)
             
@@ -280,7 +284,7 @@ enum GL
                 OpenGL.glBindBufferBase(target.rawValue, OpenGL.UInt(index), 0)
             }
             
-            return body()
+            return try body()
         }
     }
     

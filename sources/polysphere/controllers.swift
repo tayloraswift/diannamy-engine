@@ -567,7 +567,7 @@ struct Model
                     self.map = try decoder.decode(Map.self, from: data)
                     self.log.print("(mapedit) loaded map '\(path)'")
                     
-                    return .mapSync(continuity: false)
+                    return .mapSync(reset: true)
                 }
                 catch
                 {
@@ -594,9 +594,21 @@ struct Model
 
 struct Coordinator 
 {
+    struct Context 
+    {
+        var viewport:Math<Float>.V2, 
+            model:Model 
+        
+        enum Mutation 
+        {
+            case viewport
+            case model 
+        }
+    }
+    
     struct Base:LayerController 
     {
-        var viewport:Math<Float>.V2 = (0, 0)
+        var frame:Math<Float>.Rectangle = ((0, 0), (0, 0))
     }
     
     enum Event 
@@ -604,14 +616,14 @@ struct Coordinator
         case toggleTerminal
         case terminalInput([Unicode.Scalar])
         
-        case mapSync(continuity:Bool)
+        case mapSync(reset:Bool)
         
         case mapPointMoved(Int, Math<Float>.V3)
         case mapPointAdded(Int, Math<Float>.V3)
         case mapPointRemoved(Int)
     }
     
-    var model:Model
+    var context:Context
     var controllers:[LayerController] 
     
     var definitions:Style.Definitions 
@@ -619,6 +631,8 @@ struct Coordinator
     var buttons:UI.Action.BitVector, 
         active:Int, 
         hover:Int? // only managed by emitLeaveCalls(_:)
+    
+    let displayBlock:UBO.DisplayBlock
     
     var activeController:LayerController
     {
@@ -634,7 +648,7 @@ struct Coordinator
     
     init()
     {
-        self.model          = .init()
+        self.context        = .init(viewport: (0, 0), model: .init())
         self.controllers    = 
         [
             Base.init(), 
@@ -655,6 +669,8 @@ struct Coordinator
         self.buttons        = .init()
         self.active         = self.controllers.endIndex - 1
         self.hover          = nil
+        
+        self.displayBlock   = .init()
     }
     
     private mutating 
@@ -671,7 +687,7 @@ struct Coordinator
                     new == old 
         else 
         {
-            self.handle(self.controllers[old].leave(self.model))
+            self.handle(self.controllers[old].leave(self.context))
             self.hover = index 
             return 
         }
@@ -698,16 +714,13 @@ struct Coordinator
     func window(size:Math<Float>.V2)
     {
         GL.viewport(anchor: (0, 0), size: Math.cast(size, as: Int.self))
+        self.context.viewport = size 
         
         for index:Int in self.controllers.indices 
         {
-            self.controllers[index].viewport = size 
-        }
-        
-        // set viewport uniform in text rendering shader 
-        Programs.text.bind 
-        {
-            $0.set(float2: "viewport", size)
+            self.controllers[index].frame = ((0, 0), size)
+            
+            self.controllers[index].notify(.viewport, in: self.context, reset: false) 
         }
     }
     
@@ -723,20 +736,20 @@ struct Coordinator
     mutating 
     func character(_ character:Character) 
     {
-        self.handle(self.activeController.character(self.model, character)) 
+        self.handle(self.activeController.character(self.context, character)) 
     }
     
     mutating 
     func keypress(_ key:UI.Key, _ modifiers:UI.Key.Modifiers) 
     {
-        self.handle(self.activeController.keypress(self.model, key, modifiers)) 
+        self.handle(self.activeController.keypress(self.context, key, modifiers)) 
     }
     
     mutating 
     func scroll(_ direction:UI.Direction, _ position:Math<Float>.V2) 
     {
         let index:Int = self.find(position) 
-        self.handle(self.controllers[index].scroll(self.model, direction, position))
+        self.handle(self.controllers[index].scroll(self.context, direction, position))
     }
     
     mutating 
@@ -745,7 +758,7 @@ struct Coordinator
         self.buttons[action] = true 
         
         self.active = self.find(position)  
-        self.handle(self.activeController.down(self.model, action, position, doubled: doubled))
+        self.handle(self.activeController.down(self.context, action, position, doubled: doubled))
         
         self.move(position)
     }
@@ -755,7 +768,7 @@ struct Coordinator
     {
         let index:Int = self.buttons.any ? self.active : self.find(position)
         self.emitLeaveCalls(newHover: index)
-        self.handle(self.controllers[index].move(self.model, position))
+        self.handle(self.controllers[index].move(self.context, position))
     }
     
     mutating 
@@ -763,7 +776,7 @@ struct Coordinator
     {
         self.buttons[action] = false 
         
-        self.handle(self.activeController.up(self.model, action, position))
+        self.handle(self.activeController.up(self.context, action, position))
         
         self.move(position)
     }
@@ -787,33 +800,36 @@ struct Coordinator
             // self.controller.terminal.sync(to: self.model)
             break 
         
-        case .mapSync(let continuity):
-            self.sync(.all(Controller.MapEditor.self), to: self.model, continuity: continuity)
+        case .mapSync(let reset):
+            self.notify(.model, to: .all(Controller.MapEditor.self), reset: reset)
         
         case .mapPointMoved(let index, let location):
-            // sync isn’t strictly necessary for this case or .mapPointAdded, 
-            // as the controllers will already be in a clean state, but we sync 
+            // notify isn’t strictly necessary for this case or .mapPointAdded, 
+            // as the controllers will already be in a clean state, but we notify 
             // as confirmation anyway
-            self.model.map.points[index] = Math.normalize(location)
-            self.sync(.all(Controller.MapEditor.self), to: self.model)
+            self.context.model.map.points[index] = Math.normalize(location)
+            self.notify(.model, to: .all(Controller.MapEditor.self))
         
         case .mapPointAdded(let index, let location):
-            self.model.map.points.insert(Math.normalize(location), at: index)
-            self.sync(.all(Controller.MapEditor.self), to: self.model)
+            self.context.model.map.points.insert(Math.normalize(location), at: index)
+            self.notify(.model, to: .all(Controller.MapEditor.self))
         
         case .mapPointRemoved(let index):
-            self.model.map.points.remove(at: index)
-            self.sync(.all(Controller.MapEditor.self), to: self.model)
+            self.context.model.map.points.remove(at: index)
+            self.notify(.model, to: .all(Controller.MapEditor.self))
         }
     }
     
     mutating 
-    func process(_ delta:Int) 
+    func process(_ delta:Int) -> Bool 
     {
+        var redraw:Bool = false 
         for index:Int in self.controllers.indices 
         {
-            self.controllers[index].process(self.model, delta)
+            redraw = self.controllers[index].process(self.context, delta) || redraw
         }
+        
+        return redraw
     }
     
     mutating 
@@ -822,7 +838,13 @@ struct Coordinator
         GL.clear(color: true, depth: true)
         for index:Int in self.controllers.indices 
         {
-            self.controllers[index].draw(self.model, definitions: self.definitions)
+            self.displayBlock.bind(index: 0) 
+            {
+                UBO.DisplayBlock.encode( frame: self.controllers[index].frame, 
+                                      viewport: self.context.viewport, 
+                                            to: $0)
+                self.controllers[index].draw(self.context, definitions: self.definitions)
+            }
         }
     }
     
@@ -834,14 +856,14 @@ struct Coordinator
     }
     
     private mutating 
-    func sync(_ target:Target, to model:Model, continuity:Bool = true) 
+    func notify(_ mutation:Context.Mutation, to target:Target, reset:Bool = false) 
     {
         switch target 
         {
         case .all(let metatype):
             for index:Int in self.controllers.indices where type(of: self.controllers[index]) == metatype
             {
-                self.controllers[index].sync(to: self.model, continuity: continuity)
+                self.controllers[index].notify(mutation, in: self.context, reset: reset)
             }
         }
     }
@@ -849,92 +871,92 @@ struct Coordinator
 
 protocol LayerController 
 {
-    var viewport:Math<Float>.V2 
-    { 
-        get 
-        set 
-    }
+    var frame:Math<Float>.Rectangle { get set }
     
+    // context mutation notifier
+    mutating 
+    func notify(_:Coordinator.Context.Mutation, in:Coordinator.Context, reset:Bool)
+    
+    // geometric intersection function 
     func test(_ position:Math<Float>.V2) -> Bool 
     
+    // event handlers
     mutating 
-    func character(_ model:Model, _ character:Character) -> Coordinator.Event?
+    func character(_:Coordinator.Context, _ character:Character) -> Coordinator.Event?
     
     mutating 
-    func keypress(_ model:Model, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
+    func keypress(_:Coordinator.Context, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
     
     mutating
-    func scroll(_ model:Model, _ direction:UI.Direction, _ position:Math<Float>.V2) -> Coordinator.Event?
+    func scroll(_:Coordinator.Context, _ direction:UI.Direction, _ position:Math<Float>.V2) -> Coordinator.Event?
     
     mutating 
-    func down(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
+    func down(_:Coordinator.Context, _ action:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
     
     mutating 
-    func move(_ model:Model, _ position:Math<Float>.V2) -> Coordinator.Event?
+    func move(_:Coordinator.Context, _ position:Math<Float>.V2) -> Coordinator.Event?
     
     mutating 
-    func leave(_ model:Model) -> Coordinator.Event?
+    func leave(_:Coordinator.Context) -> Coordinator.Event?
     
     mutating 
-    func up(_ model:Model, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+    func up(_:Coordinator.Context, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+    
+    // stream-called functions
+    mutating 
+    func process(_:Coordinator.Context, _ delta:Int) -> Bool 
     
     mutating 
-    func sync(to model:Model, continuity:Bool)
-    
-    mutating 
-    func process(_ model:Model, _ delta:Int) 
-    
-    mutating 
-    func draw(_ model:Model, definitions:Style.Definitions)
+    func draw(_:Coordinator.Context, definitions:Style.Definitions)
 }
 extension LayerController 
 {
+    func notify(_:Coordinator.Context.Mutation, in _:Coordinator.Context, reset _:Bool)
+    {
+    }
+    
     // default implementations (ignore all events)
     func test(_ position:Math<Float>.V2) -> Bool 
     {
         return true 
     }
     
-    func character(_:Model, _:Character) -> Coordinator.Event?
+    func character(_:Coordinator.Context, _:Character) -> Coordinator.Event?
     {
         return nil 
     }
-    
-    func keypress(_:Model, _:UI.Key, _:UI.Key.Modifiers) -> Coordinator.Event?
+    func keypress(_:Coordinator.Context, _:UI.Key, _:UI.Key.Modifiers) -> Coordinator.Event?
+    {
+        return nil
+    }
+    func scroll(_:Coordinator.Context, _:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
+    {
+        return nil
+    }
+    func down(_:Coordinator.Context, _:UI.Action, _:Math<Float>.V2, doubled _:Bool) -> Coordinator.Event?
+    {
+        return nil
+    }
+    func move(_:Coordinator.Context, _:Math<Float>.V2) -> Coordinator.Event?
+    {
+        return nil
+    }
+    func leave(_:Coordinator.Context) -> Coordinator.Event?
+    {
+        return nil
+    }
+    func up(_:Coordinator.Context, _:UI.Action, _:Math<Float>.V2) -> Coordinator.Event?
     {
         return nil
     }
     
-    func scroll(_:Model, _:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
-    {
-        return nil
+    func process(_:Coordinator.Context, _:Int) -> Bool
+    { 
+        return false
     }
-    
-    func down(_:Model, _:UI.Action, _:Math<Float>.V2, doubled _:Bool) -> Coordinator.Event?
-    {
-        return nil
+    func draw(_:Coordinator.Context, definitions _:Style.Definitions) 
+    { 
     }
-    
-    func move(_:Model, _:Math<Float>.V2) -> Coordinator.Event?
-    {
-        return nil
-    }
-    
-    func leave(_:Model) -> Coordinator.Event?
-    {
-        return nil
-    }
-    
-    func up(_:Model, _:UI.Action, _:Math<Float>.V2) -> Coordinator.Event?
-    {
-        return nil
-    }
-    
-    func sync(to _:Model, continuity _:Bool) { }
-    
-    func process(_:Model, _:Int) { }
-    
-    func draw(_:Model, definitions _:Style.Definitions) { }
 }
 
 // Equatable conformance not required in base type definition to allow Latest<Void> 
@@ -1028,7 +1050,6 @@ extension Latest where T:ViewEquatable
 
 enum Controller
 {
-    
     /* struct Terminal 
     {
         struct History 
@@ -1367,22 +1388,31 @@ enum Controller
         {
             var model:Latest<Void>
             
-            var plane:Latest<ControlPlane>
             var action:Latest<Action> 
             var preselection:Latest<Int?>
+            
+            var plane:ControlPlane
         }
+        
+        
+        var frame:Math<Float>.Rectangle = ((0, 0), (0, 0))
+        {
+            didSet 
+            {
+                self.plane.queueUpdate()
+            }
+        }
+        
         
         private 
         var view:View, 
             state:State 
         
-        // state variables 
+        // other properties 
         private 
-        var plane:ControlPlane 
-        {
-            get         { return    self.state.plane.value }
-            set(value)  {           self.state.plane.value = value }
-        }
+        var hotspots:[Math<Float>.V2?]
+        
+        // state variables 
         private 
         var action:Action 
         {
@@ -1396,20 +1426,13 @@ enum Controller
             set(value)  {           self.state.preselection.value = value }
         }
         
-        // LayerController conformance 
-        var viewport:Math<Float>.V2 = (0, 0)
+        private 
+        var plane:ControlPlane 
         {
-            didSet 
-            {
-                // figure out center point of screen
-                let shift:Math<Float>.V2 = Math.add(Math.scale(viewport, by: -0.5), (200, 0))
-                self.plane.sensor = (shift, Math.add(viewport, shift))
-            }
+            get         { return    self.state.plane }
+            set(value)  {           self.state.plane = value }
         }
         
-        // other properties 
-        private 
-        var hotspots:[Math<Float>.V2?]
         
         init()
         {
@@ -1418,34 +1441,44 @@ enum Controller
                                    distance: 4,
                                 focalLength: 32))
                                 
-            self.state = .init(model: .init(()), 
-                               plane: .init(plane), 
-                              action: .init(.none), 
-                        preselection: .init(nil))
-            self.view  = .init()
+            self.state  = .init(model: .init(()), 
+                               action: .init(.none), 
+                         preselection: .init(nil), 
+                                plane: plane)
+            self.view   = .init()
             
             self.hotspots = []
         }
+        
+        
+        mutating 
+        func notify(_ member:Coordinator.Context.Mutation, in context:Coordinator.Context, reset:Bool)
+        {
+            switch member 
+            {
+            case .viewport:
+                self.plane.viewport(context.viewport)
+            
+            case .model:
+                self.state.model.reset() 
+                if reset
+                {
+                    self.action         = .none
+                    self.preselection   = nil 
+                }
+            }
+        }
+        
         
         func test(_ position:Math<Float>.V2) -> Bool  
         {
             return true 
         }
         
-        mutating 
-        func sync(to _:Model, continuity:Bool) 
-        {
-            self.state.model.reset() 
-            if !continuity 
-            {
-                self.action         = .none
-                self.preselection   = nil 
-            }
-        }
         
         // project a sphere point into 2D
         private  
-        func trace(_ point:Math<Float>.V3) -> Math<Float>.V2?
+        func trace(_ point:Math<Float>.V3, viewport:Math<Float>.V2) -> Math<Float>.V2?
         {
             guard Math.dot(Math.sub(point, self.plane.position), Math.sub(point, (0, 0, 0))) < 0 
             else 
@@ -1453,25 +1486,28 @@ enum Controller
                 return nil 
             }
             
-            return self.plane.trace(point)
+            return Math.mult(viewport, self.plane.trace(point))
         }
         
         private mutating 
-        func updateHotspots(_ points:[Math<Float>.V3]) 
+        func updateHotspots(_ points:[Math<Float>.V3], viewport:Math<Float>.V2) 
         {
-            self.hotspots = points.map(self.trace(_:))
+            self.hotspots = points.map 
+            {
+                self.trace($0, viewport: viewport)
+            }
         }
         
         private mutating 
-        func updateHotspot(_ point:Math<Float>.V3, at index:Int) 
+        func updateHotspot(_ point:Math<Float>.V3, at index:Int, viewport:Math<Float>.V2) 
         {
-            self.hotspots[index] = self.trace(point)
+            self.hotspots[index] = self.trace(point, viewport: viewport)
         }
         
         private mutating 
-        func insertHotspot(_ point:Math<Float>.V3, at index:Int) 
+        func insertHotspot(_ point:Math<Float>.V3, at index:Int, viewport:Math<Float>.V2) 
         {
-            self.hotspots.insert(self.trace(point), at: index)
+            self.hotspots.insert(self.trace(point, viewport: viewport), at: index)
             self.reindex(after: index, offset: 1)
         }
         
@@ -1523,7 +1559,7 @@ enum Controller
         }
         
         mutating 
-        func keypress(_ model:Model, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
+        func keypress(_ context:Coordinator.Context, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
         {
             switch key
             {
@@ -1547,9 +1583,9 @@ enum Controller
                 case .anchorSelected(let index):
                     if case .backspace = key 
                     {
-                        if model.map.points.count > 1 
+                        if context.model.map.points.count > 1 
                         {
-                            self.action = .anchorSelected((index == 0 ? model.map.points.count - 1 : index) - 1)
+                            self.action = .anchorSelected((index == 0 ? context.model.map.points.count - 1 : index) - 1)
                         }
                         else 
                         {
@@ -1558,9 +1594,9 @@ enum Controller
                     }
                     else 
                     {
-                        if model.map.points.count > 1 
+                        if context.model.map.points.count > 1 
                         {
-                            self.action = .anchorSelected(index == model.map.points.count - 1 ? 0 : index)
+                            self.action = .anchorSelected(index == context.model.map.points.count - 1 ? 0 : index)
                         }
                         else 
                         {
@@ -1585,11 +1621,11 @@ enum Controller
                     let next:Int 
                     if modifiers.shift 
                     {
-                        next = index - 1 < 0 ? model.map.points.count - 1 : index - 1
+                        next = index - 1 < 0 ? context.model.map.points.count - 1 : index - 1
                     }
                     else 
                     {
-                        next = index + 1 < model.map.points.count ? index + 1 : 0
+                        next = index + 1 < context.model.map.points.count ? index + 1 : 0
                     }
                     self.action = .anchorSelected(next)
                 
@@ -1604,14 +1640,14 @@ enum Controller
         }
         
         mutating
-        func scroll(_ model:Model, _ direction:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
+        func scroll(_:Coordinator.Context, _ direction:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
         {
             self.plane.bump(direction, action: .zoom)
             return nil
         }
         
         mutating 
-        func down(_ model:Model, _ button:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
+        func down(_ context:Coordinator.Context, _ button:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
         {
             switch button 
             {
@@ -1639,12 +1675,12 @@ enum Controller
                 
                 case .anchorMoving(let index, let location):
                     self.action = .anchorSelected(index)
-                    self.updateHotspot(location, at: index)
+                    self.updateHotspot(location, at: index, viewport: context.viewport)
                     return .mapPointMoved(index, location)
                 
                 case .anchorNew(let index, let location):
                     self.action = .anchorSelected(index)
-                    self.insertHotspot(location, at: index)
+                    self.insertHotspot(location, at: index, viewport: context.viewport)
                     return .mapPointAdded(index, location)
                 }
             
@@ -1654,7 +1690,7 @@ enum Controller
                 case .none, .anchorSelected:
                     if let i:Int = self.findHotspot(position, threshold: 8) 
                     {
-                        self.action = .anchorMoving(i, model.map.points[i])
+                        self.action = .anchorMoving(i, context.model.map.points[i])
                     }
                     else 
                     {
@@ -1673,7 +1709,7 @@ enum Controller
         }
         
         mutating 
-        func move(_ model:Model, _ position:Math<Float>.V2) -> Coordinator.Event?
+        func move(_:Coordinator.Context, _ position:Math<Float>.V2) -> Coordinator.Event?
         {
             // prevents meaningless preselection toggles, which needlessly set 
             // dirty flags in the state structure
@@ -1706,34 +1742,34 @@ enum Controller
         }
         
         mutating 
-        func leave(_ model:Model) -> Coordinator.Event? 
+        func leave(_:Coordinator.Context) -> Coordinator.Event? 
         {
             self.preselection = nil
             return nil 
         }
         
         mutating 
-        func up(_ model:Model, _ button:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+        func up(_:Coordinator.Context, _ button:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
         {
             self.plane.up(position, button: button)
             return nil
         }
         
         mutating 
-        func process(_ model:Model, _ delta:Int) 
+        func process(_ context:Coordinator.Context, _ delta:Int) -> Bool 
         {
-            self.plane.process(delta)
+            return self.plane.process(delta, viewport: context.viewport, frame: self.frame)
         }
         
         mutating 
-        func draw(_ model:Model, definitions:Style.Definitions) 
+        func draw(_ context:Coordinator.Context, definitions:Style.Definitions) 
         {
-            if self.state.plane.isDirty 
+            if self.plane.mutated 
             {
-                self.updateHotspots(model.map.points)
+                self.updateHotspots(context.model.map.points, viewport: context.viewport)
             }
             
-            self.view.draw(model, definitions: definitions, state: &self.state)
+            self.view.draw(context.model, definitions: definitions, state: &self.state)
         }
     }
 }
@@ -1932,6 +1968,156 @@ extension Controller.MapEditor
                 }
             }
             
+            enum Selection:Equatable
+            {
+                // when adding cases UPDATE EQUATABLE CONFORMANCE
+                case select(Int, Math<Float>.V3)
+                case move(Int, Math<Float>.V3)
+                case new(Math<Float>.V3)
+                case none
+                
+                func labelSphere(at offset:Math<Float>.V3) -> (Math<Float>.V3, [(Set<Style.Selector>, String)])?
+                {
+                    let selectors:Set<Style.Selector> = [.mapeditor, .label, .selection], 
+                        bold:Set<Style.Selector> = selectors.union([.strong])
+                    let parts:(String, String), 
+                        point:Math<Float>.V3, 
+                        classes:Set<Style.Selector>
+                    
+                    switch self 
+                    {
+                    case    .select(let index, _), 
+                            .move(let index, _):
+                        parts.0 = "0:\(index)"
+                                        
+                    case .new:
+                        parts.0 = "0:+"
+                    
+                    case .none:
+                        return nil
+                    }
+                    
+                    switch self 
+                    {
+                    case    .select(_, let location), 
+                            .move(_, let location), 
+                            .new(let location):
+                        parts.1 = "   \(Selection.formatLL(Math.spherical(normalized: location)))"
+                        point   = Math.add(location, offset)
+                    
+                    case .none:
+                        return nil
+                    }
+                    
+                    switch self 
+                    {
+                    case .select:
+                        classes = []
+                    case .move:
+                        classes = [.move]
+                                        
+                    case .new:
+                        classes = [.new]
+                    
+                    case .none:
+                        return nil
+                    }
+                    
+                    return (point, [(bold.union(classes), parts.0), (selectors.union(classes), parts.1)])
+                }
+                
+                private static 
+                func formatLL(_ s:Math<Float>.S2) -> String 
+                {
+                    let degreesN:Float = 90 - s.θ * (180 / Float.pi), 
+                        degreesE:Float =      s.φ * (180 / Float.pi)
+                    
+                    let N:(d:Int, m:Int, s:Int) = sexagesimal(abs(degreesN)),
+                        E:(d:Int, m:Int, s:Int) = sexagesimal(abs(degreesE))
+                    
+                    let Nm:String = padZero(N.m, to: 2), 
+                        Ns:String = padZero(N.s, to: 2)
+                    let Em:String = padZero(E.m, to: 2), 
+                        Es:String = padZero(E.s, to: 2)
+                    return "\(N.d)° \(Nm)′ \(Ns)′′ \(degreesN < 0 ? "S" : "N"), \(E.d)° \(Em)′ \(Es)′′ \(degreesE < 0 ? "W" : "E")"
+                }
+                
+                private static 
+                func sexagesimal(_ rd:Float) -> (d:Int, m:Int, s:Int) 
+                {
+                    let  s:Int                          = .init((60 * 60 * rd).rounded())
+                    let (m,       seconds):(Int, Int)   = s.quotientAndRemainder(dividingBy: 60), 
+                        (degrees, minutes):(Int, Int)   = m.quotientAndRemainder(dividingBy: 60)
+                    
+                    return (degrees, minutes, seconds)
+                }
+                
+                private static 
+                func padZero(_ x:Int, to count:Int) -> String 
+                {
+                    let string:String = .init(x)
+                    return .init(repeating: "0", count: max(count - string.count, 0)) + string
+                }
+                
+                static 
+                func == (a:Selection, b:Selection) -> Bool 
+                {
+                    switch (a, b) 
+                    {
+                    case    (.select(let a0, let a1), .select(let b0, let b1)), 
+                            (.move(let a0, let a1), .move(let b0, let b1)):
+                        return a0 == b0 && a1 == b1
+                    
+                    case    (.new(let a0), .new(let b0)):
+                        return a0 == b0
+                    
+                    case    (.none, .none):
+                        return true 
+                    
+                    default:
+                        return false
+                    }
+                }
+            }
+            enum Preselection:Equatable 
+            {
+                case preselect(Int, Math<Float>.V3)
+                case occluded(Int)
+                case none
+                
+                func labelSphere(at offset:Math<Float>.V3) -> (Math<Float>.V3, [(Set<Style.Selector>, String)])?
+                {
+                    let bold:Set<Style.Selector> = [.mapeditor, .label, .preselection, .strong]
+                    switch self 
+                    {
+                    case .preselect(let index, let location):
+                        return (Math.add(offset, location), [(bold, "0:\(index)")])
+                    
+                    case .occluded, .none:
+                        return nil
+                    }
+                }
+                
+                static 
+                func == (a:Preselection, b:Preselection) -> Bool 
+                {
+                    switch (a, b) 
+                    {
+                    case (.preselect(let i1, let l1), .preselect(let i2, let l2)):
+                        return i1 == i2 && l1 == l2 
+                    
+                    case (.occluded(let i1), .occluded(let i2)):
+                        return i1 == i2 
+                    
+                    case (.none, .none):
+                        return true 
+                    
+                    default:
+                        return false 
+                    }
+                }
+            }
+            
             private 
             let vao:GL.VertexArray
             private 
@@ -1939,11 +2125,15 @@ extension Controller.MapEditor
                 evo:GL.Vector<Index>
                 
             private 
+            var textvao:GL.VertexArray, 
+                textvvo:GL.Vector<Text.Vertex>
+                
+            private 
             var indexSegments:(fixed:Range<Int>, interpolated:Range<Int>)
             
             private 
-            var indicator:Int32     = -1, 
-                preselection:Int32  = -1
+            var selection:Selection         = .none, 
+                preselection:Preselection   = .none
             
             // whether the constructued border geometry deviates from the model
             private 
@@ -1954,6 +2144,8 @@ extension Controller.MapEditor
                 self.evo = .generate()
                 self.vvo = .generate()
                 self.vao = .generate()
+                self.textvao = .generate()
+                self.textvvo = .generate()
                 
                 self.indexSegments = (0 ..< 0, 0 ..< 0)
                 
@@ -1964,6 +2156,16 @@ extension Controller.MapEditor
                     {
                         self.vao.unbind()
                     }
+                }
+                
+                self.textvvo.buffer.bind(to: .array)
+                {
+                    self.textvao.bind().setVertexLayout(
+                        .float(from: .float2), 
+                        .float(from: .float2), 
+                        .float(from: .ubyte4_rgba), 
+                        .float(from: .float3))
+                    self.textvao.unbind()
                 }
             }
             
@@ -2034,8 +2236,10 @@ extension Controller.MapEditor
             }
             
             mutating 
-            func draw(_ model:Model.Map, state controllerState:inout State) 
+            func draw(_ model:Model.Map, definitions:Style.Definitions, state controllerState:inout State) 
             {
+                let preselection:Preselection, 
+                    selection:Selection
                 rebuild:
                 if let action:Action = controllerState.action.pop()
                 {
@@ -2043,89 +2247,181 @@ extension Controller.MapEditor
                     
                     switch action
                     {
-                        case .none:
-                            self.indicator = -1
-                            if controllerState.model.pop() != nil || self.deviance 
-                            {
-                                controlPoints = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                                self.deviance = false
-                            }
-                            else 
-                            {
-                                break rebuild 
-                            }
+                    case .none:
+                        selection = .none
                         
-                        case .anchorSelected(let index):
-                            self.indicator = .init(index) << 1 | 0
-                            if controllerState.model.pop() != nil || self.deviance 
-                            {
-                                controlPoints = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                                self.deviance = false
-                            }
-                            else 
-                            {
-                                break rebuild
-                            }
+                        if controllerState.model.pop() != nil || self.deviance 
+                        {
+                            controlPoints = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                            self.deviance = false
+                        }
+                        else 
+                        {
+                            break rebuild 
+                        }
+                    
+                    case .anchorSelected(let index):
+                        selection = .select(index, model.points[index])
                         
-                        case .anchorMoving(let index, let position):
-                            // get() call clears dirty flag
-                            controllerState.model.get() 
-                            
-                            self.indicator          = .init(index) << 1 | 1
-                            var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                            fixed[index].position   = position
-                            controlPoints           = fixed
-                            
-                            self.deviance = true
+                        if controllerState.model.pop() != nil || self.deviance 
+                        {
+                            controlPoints = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                            self.deviance = false
+                        }
+                        else 
+                        {
+                            break rebuild
+                        }
+                    
+                    case .anchorMoving(let index, let position):
+                        // get() call clears dirty flag
+                        controllerState.model.get() 
                         
-                        case .anchorNew(let index, let position):
-                            controllerState.model.get() 
-                            
-                            self.indicator          = -1
-                            var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
-                            fixed.insert(.init(position, id: -1), at: index)
-                            controlPoints           = fixed
-                            
-                            self.deviance = true
+                        selection = .move(index, position)
+                        
+                        var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                        fixed[index].position   = position
+                        controlPoints           = fixed
+                        
+                        self.deviance = true
+                    
+                    case .anchorNew(let index, let position):
+                        controllerState.model.get() 
+                        
+                        selection = .new(position)
+                        
+                        var fixed:[Vertex] = model.points.enumerated().map{ .init($0.1, id: $0.0) }
+                        fixed.insert(.init(position, id: -1), at: index)
+                        controlPoints           = fixed
+                        
+                        self.deviance = true
                     }
                     
                     self.rebuild([controlPoints])
                 }
                 else if controllerState.model.pop() != nil
                 {
+                    selection = self.selection 
                     self.rebuild([model.points.enumerated().map{ .init($0.1, id: $0.0) }])
                     self.deviance = false 
                 }
-                
-                if let preselection:Int? = controllerState.preselection.pop() 
+                else 
                 {
-                    self.preselection = .init(preselection ?? -1)
+                    selection = self.selection
+                }
+                
+                // clear preselection if both the selection and preselection point 
+                // to the same vertex
+                let selectionIndex:Int?, 
+                    preselectionIndex:Int?
+                switch selection 
+                {
+                case    .select(let index, _), 
+                        .move(let index, _):
+                    selectionIndex = index
+                
+                case    .new, .none:
+                    selectionIndex = nil 
+                }
+                
+                if let update:Int? = controllerState.preselection.pop() 
+                {
+                    preselectionIndex = update 
+                }
+                else 
+                {
+                    switch self.preselection 
+                    {
+                    case    .preselect(let index, _), 
+                            .occluded(let index):
+                        preselectionIndex = index 
+                    case    .none:
+                        preselectionIndex = nil 
+                    }
+                }
+                
+                if let i1:Int = preselectionIndex 
+                {
+                    if let i2:Int = selectionIndex, i1 == i2 
+                    {
+                        preselection = .occluded(i1)
+                    }
+                    else 
+                    {
+                        preselection = .preselect(i1, model.points[i1])
+                    }
+                }
+                else 
+                {
+                    preselection = .none
+                }
+                
+                if selection != self.selection || preselection != self.preselection 
+                {
+                    var textVertices:[Text.Vertex]  = []
+                    if let (point, label):(Math<Float>.V3, [(Set<Style.Selector>, String)]) = selection.labelSphere(at: (0, 0, 0)) 
+                    {
+                        for text:Text in definitions.line(label) 
+                        {
+                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point))
+                        }
+                    } 
+                    if let (point, label):(Math<Float>.V3, [(Set<Style.Selector>, String)]) = preselection.labelSphere(at: (0, 0, 0)) 
+                    {
+                        for text:Text in definitions.line(label) 
+                        {
+                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point))
+                        }
+                    } 
+                    
+                    self.textvvo.assign(data: textVertices, in: .array, usage: .dynamic)
+                    
+                    self.selection     = selection 
+                    self.preselection  = preselection 
                 }
                 
                 Programs.borderPolyline.bind 
                 {
                     $0.set(float:  "thickness", 2)
-                    $0.set(float4: "frontColor", (1, 1, 1, 1))
-                    $0.set(float4: "backColor",  (1, 1, 1, 0))
+                    $0.set(float4: "frontColor", (0.5, 0.5, 0.5, 1))
+                    $0.set(float4: "backColor",  (0.1, 0.1, 0.1, 1))
                     self.vao.drawElements(self.indexSegments.interpolated, as: .linesAdjacency, indexType: Index.self)
                 }
                 
-                Programs.borders.bind 
+                Programs.borderNodes.bind 
                 {
-                    $0.set(int: "indicator",    self.indicator)
-                    $0.set(int: "preselection", self.preselection)
+                    let indicator:Int32
+                    switch self.selection 
+                    {
+                        case .select(let index, _):
+                            indicator = .init(index) << 1 | 0
+                        
+                        case .move(let index, _):
+                            indicator = .init(index) << 1 | 1
+                        
+                        case .new, .none:
+                            indicator = -1
+                    }
+                    let preselection:Int32
+                    switch self.preselection 
+                    {
+                        case .preselect(let index, _):
+                            preselection = .init(index)
+                        
+                        case .occluded, .none:
+                            preselection = -1
+                    }
+                    $0.set(int: "indicator",    indicator)
+                    $0.set(int: "preselection", preselection)
                     self.vao.drawElements(self.indexSegments.fixed, as: .points, indexType: Index.self)
                 }
                 
-                Programs.borderLabels.bind 
+                Programs.tracingText.bind 
                 {
-                    $0.set(int: "indicator",    self.indicator)
-                    $0.set(int: "preselection", self.preselection)
-                    
-                    $0.set(float4: "monoFontMetrics", Programs.monofont.metrics)
-                    Programs.monofont.texture.bind(to: .texture2d, index: 0)
+                    _ in 
+                    definitions.atlas.texture.bind(to: .texture2d, index: 2)
                     {
-                        self.vao.drawElements(self.indexSegments.fixed, as: .points, indexType: Index.self)
+                        self.textvao.draw(0 ..< self.textvvo.count, as: .lines)
                     }
                 }
             }
@@ -2136,7 +2432,7 @@ extension Controller.MapEditor
             borders:Borders
         
         private 
-        var cameraBlock:GL.Buffer<Camera.Storage>
+        let cameraBlock:UBO.CameraBlock
         
         private 
         var textvao:GL.VertexArray, 
@@ -2148,18 +2444,18 @@ extension Controller.MapEditor
             self.globe   = .init()
             self.borders = .init()
             
-            self.cameraBlock = .generate()
-            self.cameraBlock.bind(to: .uniform)
-            {
-                $0.reserve(capacity: 1, usage: .dynamic)
-            }
+            self.cameraBlock = .init()
             
             self.textvao = .generate()
             self.textvvo = .generate()
             
             self.textvvo.buffer.bind(to: .array)
             {
-                self.textvao.bind().setVertexLayout(.float(from: .float2), .float(from: .float2), .float(from: .ubyte4_rgba))
+                self.textvao.bind().setVertexLayout(
+                    .float(from: .float2), 
+                    .float(from: .float2), 
+                    .float(from: .ubyte4_rgba), 
+                    .padding(MemoryLayout<Math<Float>.V3>.stride))
                 self.textvao.unbind()
             }
         }
@@ -2169,21 +2465,15 @@ extension Controller.MapEditor
         {
             if !textRendered 
             {
-                let blockSelectors:Set<Style.Selector>   = [.paragraph]
                 let runs:[(Set<Style.Selector>, String)] = 
                 [
                     ([],                    "012345 Hello world! "), 
-                    ([.emphasis],           "This text is italic! There once was a girl known by "), 
+                    ([.emphasis],           "This text is italic! There \n\nonce was a girl known by "), 
                     ([.emphasis, .strong],  "everyone"), 
                     ([.strong],             " and no one. efficiency. 012345") 
                 ]
                 
-                let computed:[(Style.Definitions.Inline.Computed, String)] = runs.map 
-                {
-                    (definitions.compute(inline: $0.0.union(blockSelectors)), $0.1)
-                }
-                
-                let text:[Text] = Text.paragraph(computed, linebox: (150, 20), atlas: definitions.atlas)
+                let text:[Text] = definitions.paragraph(runs, linebox: (150, 20), block: [.paragraph])
                 let vertices:[Text.Vertex] = text.flatMap 
                 {
                     $0.vertices(at: (20, 20))
@@ -2192,18 +2482,13 @@ extension Controller.MapEditor
                 textRendered = true 
             }
             
-            self.cameraBlock.bind(to: .uniform, index: 0)
+            self.cameraBlock.bind(index: 1)
             {
-                (target:GL.Buffer.BoundTarget) in
-
                 // check if camera needs updating
-                if let camera:Camera = controllerState.plane.pop()?.camera
+                if let matrices:Camera.Matrices = controllerState.plane.pop()
                 {
-                    camera.withUnsafeBytes
-                    {
-                        target.subData($0)
-                    }
-                    print("camera updated")
+                    UBO.CameraBlock.encode(matrices: matrices, to: $0)
+                    Log.note("camera updated")
                 }
                 
                 GL.enable(.culling)
@@ -2216,7 +2501,7 @@ extension Controller.MapEditor
                 
                 GL.enable(.multisampling)
                 GL.blend(.add)
-                self.borders.draw(model.map, state: &controllerState)
+                self.borders.draw(model.map, definitions: definitions, state: &controllerState)
             }
             
             Programs.text.bind 

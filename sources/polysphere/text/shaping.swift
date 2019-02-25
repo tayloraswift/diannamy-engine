@@ -476,6 +476,16 @@ enum HarfBuzz
             }
         }
         
+        func line(_ text:String, features:[Style.Definitions.Feature], indent:inout Int) -> [Glyph] 
+        {
+            let features:[hb_feature_t] = features.map{ $0.feature }
+            let characters:[Character]  = .init(text) 
+            
+            let shaped:Line = self.shape(characters[...], features: features)
+            indent += shaped.footprint.x 
+            return shaped.glyphs()
+        }
+         
         func paragraph(_ text:String, features:[Style.Definitions.Feature], indent:inout Int?, width:Int) -> [[Glyph]] 
         {
             let features:[hb_feature_t] = features.map{ $0.feature }

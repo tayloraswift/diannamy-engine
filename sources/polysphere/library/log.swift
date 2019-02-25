@@ -5,19 +5,31 @@ enum Log
         case diannamy, opengl, glsl, glfw, freetype, harfbuzz
     }
     
-    /* enum Problem:CustomStringConvertible 
+    private static 
+    var previous:String  = "", 
+        multiplicity:Int = 1
+    
+    private static 
+    func print(_ string:String) 
     {
-        case cNull(String)
-        
-        var description:String 
+        guard !string.isEmpty
+        else 
         {
-            switch self 
-            {
-            case .cNull(let function):
-                return "unexpected nil value from \(function)()"
-            }
+            return 
         }
-    } */
+        
+        if string == previous 
+        {
+            multiplicity   += 1
+            Swift.print("\u{1B}[1A\u{1B}[K\(string) \u{1B}[1m\u{1B}[38;2;20;120;255m(\(multiplicity))\u{1B}[39;0m")
+        }
+        else 
+        {
+            previous        = string 
+            multiplicity    = 1
+            Swift.print(string)
+        }
+    }
     
     static 
     func note(splitting messages:String, from source:Source, file:String = #file, line:Int = #line)

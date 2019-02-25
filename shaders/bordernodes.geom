@@ -3,18 +3,12 @@
 layout(points) in;
 layout(triangle_strip, max_vertices = 4) out;
 
-layout(std140) uniform Camera
+layout(std140) uniform Display 
 {
-    mat4  U;
-    mat4  V;
-    mat3  F;
-    vec3  position;
-    
-    vec3  a;
-    float h;
-    vec3  b;
-    float k;
-} camera;
+    vec2 frame_a;
+    vec2 frame_b;
+    vec2 viewport;
+} display;
 
 in Vertex
 {
@@ -31,11 +25,11 @@ out Vertex
 
 vec2 screen(vec4 clip)
 {
-    return vec2(0.5 * clip.xy / clip.w * vec2(camera.h, camera.k));
+    return vec2(0.5 * clip.xy / clip.w * display.viewport);
 }
 vec4 clip(vec2 screen)
 {
-    return vec4(2 * screen / vec2(camera.h, camera.k), 1, 1);
+    return vec4(2 * screen / display.viewport, 1, 1);
 }
 
 void main()
