@@ -1457,7 +1457,7 @@ enum Controller
             switch member 
             {
             case .viewport:
-                self.plane.viewport(context.viewport)
+                self.plane.queueUpdate()
             
             case .model:
                 self.state.model.reset() 

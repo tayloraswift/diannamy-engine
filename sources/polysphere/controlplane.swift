@@ -61,13 +61,6 @@ struct ControlPlane
         phase:Float?
     
     mutating 
-    func viewport(_ size:Math<Float>.V2) 
-    {
-        self.matrices._viewport = size 
-        self.queueUpdate()
-    }
-    
-    mutating 
     func queueUpdate() 
     {
         if self.phase == nil 

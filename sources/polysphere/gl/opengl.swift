@@ -622,6 +622,8 @@ enum GL
                 Log.error(.init(cString: message), from: .opengl)
             case OpenGL.DEBUG_SEVERITY_MEDIUM, OpenGL.DEBUG_SEVERITY_LOW:
                 Log.warning(.init(cString: message), from: .opengl)
+            case OpenGL.DEBUG_SEVERITY_NOTIFICATION:
+                break // ignore notifications
             default:
                 Log.note(.init(cString: message), from: .opengl)
             }
