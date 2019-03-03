@@ -12,7 +12,7 @@ enum UBO
     final 
     class CameraBlock 
     {
-        typealias Storage = (U:Math<Float>.Mat4, V:Math<Float>.Mat4, F:Math<Float>.Mat4)
+        typealias Storage = (U:Matrix4<Float>, V:Matrix4<Float>, F:Matrix4<Float>)
         
         private 
         let block:GL.Buffer<UInt8>
@@ -40,12 +40,11 @@ enum UBO
         static 
         func encode(matrices:Camera.Matrices, to target:GL.Buffer<UInt8>.BoundTarget) 
         {
-            let F:Math<Float>.Mat4 = 
-            (
-                Math.extend(matrices.F.0,       0), 
-                Math.extend(matrices.F.1,       0),  
-                Math.extend(matrices.F.2,       0),  
-                Math.extend(matrices.position,  1)
+            let F:Matrix4<Float> = .init(
+                .extend(matrices.F.columns.0, 0), 
+                .extend(matrices.F.columns.1, 0),  
+                .extend(matrices.F.columns.2, 0),  
+                .extend(matrices.position,    1)
             )
                 
             let storage:Storage = (matrices.U, matrices.V, F)

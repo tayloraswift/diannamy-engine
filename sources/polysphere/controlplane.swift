@@ -3,25 +3,25 @@ struct ControlPlane
     private 
     struct Ray 
     {
-        let source:Math<Float>.V3, 
-            vector:Math<Float>.V3
+        let source:Vector3<Float>, 
+            vector:Vector3<Float>
     }
     
     private 
     struct Rayfilm 
     {
-        let matrix:Math<Float>.Mat3, 
-            source:Math<Float>.V3
+        let matrix:Matrix3<Float>, 
+            source:Vector3<Float>
         
-        init(matrix:Math<Float>.Mat3, source:Math<Float>.V3) 
+        init(matrix:Matrix3<Float>, source:Vector3<Float>) 
         {
             self.matrix = matrix
             self.source = source
         }
         
-        func cast(_ position:Math<Float>.V2) -> Ray
+        func cast(_ position:Vector2<Float>) -> Ray
         {
-            let vector:Math<Float>.V3 = Math.normalize(Math.mult(self.matrix, Math.extend(position, 1)))
+            let vector:Vector3<Float> = (self.matrix >< .extend(position, 1)).normalized()
             return .init(source: self.source, vector: vector)
         }
     }
@@ -30,13 +30,13 @@ struct ControlPlane
     enum State
     {
         case    none, 
-                orbit(Math<Float>.V3, Rayfilm), 
-                track(Math<Float>.V3, Rayfilm), 
+                orbit(Vector3<Float>, Rayfilm), 
+                track(Vector3<Float>, Rayfilm), 
                 zoom(Float)
     }
     
     
-    var position:Math<Float>.V3 
+    var position:Vector3<Float>
     {
         return self.matrices.position
     }
@@ -85,11 +85,11 @@ struct ControlPlane
     }
     
     // project a point into 2D (normalized 0 ... 1 x 0 ... 1 coordinates )
-    func trace(_ point:Math<Float>.V3) -> Math<Float>.V2
+    func trace(_ point:Vector3<Float>) -> Vector2<Float>
     {
-        let h:Math<Float>.V4    = Math.mult(self.matrices.U, Math.extend(point, 1))
-        let clip:Math<Float>.V2 = Math.scale((h.x, h.y), by: 1 / h.w) 
-        return Math.add(Math.scale(clip, by: 0.5), (0.5, 0.5))
+        let h:Vector4<Float>    = self.matrices.U >< .extend(point, 1)
+        let clip:Vector2<Float> = .init(h.x, h.y) / h.w
+        return 0.5 + 0.5 * clip
     }
     
     // kills any current animation and synchronizes the 2 current keyframes
@@ -135,7 +135,7 @@ struct ControlPlane
     }
     
     mutating 
-    func jump(to target:Math<Float>.V3)
+    func jump(to target:Vector3<Float>)
     {
         self.charge()
         {
@@ -144,7 +144,7 @@ struct ControlPlane
     }
 
     mutating
-    func down(_ position:Math<Float>.V2, button:UI.Action)
+    func down(_ position:Vector2<Float>, button:UI.Action)
     {
         self.rebase()
         switch (button, self.state) 
@@ -153,10 +153,10 @@ struct ControlPlane
                 // save the current rayfilm
                 let rayfilm:Rayfilm  = self.rayfilm, 
                     ray:Ray          = rayfilm.cast(position), 
-                    c:Math<Float>.V3 = Math.sub(self.base.center, ray.source), 
-                    l:Float          = Math.dot(c, ray.vector), 
-                    r:Float          = max(1, (Math.eusq(c) - l * l).squareRoot()), 
-                    a:Math<Float>.V3 = ControlPlane.project(ray: ray, on: self.base.center, radius: r)
+                    c:Vector3<Float> = self.base.center - ray.source, 
+                    l:Float          = c <> ray.vector, 
+                    r:Float          = max(1, (c <> c - l * l).squareRoot()), 
+                    a:Vector3<Float> = ControlPlane.project(ray: ray, on: self.base.center, radius: r)
                 self.state = .orbit(a, rayfilm)
             
             default:
@@ -165,7 +165,7 @@ struct ControlPlane
     }
 
     mutating
-    func move(_ position:Math<Float>.V2)
+    func move(_ position:Vector2<Float>)
     {
         switch self.state 
         {
@@ -176,7 +176,7 @@ struct ControlPlane
                 let ray:Ray             = rayfilm.cast(position), 
                     q:Quaternion<Float> = ControlPlane.attract(anchor, on: self.base.center, to: ray)
                 
-                self.head.orientation = q.inverse * self.base.orientation
+                self.head.orientation = q.inverse >< self.base.orientation
                 self.phase = 0
             
             default:
@@ -185,7 +185,7 @@ struct ControlPlane
     }
 
     mutating
-    func up(_ position:Math<Float>.V2, button:UI.Action)
+    func up(_ position:Vector2<Float>, button:UI.Action)
     {
         self.move(position)
         switch (button, self.state) 
@@ -213,7 +213,7 @@ struct ControlPlane
 
     // returns true if the view system has changed
     mutating
-    func process(_ delta:Int, viewport:Math<Float>.V2, frame:Math<Float>.Rectangle) -> Bool 
+    func process(_ delta:Int, viewport:Vector2<Float>, frame:Rectangle<Float>) -> Bool 
     {
         guard let phase:Float = self.phase
         else
@@ -239,9 +239,9 @@ struct ControlPlane
     }
     
     private mutating 
-    func updateMatrices(_ rig:Camera.Rig, viewport:Math<Float>.V2, frame:Math<Float>.Rectangle) 
+    func updateMatrices(_ rig:Camera.Rig, viewport:Vector2<Float>, frame:Rectangle<Float>) 
     {
-        self.matrices = rig.matrices(frame: frame, viewport: viewport, clip: (-0.1, -100))
+        self.matrices = rig.matrices(frame: frame, viewport: viewport, clip: .init(-0.1, -100))
         self.mutated  = true
     }
     
@@ -260,27 +260,28 @@ struct ControlPlane
     }
     
     private static 
-    func attract(_ anchor:Math<Float>.V3, on center:Math<Float>.V3, to ray:Ray) 
+    func attract(_ anchor:Vector3<Float>, on center:Vector3<Float>, to ray:Ray) 
         -> Quaternion<Float>
     {
-        let a:Math<Float>.V3 = Math.sub(anchor, center), 
-            r:Float          = Math.length(a), 
-            s:Math<Float>.V3 = Math.scale(a, by: 1 / r), 
-            t:Math<Float>.V3 = Math.normalize(Math.sub(project(ray: ray, on: center, radius: r), center))
+        let a:Vector3<Float> = anchor - center, 
+            r:Float          = a.length, 
+            b:Vector3<Float> = project(ray: ray, on: center, radius: r) - center
         
-        return .init(from: s, to: t)
+        return .init(from: a / r, to: b.normalized())
     }
     
     private static 
-    func project(ray:Ray, on center:Math<Float>.V3, radius r:Float) -> Math<Float>.V3
+    func project(ray:Ray, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
     {
         // need to deal with case of sphere not centered at origin
-        let c:Math<Float>.V3 = Math.sub(center, ray.source), 
-            l:Float          = Math.dot(c, ray.vector)
+        let c:Vector3<Float>    = center - ray.source, 
+            l:Float             = c <> ray.vector
         
-        let discriminant:Float = r * r + l * l - Math.eusq(c)
-        guard discriminant >= 0 
-        else 
+        let a:Float 
+        
+        let c2:Float            = c <> c
+        let discriminant:Float  = r * r + l * l - c2
+        if discriminant < 0 
         {
             // sin(C - B - A)   = sin C cos -B cos -A + sin -B cos -A cos C + sin -A cos C cos -B - sin C sin -B sin -A
             //                  = sin C cos B cos A - sin B cos A cos C - sin A cos C cos B - sin C sin B sin A
@@ -296,22 +297,23 @@ struct ControlPlane
             // 
             // this is numerically stable for A, B >> 0, which will be satisfied so long 
             // as the camera is not too far from the planet that the disk reduces to a point.
-            let d2:Float = Math.eusq(c), 
-                h:Float  = (d2 - r * r).squareRoot(), 
-                g:Float  = Math.dot(Math.normalize(c), ray.vector)
-            
-            let a:Float  = d2.squareRoot() * h / (r * (1 - g * g).squareRoot() + g * h)
-            return Math.add(ray.source, Math.scale(ray.vector, by: a))
+            let h:Float  = (c2 - r * r).squareRoot(), 
+                g:Float  = c.normalized() <> ray.vector
+                
+            a = c2.squareRoot() * h / (r * (1 - g * g).squareRoot() + g * h)
+        }
+        else 
+        {
+            a = l - discriminant.squareRoot()
         }
         
-        let offset:Math<Float>.V3 = Math.scale(ray.vector, by: l - discriminant.squareRoot())
-        return Math.add(ray.source, offset)
+        return ray.source + a * ray.vector
     }
     
-    func project(_ position:Math<Float>.V2, on center:Math<Float>.V3, radius r:Float) -> Math<Float>.V3
+    func project(_ position:Vector2<Float>, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
     {
         let ray:Ray             = self.rayfilm.cast(position), 
-            p:Math<Float>.V3    = ControlPlane.project(ray: ray, on: center, radius: r)
+            p:Vector3<Float>    = ControlPlane.project(ray: ray, on: center, radius: r)
         return p
     }
 }

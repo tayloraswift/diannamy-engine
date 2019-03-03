@@ -1,98 +1,86 @@
-struct Quaternion<F>:Equatable where F:BinaryFloatingPoint
+// BinaryFloatingPoint, because we use float literals with math
+struct Quaternion<F>:Equatable where F:FloatingPoint & ExpressibleByFloatLiteral & Mathable & SIMDScalar
 {
-    var a:F, 
-        b:Math<F>.V3
-
-    var length:F
+    private 
+    var q:Vector4<F> 
+    
+    var a:F 
     {
-        return (self.a * self.a + Math.eusq(self.b)).squareRoot()
+        return self.q.w
+    } 
+    var b:Vector3<F> 
+    {
+        return self.q.xyz
     }
     
-    init(from s:Math<F>.V3, to t:Math<F>.V3) 
+    static 
+    var identity:Quaternion<F> 
     {
-        let a:F             = (2 * (1 + Math.dot(s, t))).squareRoot(), 
-            x:Math<F>.V3    = Math.cross(s, t)
-        self.init(0.5 * a, Math.scale(x, by: 1 / a))
+        return .init(1, .zero)
     }
     
-    init(_ a:F, _ b:Math<F>.V3)
+    init(from s:Vector3<F>, to t:Vector3<F>) 
     {
-        self.a = a
-        self.b = b
-    }
-
-    init()
-    {
-        self.init(1, (0, 0, 0))
+        let a:F = (2 * (1 + s <> t)).squareRoot()
+        self.init(0.5 * a, s >< t / a)
     }
     
-    init(axis:Math<F>.V3, c:F, s:F) 
+    init(axis:Vector3<F>, angle:F)
     {
-        self.init(c, Math.scale(axis, by: s))
-    }
-
-    var matrix:Math<F>.Mat3
-    {
-        let xx:F = self.b.x * self.b.x,
-            yy:F = self.b.y * self.b.y,
-            zz:F = self.b.z * self.b.z,
-
-            xy:F = self.b.x * self.b.y,
-            xz:F = self.b.x * self.b.z,
-            yz:F = self.b.y * self.b.z,
-            ax:F = self.a   * self.b.x,
-            ay:F = self.a   * self.b.y,
-            az:F = self.a   * self.b.z
-        //fill in the first row
-        return 
-            (
-                (1 - 2 * (yy + zz),      2 * (xy + az),      2 * (xz - ay)),
-                (    2 * (xy - az),  1 - 2 * (xx + zz),      2 * (yz + ax)),
-                (    2 * (xz + ay),      2 * (yz - ax),  1 - 2 * (xx + yy))
-            )
-    }
-
-    func normalized() -> Quaternion
-    {
-        let factor:F = 1 / self.length
-        return .init(self.a * factor, Math.scale(self.b, by: factor))
+        self.init(F.Math.cos(0.5 * angle), F.Math.sin(0.5 * angle) * axis)
     }
     
-    var inverse:Quaternion
+    init(_ a:F, _ b:Vector3<F>)
     {
-        return .init(self.a, Math.neg(self.b))
+        self.init(.extend(b, a))
     }
     
-    func rotate(_ point:Math<F>.V3) -> Math<F>.V3 
+    private 
+    init(_ q:Vector4<F>) 
     {
-        return  Math.add(
-                Math.add(   Math.scale(self.b, by:               2 * Math.dot(self.b, point)), 
-                            Math.scale(point,  by: self.a * self.a - Math.dot(self.b, self.b))), 
-                            Math.scale(Math.cross(self.b, point), by: 2 * self.a)
-                            )
+        self.q = q
+    }
+
+    var matrix:Matrix3<F>
+    {
+        let r:Vector3<F>    = .init(self.b.y, self.b.z, self.b.x)
+        let o:Vector3<F>    = self.b * r, 
+            i:Vector3<F>    = self.b * self.b, 
+            a:Vector3<F>    = self.b * self.a
+        
+        let v0:Vector3<F>   = .init(1 - 2 * (i.y + i.z) as F,     2 * (o.x + a.z) as F,     2 * (o.z - a.y) as F),
+            v1:Vector3<F>   = .init(    2 * (o.x - a.z) as F, 1 - 2 * (i.x + i.z) as F,     2 * (o.y + a.x) as F),
+            v2:Vector3<F>   = .init(    2 * (o.z + a.y) as F,     2 * (o.y - a.x) as F, 1 - 2 * (i.x + i.y) as F)
+        return .init(v0, v1, v2)
+    }
+    
+    mutating 
+    func normalize() 
+    {
+        self.q.normalize()
+    }
+    func normalized() -> Quaternion<F>
+    {
+        return .init(self.q.normalized())
+    }
+    
+    var inverse:Quaternion<F>
+    {
+        return .init(self.a, -self.b)
+    }
+    
+    func rotate(_ point:Vector3<F>) -> Vector3<F> 
+    {
+        let r:Vector3<F> = 2 * ((self.b <> point) * self.b + self.a * (self.b >< point)), 
+            s:Vector3<F> = point * (self.q <> self.inverse.q)
+        return r + s
     }
 
     static
-    func * (q1:Quaternion, q2:Quaternion) -> Quaternion
+    func >< (q1:Quaternion<F>, q2:Quaternion<F>) -> Quaternion<F>
     {
-        let a:F          = q1.a * q2.a - Math.dot(q1.b, q2.b), 
-            b:Math<F>.V3 = 
-            Math.add(   Math.add(Math.scale(q2.b, by: q1.a), Math.scale(q1.b, by: q2.a)), 
-                        Math.cross(q1.b, q2.b))
-        return Quaternion(a, b).normalized()
-    }
-    
-    static
-    func == (q1:Quaternion, q2:Quaternion) -> Bool
-    {
-        return q1.a == q2.a && q1.b == q2.b
-    }
-}
-
-extension Quaternion where F:_SwiftFloatingPoint 
-{
-    init(axis:Math<F>.V3, angle:F)
-    {
-        self.init(axis: axis, c: F.cos(0.5 * angle), s: F.sin(0.5 * angle))
+        let a:F          = q1.a * q2.a               - q1.b <> q2.b, 
+            b:Vector3<F> = q1.a * q2.b + q2.a * q1.b + q1.b >< q2.b
+        return Quaternion.init(a, b).normalized()
     }
 }

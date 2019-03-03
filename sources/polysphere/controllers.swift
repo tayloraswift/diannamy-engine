@@ -742,7 +742,16 @@ struct Coordinator
     mutating 
     func keypress(_ key:UI.Key, _ modifiers:UI.Key.Modifiers) 
     {
-        self.handle(self.activeController.keypress(self.context, key, modifiers)) 
+        // toggle terminal 
+        if case .grave = key, 
+            modifiers.control 
+        {
+            self.handle(.toggleTerminal)
+        }
+        else 
+        {
+            self.handle(self.activeController.keypress(self.context, key, modifiers)) 
+        }
     }
     
     mutating 
@@ -1436,8 +1445,8 @@ enum Controller
         
         init()
         {
-            let plane:ControlPlane = .init(  .init(center: (0, 0, 0),
-                                orientation: .init(),
+            let plane:ControlPlane = .init(  .init(center: .zero,
+                                orientation: .identity,
                                    distance: 4,
                                 focalLength: 32))
                                 
@@ -1480,13 +1489,13 @@ enum Controller
         private  
         func trace(_ point:Math<Float>.V3, viewport:Math<Float>.V2) -> Math<Float>.V2?
         {
-            guard Math.dot(Math.sub(point, self.plane.position), Math.sub(point, (0, 0, 0))) < 0 
+            guard Math.dot(Math.sub(point, self.plane.position._tuple), Math.sub(point, (0, 0, 0))) < 0 
             else 
             {
                 return nil 
             }
             
-            return Math.mult(viewport, self.plane.trace(point))
+            return Math.mult(viewport, self.plane.trace(._struct(point))._tuple)
         }
         
         private mutating 
@@ -1573,7 +1582,7 @@ enum Controller
                 self.plane.bump(.right, action: .track)
             
             case .period:
-                self.plane.jump(to: (0, 0, 0))
+                self.plane.jump(to: .zero)
             
             case .backspace, .delete:
                 switch self.action 
@@ -1655,7 +1664,7 @@ enum Controller
                 if  doubled, 
                     case .anchorSelected(let index) = self.action
                 {
-                    let p:Math<Float>.V3 = self.plane.project(position, on: (0, 0, 0), radius: 1)
+                    let p:Math<Float>.V3 = self.plane.project(._struct(position), on: .zero, radius: 1)._tuple
                     self.action = .anchorNew(index + 1, Math.normalize(p)) 
                     break 
                 }
@@ -1670,7 +1679,7 @@ enum Controller
                     else 
                     {
                         self.action = .none
-                        self.plane.down(position, button: button)
+                        self.plane.down(._struct(position), button: button)
                     }
                 
                 case .anchorMoving(let index, let location):
@@ -1727,14 +1736,14 @@ enum Controller
                     preselection = i
                 }
             
-                self.plane.move(position)
+                self.plane.move(._struct(position))
             
             case .anchorMoving(let index, _):
-                let p:Math<Float>.V3 = self.plane.project(position, on: (0, 0, 0), radius: 1)
+                let p:Math<Float>.V3 = self.plane.project(._struct(position), on: .zero, radius: 1)._tuple
                 self.action = .anchorMoving(index, Math.normalize(p))
             
             case .anchorNew(let index, _):
-                let p:Math<Float>.V3 = self.plane.project(position, on: (0, 0, 0), radius: 1)
+                let p:Math<Float>.V3 = self.plane.project(._struct(position), on: .zero, radius: 1)._tuple
                 self.action = .anchorNew(index, Math.normalize(p))
             }
             
@@ -1751,14 +1760,14 @@ enum Controller
         mutating 
         func up(_:Coordinator.Context, _ button:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
         {
-            self.plane.up(position, button: button)
+            self.plane.up(._struct(position), button: button)
             return nil
         }
         
         mutating 
         func process(_ context:Coordinator.Context, _ delta:Int) -> Bool 
         {
-            return self.plane.process(delta, viewport: context.viewport, frame: self.frame)
+            return self.plane.process(delta, viewport: ._struct(context.viewport), frame: ._struct(self.frame))
         }
         
         mutating 
