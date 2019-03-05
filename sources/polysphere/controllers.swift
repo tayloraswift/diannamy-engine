@@ -719,7 +719,7 @@ struct Coordinator
     mutating
     func window(size:Vector2<Float>)
     {
-        GL.viewport(anchor: (0, 0), size: Math.cast(size._tuple, as: Int.self))
+        GL.viewport(.init(.zero, .cast(size)))
         self.context.viewport = size 
         
         for index:Int in self.controllers.indices 
@@ -1912,7 +1912,7 @@ extension Controller.MapEditor
             {
                 Programs.sphere.bind
                 {
-                    $0.set(float4: "sphere", (0, 0, 0, 1))
+                    $0.set(float4: "sphere", .extend(.zero, 1))
                     model.background.bind(to: .texture2d, index: 1)
                     {
                         self.vao.drawElements(0 ..< 36, as: .triangles, indexType: UInt8.self)
@@ -2367,8 +2367,8 @@ extension Controller.MapEditor
                 Programs.borderPolyline.bind 
                 {
                     $0.set(float:  "thickness", 2)
-                    $0.set(float4: "frontColor", (0.5, 0.5, 0.5, 1))
-                    $0.set(float4: "backColor",  (0.1, 0.1, 0.1, 1))
+                    $0.set(float4: "frontColor", .init(0.5, 0.5, 0.5, 1))
+                    $0.set(float4: "backColor",  .init(0.1, 0.1, 0.1, 1))
                     self.vao.drawElements(self.indexSegments.interpolated, as: .linesAdjacency, indexType: Index.self)
                 }
                 

@@ -220,7 +220,7 @@ class Window
     func loop()
     {
         GL.depthTest(.greaterEqual)
-        GL.clearColor((0.02, 0.02, 0.02), 1)
+        GL.clearColor(.init(0.02, 0.02, 0.02), 1)
         GL.clearDepth(-1.0)
         
         var t0:Double = glfwGetTime()
@@ -230,7 +230,7 @@ class Window
 
             let t1:Double = glfwGetTime()
             
-            if  self.coordinator.process(Int(t1 * 1000) - Int(t0 * 1000)) || 
+            if  self.coordinator.process(.init(t1 * 1000) - .init(t0 * 1000)) || 
                 self.eventsProcessed
             {
                 self.eventsProcessed = false 

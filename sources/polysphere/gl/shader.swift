@@ -168,7 +168,7 @@ struct Program
             OpenGL.glUniform1f(uniform.location, value)
         }
         
-        func set(float2 name:String, _ value:Math<Float>.V2)
+        func set(float2 name:String, _ value:Vector2<Float>)
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -178,10 +178,10 @@ struct Program
             }
             
             assert(uniform.type == .float2)
-            OpenGL.glUniform2f(uniform.location, value.0, value.1)
+            OpenGL.glUniform2f(uniform.location, value.x, value.y)
         }
         
-        func set(float3 name:String, _ value:Math<Float>.V3)
+        func set(float3 name:String, _ value:Vector3<Float>)
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -191,10 +191,10 @@ struct Program
             }
             
             assert(uniform.type == .float3)
-            OpenGL.glUniform3f(uniform.location, value.0, value.1, value.2)
+            OpenGL.glUniform3f(uniform.location, value.x, value.y, value.z)
         }
         
-        func set(float4 name:String, _ value:Math<Float>.V4)
+        func set(float4 name:String, _ value:Vector4<Float>)
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -204,7 +204,7 @@ struct Program
             }
             
             assert(uniform.type == .float4)
-            OpenGL.glUniform4f(uniform.location, value.0, value.1, value.2, value.3)
+            OpenGL.glUniform4f(uniform.location, value.x, value.y, value.z, value.w)
         }
         
         
@@ -218,7 +218,7 @@ struct Program
             }
             
             assert(uniform.type == .texture)
-            OpenGL.glUniform1i(uniform.location, OpenGL.Int(value))
+            OpenGL.glUniform1i(uniform.location, .init(value))
         }
         
         
@@ -235,7 +235,7 @@ struct Program
             OpenGL.glUniform1i(uniform.location, value)
         }
         
-        func set(int2 name:String, _ value:Math<Int32>.V2)
+        func set(int2 name:String, _ value:Vector2<Int32>)
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -245,10 +245,10 @@ struct Program
             }
             
             assert(uniform.type == .int2)
-            OpenGL.glUniform2i(uniform.location, value.0, value.1)
+            OpenGL.glUniform2i(uniform.location, value.x, value.y)
         }
         
-        func set(int3 name:String, _ value:Math<Int32>.V3)
+        func set(int3 name:String, _ value:Vector3<Int32>)
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -258,10 +258,10 @@ struct Program
             }
             
             assert(uniform.type == .int3)
-            OpenGL.glUniform3i(uniform.location, value.0, value.1, value.2)
+            OpenGL.glUniform3i(uniform.location, value.x, value.y, value.z)
         }
         
-        func set(int4 name:String, _ value:Math<Int32>.V4)
+        func set(int4 name:String, _ value:Vector4<Int32>)
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -271,11 +271,11 @@ struct Program
             }
             
             assert(uniform.type == .int4)
-            OpenGL.glUniform4i(uniform.location, value.0, value.1, value.2, value.3)
+            OpenGL.glUniform4i(uniform.location, value.x, value.y, value.z, value.w)
         }
         
         
-        func set(mat3 name:String, _ value:[Math<Float>.Mat3])
+        func set(mat3 name:String, _ value:[Matrix3<Float>])
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -285,16 +285,25 @@ struct Program
             }
             
             assert(uniform.type == .mat3)
-            value.withUnsafeBufferPointer
+            
+            var flattened:[Float] = []
+                flattened.reserveCapacity(3 * 3 * value.count)
+            for matrix:Matrix3<Float> in value 
             {
-                let raw:UnsafeRawPointer?        = UnsafeRawPointer($0.baseAddress),
-                    buffer:UnsafePointer<Float>? =
-                        raw?.bindMemory(to: Float.self, capacity: value.count * 9)
-                OpenGL.glUniformMatrix3fv(uniform.location, OpenGL.Size(value.count), false, buffer)
-                raw?.bindMemory(to: Math<Float>.Mat3.self, capacity: value.count)
+                flattened.append(matrix[0].x)
+                flattened.append(matrix[0].y)
+                flattened.append(matrix[0].z)
+                flattened.append(matrix[1].x)
+                flattened.append(matrix[1].y)
+                flattened.append(matrix[1].z)
+                flattened.append(matrix[2].x)
+                flattened.append(matrix[2].y)
+                flattened.append(matrix[2].z)
             }
+            
+            OpenGL.glUniformMatrix3fv(uniform.location, .init(value.count), false, flattened)
         }
-        func set(mat4 name:String, _ value:[Math<Float>.Mat4])
+        func set(mat4 name:String, _ value:[Matrix4<Float>])
         {
             guard let uniform:Uniform = self.uniforms[name]
             else 
@@ -304,15 +313,30 @@ struct Program
             }
             
             assert(uniform.type == .mat4)
-            value.withUnsafeBufferPointer
+            
+            var flattened:[Float] = []
+                flattened.reserveCapacity(4 * 4 * value.count)
+            for matrix:Matrix4<Float> in value 
             {
-                let raw:UnsafeRawPointer?        = UnsafeRawPointer($0.baseAddress),
-                    buffer:UnsafePointer<Float>? =
-                        raw?.bindMemory(to: Float.self, capacity: value.count << 4)
-                OpenGL.glUniformMatrix4fv(uniform.location, OpenGL.Size(value.count), false, buffer)
-
-                raw?.bindMemory(to: Math<Float>.Mat4.self, capacity: value.count)
+                flattened.append(matrix[0].x)
+                flattened.append(matrix[0].y)
+                flattened.append(matrix[0].z)
+                flattened.append(matrix[0].w)
+                flattened.append(matrix[1].x)
+                flattened.append(matrix[1].y)
+                flattened.append(matrix[1].z)
+                flattened.append(matrix[1].w)
+                flattened.append(matrix[2].x)
+                flattened.append(matrix[2].y)
+                flattened.append(matrix[2].z)
+                flattened.append(matrix[2].w)
+                flattened.append(matrix[3].x)
+                flattened.append(matrix[3].y)
+                flattened.append(matrix[3].z)
+                flattened.append(matrix[3].w)
             }
+            
+            OpenGL.glUniformMatrix3fv(uniform.location, .init(value.count), false, flattened)
         }
     }
     

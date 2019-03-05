@@ -146,9 +146,9 @@ struct Camera
             
             // view matrix 
             let V:Matrix4<Float> = .init(
-                .extend(R.columns.0, 0), 
-                .extend(R.columns.1, 0), 
-                .extend(R.columns.2, 0), 
+                .extend(R[0], 0), 
+                .extend(R[1], 0), 
+                .extend(R[2], 0), 
                 .extend(R >< t,      1)
             )
             
@@ -156,9 +156,9 @@ struct Camera
             // into world space vectors (not necessarily normalized)
             let k:Vector2<Float>  = (b.xy - a.xy) / viewport
             let S:Matrix3<Float>  = R.transposed
-            let v0:Vector3<Float> = k.x * S.columns.0, 
-                v1:Vector3<Float> = k.y * S.columns.1, 
-                v2:Vector3<Float> = a.z * S.columns.2 + a.y * S.columns.1 + a.x * S.columns.0
+            let v0:Vector3<Float> = k.x * S[0], 
+                v1:Vector3<Float> = k.y * S[1], 
+                v2:Vector3<Float> = a.z * S[2] + a.y * S[1] + a.x * S[0]
             let F:Matrix3<Float>  = .init(v0, v1, v2)
             
             return .init(U: P >< V, V: V, F: F, position: -t)

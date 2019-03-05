@@ -62,9 +62,10 @@ enum GL
     }
     
     static 
-    func viewport(anchor:Math<Int>.V2, size:Math<Int>.V2)
+    func viewport(_ rectangle:Rectangle<Int>)
     {
-        OpenGL.glViewport(OpenGL.Int(anchor.x), OpenGL.Int(anchor.y), OpenGL.Size(size.x), OpenGL.Size(size.y))
+        OpenGL.glViewport(  .init(rectangle.a.x),    .init(rectangle.a.y), 
+                            .init(rectangle.size.x), .init(rectangle.size.y))
     }
     
     static 
@@ -98,7 +99,7 @@ enum GL
     }
     
     static 
-    func clearColor(_ color:Math<Float>.V3, _ alpha:Float)
+    func clearColor(_ color:Vector3<Float>, _ alpha:Float)
     {
         OpenGL.glClearColor(color.x, color.y, color.z, alpha)
     }
