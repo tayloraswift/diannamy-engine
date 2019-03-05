@@ -64,7 +64,7 @@ enum UBO
     final 
     class DisplayBlock
     {
-        typealias Storage = (frame_a:Math<Float>.V2, frame_b:Math<Float>.V2, viewport:Math<Float>.V2)
+        typealias Storage = (frame_a:Vector2<Float>, frame_b:Vector2<Float>, viewport:Vector2<Float>)
         
         private 
         let block:GL.Buffer<UInt8>
@@ -90,7 +90,7 @@ enum UBO
         }
         
         static 
-        func encode(frame:Math<Float>.Rectangle, viewport:Math<Float>.V2, 
+        func encode(frame:Rectangle<Float>, viewport:Vector2<Float>, 
             to target:GL.Buffer<UInt8>.BoundTarget)
         {
             let storage:Storage = (frame.a, frame.b, viewport)

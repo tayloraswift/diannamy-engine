@@ -99,27 +99,14 @@ extension Model.Map:Codable
         case backgroundImage = "background_image"
     }
     
-    struct _Vector3<T>:Codable where T:Codable
-    {
-        var x:T, y:T, z:T
-        
-        init(_ v:Math<T>.V3) 
-        {
-            self.x = v.x 
-            self.y = v.y 
-            self.z = v.z
-        }
-    }
-    
     init(from decoder:Decoder) throws 
     {
         let serialized:KeyedDecodingContainer<CodingKeys> = 
             try decoder.container(keyedBy: CodingKeys.self)
         
-        let points:[_Vector3<Float>]    = try serialized.decode([_Vector3<Float>].self, forKey: .points)
-        let backgroundImage:String?     = try serialized.decode(String?.self, forKey: .backgroundImage)
-        self.init(quasiUnitLengthPoints: points.map{ ($0.x, $0.y, $0.z) }, 
-                        backgroundImage: backgroundImage)
+        let points:[Vector3<Float>] = try serialized.decode([Vector3<Float>].self, forKey: .points)
+        let backgroundImage:String? = try serialized.decode(String?.self, forKey: .backgroundImage)
+        self.init(quasiUnitLengthPoints: points, backgroundImage: backgroundImage)
     }
     
     func encode(to encoder:Encoder) throws 
@@ -127,7 +114,7 @@ extension Model.Map:Codable
         var serialized:KeyedEncodingContainer<CodingKeys> = 
             encoder.container(keyedBy: CodingKeys.self)
         
-        try serialized.encode(self.points.map(_Vector3.init(_:)), forKey: .points)
+        try serialized.encode(self.points,          forKey: .points)
         try serialized.encode(self.backgroundImage, forKey: .backgroundImage)
     }
 }

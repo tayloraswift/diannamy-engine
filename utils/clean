@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+import os, fnmatch
+from argparse import ArgumentParser
+
+def shell(command):
+    print(command)
+    os.system(command)
+
+def find_gyb_files( * filetypes ):
+    for root, directories, files in os.walk('.'):
+        for filetype in filetypes:
+            for file in fnmatch.filter(files, '*.{0}.gyb'.format(filetype)):
+                yield os.path.join(root, file)
+
+def main():
+    gyb_targets = [path[:-4] for path in find_gyb_files('swift')]
+    for target in gyb_targets:
+        shell('rm -f {0}'.format(' '.join(gyb_targets)))
+    
+    shell('rm -rf .build/ Package.resolved')
+    
+if __name__ == '__main__':
+    # set cwd
+    location = os.path.dirname(__file__)
+    os.chdir(os.path.join(location, '..'))
+    main()

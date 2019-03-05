@@ -173,7 +173,7 @@ struct Camera
             assert(b.z < a.z && a.z < 0)
             // the last one may seem weird but it makes more sense when you think 
             // about it like |a.z| < |b.z|
-            let scale:Vector3<Float> = (a - b).reciprocal, 
+            let scale:Vector3<Float> = 1 / (a - b), 
                 shift:Vector3<Float> = -scale * (a + b)
             //                                     x                   y                     z            w
             let v0:Vector4<Float> = .init(2 * a.z * scale.x, 0,                  0,                       0), 

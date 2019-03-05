@@ -288,12 +288,12 @@ struct Model
     {
         // points are quasi-normalized, meaning we do our best to keep them sensible 
         // unit-length vectors, but should make no hard assumptions
-        var points:[Math<Float>.V3], 
+        var points:[Vector3<Float>], 
             backgroundImage:String?
         
         var background:GL.Texture<PNG.RGBA<UInt8>>
         
-        init(quasiUnitLengthPoints points:[Math<Float>.V3], backgroundImage:String? = nil) 
+        init(quasiUnitLengthPoints points:[Vector3<Float>], backgroundImage:String? = nil) 
         {
             self.points             = points 
             self.background         = .generate()
@@ -358,13 +358,13 @@ struct Model
             return nil
         }
         
-        func findNearest(to location:Math<Float>.V3, threshold:Float) -> Int? 
+        func findNearest(to location:Vector3<Float>, threshold:Float) -> Int? 
         {
             var gamma:Float = -1, 
                 index:Int?  = nil 
-            for (i, point):(Int, Math<Float>.V3) in self.points.enumerated()
+            for (i, point):(Int, Vector3<Float>) in self.points.enumerated()
             {
-                let g:Float = Math.dot(point, location)
+                let g:Float = point <> location
                 if g > gamma 
                 {
                     gamma = g
@@ -372,7 +372,7 @@ struct Model
                 }
             }
             
-            return gamma > Float.cos(threshold) ? index : nil
+            return gamma > Float.Math.cos(threshold) ? index : nil
         }
     }
     
@@ -382,7 +382,13 @@ struct Model
     init() 
     {
         self.log = .init()
-        self.map = .init(quasiUnitLengthPoints: [(1, 0, 1), (0, 1, 1), (-1, 0, 1), (0, -1, 1)].map(Math.normalize(_:)))
+        self.map = .init(quasiUnitLengthPoints: 
+            [
+                Vector3<Float>.init( 1,  0, 1), 
+                Vector3<Float>.init( 0,  1, 1), 
+                Vector3<Float>.init(-1,  0, 1), 
+                Vector3<Float>.init( 0, -1, 1)
+            ].map{ $0.normalized() })
         
         self.log.print("> ", terminator: "")
     }
@@ -596,7 +602,7 @@ struct Coordinator
 {
     struct Context 
     {
-        var viewport:Math<Float>.V2, 
+        var viewport:Vector2<Float>, 
             model:Model 
         
         enum Mutation 
@@ -608,7 +614,7 @@ struct Coordinator
     
     struct Base:LayerController 
     {
-        var frame:Math<Float>.Rectangle = ((0, 0), (0, 0))
+        var frame:Rectangle<Float> = .zero 
     }
     
     enum Event 
@@ -618,8 +624,8 @@ struct Coordinator
         
         case mapSync(reset:Bool)
         
-        case mapPointMoved(Int, Math<Float>.V3)
-        case mapPointAdded(Int, Math<Float>.V3)
+        case mapPointMoved(Int, Vector3<Float>)
+        case mapPointAdded(Int, Vector3<Float>)
         case mapPointRemoved(Int)
     }
     
@@ -648,7 +654,7 @@ struct Coordinator
     
     init()
     {
-        self.context        = .init(viewport: (0, 0), model: .init())
+        self.context        = .init(viewport: .zero, model: .init())
         self.controllers    = 
         [
             Base.init(), 
@@ -694,7 +700,7 @@ struct Coordinator
     }
     
     private 
-    func find(_ position:Math<Float>.V2) -> Int
+    func find(_ position:Vector2<Float>) -> Int
     {
         // search controllers from top to bottom, 
         // can bind by let value since `LayerController.test(_:)` is non-mutating
@@ -711,14 +717,14 @@ struct Coordinator
     }
     
     mutating
-    func window(size:Math<Float>.V2)
+    func window(size:Vector2<Float>)
     {
-        GL.viewport(anchor: (0, 0), size: Math.cast(size, as: Int.self))
+        GL.viewport(anchor: (0, 0), size: Math.cast(size._tuple, as: Int.self))
         self.context.viewport = size 
         
         for index:Int in self.controllers.indices 
         {
-            self.controllers[index].frame = ((0, 0), size)
+            self.controllers[index].frame = .init(.zero, size)
             
             self.controllers[index].notify(.viewport, in: self.context, reset: false) 
         }
@@ -755,14 +761,14 @@ struct Coordinator
     }
     
     mutating 
-    func scroll(_ direction:UI.Direction, _ position:Math<Float>.V2) 
+    func scroll(_ direction:UI.Direction, _ position:Vector2<Float>) 
     {
         let index:Int = self.find(position) 
         self.handle(self.controllers[index].scroll(self.context, direction, position))
     }
     
     mutating 
-    func down(_ action:UI.Action, _ position:Math<Float>.V2, doubled:Bool) 
+    func down(_ action:UI.Action, _ position:Vector2<Float>, doubled:Bool) 
     {
         self.buttons[action] = true 
         
@@ -773,7 +779,7 @@ struct Coordinator
     }
     
     mutating 
-    func move(_ position:Math<Float>.V2) 
+    func move(_ position:Vector2<Float>) 
     {
         let index:Int = self.buttons.any ? self.active : self.find(position)
         self.emitLeaveCalls(newHover: index)
@@ -781,7 +787,7 @@ struct Coordinator
     }
     
     mutating 
-    func up(_ action:UI.Action, _ position:Math<Float>.V2) 
+    func up(_ action:UI.Action, _ position:Vector2<Float>) 
     {
         self.buttons[action] = false 
         
@@ -816,11 +822,11 @@ struct Coordinator
             // notify isn’t strictly necessary for this case or .mapPointAdded, 
             // as the controllers will already be in a clean state, but we notify 
             // as confirmation anyway
-            self.context.model.map.points[index] = Math.normalize(location)
+            self.context.model.map.points[index] = location.normalized()
             self.notify(.model, to: .all(Controller.MapEditor.self))
         
         case .mapPointAdded(let index, let location):
-            self.context.model.map.points.insert(Math.normalize(location), at: index)
+            self.context.model.map.points.insert(location.normalized(), at: index)
             self.notify(.model, to: .all(Controller.MapEditor.self))
         
         case .mapPointRemoved(let index):
@@ -880,14 +886,14 @@ struct Coordinator
 
 protocol LayerController 
 {
-    var frame:Math<Float>.Rectangle { get set }
+    var frame:Rectangle<Float> { get set }
     
     // context mutation notifier
     mutating 
     func notify(_:Coordinator.Context.Mutation, in:Coordinator.Context, reset:Bool)
     
     // geometric intersection function 
-    func test(_ position:Math<Float>.V2) -> Bool 
+    func test(_ position:Vector2<Float>) -> Bool 
     
     // event handlers
     mutating 
@@ -897,19 +903,19 @@ protocol LayerController
     func keypress(_:Coordinator.Context, _ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> Coordinator.Event?
     
     mutating
-    func scroll(_:Coordinator.Context, _ direction:UI.Direction, _ position:Math<Float>.V2) -> Coordinator.Event?
+    func scroll(_:Coordinator.Context, _ direction:UI.Direction, _ position:Vector2<Float>) -> Coordinator.Event?
     
     mutating 
-    func down(_:Coordinator.Context, _ action:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
+    func down(_:Coordinator.Context, _ action:UI.Action, _ position:Vector2<Float>, doubled:Bool) -> Coordinator.Event?
     
     mutating 
-    func move(_:Coordinator.Context, _ position:Math<Float>.V2) -> Coordinator.Event?
+    func move(_:Coordinator.Context, _ position:Vector2<Float>) -> Coordinator.Event?
     
     mutating 
     func leave(_:Coordinator.Context) -> Coordinator.Event?
     
     mutating 
-    func up(_:Coordinator.Context, _ action:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+    func up(_:Coordinator.Context, _ action:UI.Action, _ position:Vector2<Float>) -> Coordinator.Event?
     
     // stream-called functions
     mutating 
@@ -925,7 +931,7 @@ extension LayerController
     }
     
     // default implementations (ignore all events)
-    func test(_ position:Math<Float>.V2) -> Bool 
+    func test(_ position:Vector2<Float>) -> Bool 
     {
         return true 
     }
@@ -938,15 +944,15 @@ extension LayerController
     {
         return nil
     }
-    func scroll(_:Coordinator.Context, _:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
+    func scroll(_:Coordinator.Context, _:UI.Direction, _:Vector2<Float>) -> Coordinator.Event?
     {
         return nil
     }
-    func down(_:Coordinator.Context, _:UI.Action, _:Math<Float>.V2, doubled _:Bool) -> Coordinator.Event?
+    func down(_:Coordinator.Context, _:UI.Action, _:Vector2<Float>, doubled _:Bool) -> Coordinator.Event?
     {
         return nil
     }
-    func move(_:Coordinator.Context, _:Math<Float>.V2) -> Coordinator.Event?
+    func move(_:Coordinator.Context, _:Vector2<Float>) -> Coordinator.Event?
     {
         return nil
     }
@@ -954,7 +960,7 @@ extension LayerController
     {
         return nil
     }
-    func up(_:Coordinator.Context, _:UI.Action, _:Math<Float>.V2) -> Coordinator.Event?
+    func up(_:Coordinator.Context, _:UI.Action, _:Vector2<Float>) -> Coordinator.Event?
     {
         return nil
     }
@@ -1368,28 +1374,8 @@ enum Controller
         {
             case    none,
                     anchorSelected(Int), 
-                    anchorMoving(Int, Math<Float>.V3), 
-                    anchorNew(Int, Math<Float>.V3)
-            // adding new case? REMEMBER TO ADD `==` IMPLEMENTATION
-            
-            static 
-            func == (a:Action, b:Action) -> Bool 
-            {
-                switch (a, b) 
-                {
-                    case (.none, .none):
-                        return true 
-                    case (.anchorSelected(let i1), .anchorSelected(let i2)):
-                        return i1 == i2 
-                    case (.anchorMoving(let i1, let p1), .anchorMoving(let i2, let p2)):
-                        return i1 == i2 && p1 == p2 
-                    case (.anchorNew(let i1, let p1), .anchorNew(let i2, let p2)):
-                        return i1 == i2 && p1 == p2
-                    
-                    default:
-                        return false 
-                }
-            }
+                    anchorMoving(Int, Vector3<Float>), 
+                    anchorNew(Int, Vector3<Float>)
         }
         
         // interface for communicating with Self.View 
@@ -1404,7 +1390,7 @@ enum Controller
         }
         
         
-        var frame:Math<Float>.Rectangle = ((0, 0), (0, 0))
+        var frame:Rectangle<Float> = .zero
         {
             didSet 
             {
@@ -1419,7 +1405,7 @@ enum Controller
         
         // other properties 
         private 
-        var hotspots:[Math<Float>.V2?]
+        var hotspots:[Vector2<Float>?]
         
         // state variables 
         private 
@@ -1479,7 +1465,7 @@ enum Controller
         }
         
         
-        func test(_ position:Math<Float>.V2) -> Bool  
+        func test(_ position:Vector2<Float>) -> Bool  
         {
             return true 
         }
@@ -1487,19 +1473,19 @@ enum Controller
         
         // project a sphere point into 2D
         private  
-        func trace(_ point:Math<Float>.V3, viewport:Math<Float>.V2) -> Math<Float>.V2?
+        func trace(_ point:Vector3<Float>, viewport:Vector2<Float>) -> Vector2<Float>?
         {
-            guard Math.dot(Math.sub(point, self.plane.position._tuple), Math.sub(point, (0, 0, 0))) < 0 
+            guard (point - self.plane.position) <> (point - 0) < 0 
             else 
             {
                 return nil 
             }
             
-            return Math.mult(viewport, self.plane.trace(._struct(point))._tuple)
+            return viewport * self.plane.trace(point)
         }
         
         private mutating 
-        func updateHotspots(_ points:[Math<Float>.V3], viewport:Math<Float>.V2) 
+        func updateHotspots(_ points:[Vector3<Float>], viewport:Vector2<Float>) 
         {
             self.hotspots = points.map 
             {
@@ -1508,13 +1494,13 @@ enum Controller
         }
         
         private mutating 
-        func updateHotspot(_ point:Math<Float>.V3, at index:Int, viewport:Math<Float>.V2) 
+        func updateHotspot(_ point:Vector3<Float>, at index:Int, viewport:Vector2<Float>) 
         {
             self.hotspots[index] = self.trace(point, viewport: viewport)
         }
         
         private mutating 
-        func insertHotspot(_ point:Math<Float>.V3, at index:Int, viewport:Math<Float>.V2) 
+        func insertHotspot(_ point:Vector3<Float>, at index:Int, viewport:Vector2<Float>) 
         {
             self.hotspots.insert(self.trace(point, viewport: viewport), at: index)
             self.reindex(after: index, offset: 1)
@@ -1544,19 +1530,20 @@ enum Controller
         }
         
         private 
-        func findHotspot(_ position:Math<Float>.V2, threshold:Float) -> Int? 
+        func findHotspot(_ position:Vector2<Float>, threshold:Float) -> Int? 
         {
             var g2:Float   = .infinity, 
                 index:Int? = nil 
-            for (i, hotspot):(Int, Math<Float>.V2?) in self.hotspots.enumerated()
+            for (i, hotspot):(Int, Vector2<Float>?) in self.hotspots.enumerated()
             {
-                guard let hotspot:Math<Float>.V2 = hotspot 
+                guard let hotspot:Vector2<Float> = hotspot 
                 else 
                 {
                     continue 
                 }
                 
-                let r2:Float = Math.eusq(Math.sub(hotspot, position))
+                let r:Vector2<Float> = hotspot - position, 
+                    r2:Float         = r <> r
                 if  r2 < g2
                 {
                     g2    = r2
@@ -1649,14 +1636,14 @@ enum Controller
         }
         
         mutating
-        func scroll(_:Coordinator.Context, _ direction:UI.Direction, _:Math<Float>.V2) -> Coordinator.Event?
+        func scroll(_:Coordinator.Context, _ direction:UI.Direction, _:Vector2<Float>) -> Coordinator.Event?
         {
             self.plane.bump(direction, action: .zoom)
             return nil
         }
         
         mutating 
-        func down(_ context:Coordinator.Context, _ button:UI.Action, _ position:Math<Float>.V2, doubled:Bool) -> Coordinator.Event?
+        func down(_ context:Coordinator.Context, _ button:UI.Action, _ position:Vector2<Float>, doubled:Bool) -> Coordinator.Event?
         {
             switch button 
             {
@@ -1664,8 +1651,8 @@ enum Controller
                 if  doubled, 
                     case .anchorSelected(let index) = self.action
                 {
-                    let p:Math<Float>.V3 = self.plane.project(._struct(position), on: .zero, radius: 1)._tuple
-                    self.action = .anchorNew(index + 1, Math.normalize(p)) 
+                    let p:Vector3<Float> = self.plane.project(position, on: .zero, radius: 1).normalized()
+                    self.action = .anchorNew(index + 1, p) 
                     break 
                 }
                 
@@ -1679,7 +1666,7 @@ enum Controller
                     else 
                     {
                         self.action = .none
-                        self.plane.down(._struct(position), button: button)
+                        self.plane.down(position, button: button)
                     }
                 
                 case .anchorMoving(let index, let location):
@@ -1718,7 +1705,7 @@ enum Controller
         }
         
         mutating 
-        func move(_:Coordinator.Context, _ position:Math<Float>.V2) -> Coordinator.Event?
+        func move(_:Coordinator.Context, _ position:Vector2<Float>) -> Coordinator.Event?
         {
             // prevents meaningless preselection toggles, which needlessly set 
             // dirty flags in the state structure
@@ -1736,15 +1723,15 @@ enum Controller
                     preselection = i
                 }
             
-                self.plane.move(._struct(position))
+                self.plane.move(position)
             
             case .anchorMoving(let index, _):
-                let p:Math<Float>.V3 = self.plane.project(._struct(position), on: .zero, radius: 1)._tuple
-                self.action = .anchorMoving(index, Math.normalize(p))
+                let p:Vector3<Float> = self.plane.project(position, on: .zero, radius: 1).normalized()
+                self.action = .anchorMoving(index, p)
             
             case .anchorNew(let index, _):
-                let p:Math<Float>.V3 = self.plane.project(._struct(position), on: .zero, radius: 1)._tuple
-                self.action = .anchorNew(index, Math.normalize(p))
+                let p:Vector3<Float> = self.plane.project(position, on: .zero, radius: 1).normalized()
+                self.action = .anchorNew(index, p)
             }
             
             return nil
@@ -1758,16 +1745,16 @@ enum Controller
         }
         
         mutating 
-        func up(_:Coordinator.Context, _ button:UI.Action, _ position:Math<Float>.V2) -> Coordinator.Event?
+        func up(_:Coordinator.Context, _ button:UI.Action, _ position:Vector2<Float>) -> Coordinator.Event?
         {
-            self.plane.up(._struct(position), button: button)
+            self.plane.up(position, button: button)
             return nil
         }
         
         mutating 
         func process(_ context:Coordinator.Context, _ delta:Int) -> Bool 
         {
-            return self.plane.process(delta, viewport: ._struct(context.viewport), frame: ._struct(self.frame))
+            return self.plane.process(delta, viewport: context.viewport, frame: self.frame)
         }
         
         mutating 
@@ -1863,8 +1850,8 @@ extension Controller.MapEditor
         {
             private 
             let vao:GL.VertexArray, 
-                vbo:GL.Buffer<Math<Float>.V3>,
-                ebo:GL.Buffer<Math<UInt8>.V3>
+                vbo:GL.Buffer<Vector3<Float>>,
+                ebo:GL.Buffer<Vector3<UInt8>>
             
             init()
             {
@@ -1872,38 +1859,38 @@ extension Controller.MapEditor
                 self.vbo = .generate()
                 self.vao = .generate()
 
-                let cube:[Math<Float>.V3] =
+                let cube:[Vector3<Float>] =
                 [
-                     (-1, -1, -1),
-                     ( 1, -1, -1),
-                     ( 1,  1, -1),
-                     (-1,  1, -1),
+                     .init(-1, -1, -1),
+                     .init( 1, -1, -1),
+                     .init( 1,  1, -1),
+                     .init(-1,  1, -1),
 
-                     (-1, -1,  1),
-                     ( 1, -1,  1),
-                     ( 1,  1,  1),
-                     (-1,  1,  1)
+                     .init(-1, -1,  1),
+                     .init( 1, -1,  1),
+                     .init( 1,  1,  1),
+                     .init(-1,  1,  1)
                 ]
 
-                let indices:[Math<UInt8>.V3] =
+                let indices:[Vector3<UInt8>] =
                 [
-                    (0, 2, 1),
-                    (0, 3, 2),
+                    .init(0, 2, 1),
+                    .init(0, 3, 2),
 
-                    (0, 1, 5),
-                    (0, 5, 4),
+                    .init(0, 1, 5),
+                    .init(0, 5, 4),
 
-                    (1, 2, 6),
-                    (1, 6, 5),
+                    .init(1, 2, 6),
+                    .init(1, 6, 5),
 
-                    (2, 3, 7),
-                    (2, 7, 6),
+                    .init(2, 3, 7),
+                    .init(2, 7, 6),
 
-                    (3, 0, 4),
-                    (3, 4, 7),
+                    .init(3, 0, 4),
+                    .init(3, 4, 7),
 
-                    (4, 5, 6),
-                    (4, 6, 7)
+                    .init(4, 5, 6),
+                    .init(4, 6, 7)
                 ]
 
                 self.vbo.bind(to: .array)
@@ -1941,15 +1928,15 @@ extension Controller.MapEditor
             @usableFromInline
             struct Vertex 
             {
-                var position:Math<Float>.V3, 
+                var position:Vector3<Float>, 
                     id:Int32
                 
-                init(_ position:Math<Float>.V3, id:Int)
+                init(_ position:Vector3<Float>, id:Int)
                 {
                     self.init(position, id: Int32(truncatingIfNeeded: id))
                 }
                 
-                init(_ position:Math<Float>.V3, id:Int32)
+                init(_ position:Vector3<Float>, id:Int32)
                 {
                     self.position = position 
                     self.id       = id
@@ -1980,17 +1967,17 @@ extension Controller.MapEditor
             enum Selection:Equatable
             {
                 // when adding cases UPDATE EQUATABLE CONFORMANCE
-                case select(Int, Math<Float>.V3)
-                case move(Int, Math<Float>.V3)
-                case new(Math<Float>.V3)
+                case select(Int, Vector3<Float>)
+                case move(Int, Vector3<Float>)
+                case new(Vector3<Float>)
                 case none
                 
-                func labelSphere(at offset:Math<Float>.V3) -> (Math<Float>.V3, [(Set<Style.Selector>, String)])?
+                func labelSphere(at offset:Vector3<Float>) -> (Vector3<Float>, [(Set<Style.Selector>, String)])?
                 {
                     let selectors:Set<Style.Selector> = [.mapeditor, .label, .selection], 
                         bold:Set<Style.Selector> = selectors.union([.strong])
                     let parts:(String, String), 
-                        point:Math<Float>.V3, 
+                        point:Vector3<Float>, 
                         classes:Set<Style.Selector>
                     
                     switch self 
@@ -2011,8 +1998,8 @@ extension Controller.MapEditor
                     case    .select(_, let location), 
                             .move(_, let location), 
                             .new(let location):
-                        parts.1 = "   \(Selection.formatLL(Math.spherical(normalized: location)))"
-                        point   = Math.add(location, offset)
+                        parts.1 = "   \(Selection.formatLL(.init(normalized: location)))"
+                        point   = location + offset
                     
                     case .none:
                         return nil
@@ -2036,10 +2023,10 @@ extension Controller.MapEditor
                 }
                 
                 private static 
-                func formatLL(_ s:Math<Float>.S2) -> String 
+                func formatLL(_ s:Spherical2<Float>) -> String 
                 {
-                    let degreesN:Float = 90 - s.θ * (180 / Float.pi), 
-                        degreesE:Float =      s.φ * (180 / Float.pi)
+                    let degreesN:Float = 90 - s.colatitude * (180 / Float.pi), 
+                        degreesE:Float =      s.longitude  * (180 / Float.pi)
                     
                     let N:(d:Int, m:Int, s:Int) = sexagesimal(abs(degreesN)),
                         E:(d:Int, m:Int, s:Int) = sexagesimal(abs(degreesE))
@@ -2067,62 +2054,23 @@ extension Controller.MapEditor
                     let string:String = .init(x)
                     return .init(repeating: "0", count: max(count - string.count, 0)) + string
                 }
-                
-                static 
-                func == (a:Selection, b:Selection) -> Bool 
-                {
-                    switch (a, b) 
-                    {
-                    case    (.select(let a0, let a1), .select(let b0, let b1)), 
-                            (.move(let a0, let a1), .move(let b0, let b1)):
-                        return a0 == b0 && a1 == b1
-                    
-                    case    (.new(let a0), .new(let b0)):
-                        return a0 == b0
-                    
-                    case    (.none, .none):
-                        return true 
-                    
-                    default:
-                        return false
-                    }
-                }
             }
             enum Preselection:Equatable 
             {
-                case preselect(Int, Math<Float>.V3)
+                case preselect(Int, Vector3<Float>)
                 case occluded(Int)
                 case none
                 
-                func labelSphere(at offset:Math<Float>.V3) -> (Math<Float>.V3, [(Set<Style.Selector>, String)])?
+                func labelSphere(at offset:Vector3<Float>) -> (Vector3<Float>, [(Set<Style.Selector>, String)])?
                 {
                     let bold:Set<Style.Selector> = [.mapeditor, .label, .preselection, .strong]
                     switch self 
                     {
                     case .preselect(let index, let location):
-                        return (Math.add(offset, location), [(bold, "0:\(index)")])
+                        return (offset + location, [(bold, "0:\(index)")])
                     
                     case .occluded, .none:
                         return nil
-                    }
-                }
-                
-                static 
-                func == (a:Preselection, b:Preselection) -> Bool 
-                {
-                    switch (a, b) 
-                    {
-                    case (.preselect(let i1, let l1), .preselect(let i2, let l2)):
-                        return i1 == i2 && l1 == l2 
-                    
-                    case (.occluded(let i1), .occluded(let i2)):
-                        return i1 == i2 
-                    
-                    case (.none, .none):
-                        return true 
-                    
-                    default:
-                        return false 
                     }
                 }
             }
@@ -2186,42 +2134,42 @@ extension Controller.MapEditor
                     indices:(fixed:[Index], interpolated:[Index]) = ([], []) 
                 for loop:[Vertex] in loops
                 {
-                    let base:Index = Index(vertices.count) 
+                    let base:Index = .init(vertices.count) 
                     for j:Int in loop.indices
                     {
                         let i:Int = loop.index(before: j == loop.startIndex ? loop.endIndex : j)
                         // get two vertices and angle between
-                        let edge:Math<Vertex>.V2 = (loop[i], loop[j])
-                        let d:Float     = Math.dot(edge.0.position, edge.1.position), 
-                            φ:Float     = .acos(max(-1, min(d, 1))), 
+                        let edge:(Vertex, Vertex) = (loop[i], loop[j])
+                        let d:Float     = edge.0.position <> edge.1.position, 
+                            z:Float     = Float.Math.acos(d.clipped(to: -1 ... 1)), 
                             scale:Float = 1 / (1 - d * d).squareRoot()
                         // determine subdivisions 
-                        let subdivisions:Int = Int(φ / resolution) + 1
+                        let subdivisions:Int = .init(z / resolution) + 1
                         
                         // push the fixed vertex 
-                        indices.fixed.append(Index(vertices.count))
+                        indices.fixed.append(.init(vertices.count))
                         vertices.append(edge.0)
                         // push the interpolated vertices 
                         for s:Int in 1 ..< subdivisions
                         {
-                            let t:Float = Float(s) / Float(subdivisions)
+                            let t:Float = .init(s) / .init(subdivisions)
                             
                             // slerp!
-                            let sines:Math<Float>.V2   = (.sin(φ - φ * t), .sin(φ * t)), 
-                                factors:Math<Float>.V2 = Math.scale(sines, by: scale)
+                            let sines:Vector2<Float>   = Vector2.Math.sin(.init(z - z * t, z * t)), 
+                                factors:Vector2<Float> = scale * sines
                             
-                            let components:Math<Math<Float>.V3>.V2 
-                            components.0 = Math.scale(edge.0.position, by: factors.0) 
-                            components.1 = Math.scale(edge.1.position, by: factors.1) 
+                            let components:(Vector3<Float>, Vector3<Float>) 
+                            components.0 = factors.x * edge.0.position 
+                            components.1 = factors.y * edge.1.position 
                             
-                            let interpolated:Math<Float>.V3 = Math.add(components.0, components.1)
+                            let interpolated:Vector3<Float> = components.0 + components.1
                             
                             vertices.append(.init(interpolated, id: edge.0.id))
                         }
                     }
                     
                     // compute lines-adjacency indices
-                    let totalDivisions:Index = Index(vertices.count) - base
+                    let totalDivisions:Index = .init(vertices.count) - base
                     for primitive:Index in 0 ..< totalDivisions
                     {
                         indices.interpolated.append(base +  primitive    )
@@ -2368,18 +2316,20 @@ extension Controller.MapEditor
                 if selection != self.selection || preselection != self.preselection 
                 {
                     var textVertices:[Text.Vertex]  = []
-                    if let (point, label):(Math<Float>.V3, [(Set<Style.Selector>, String)]) = selection.labelSphere(at: (0, 0, 0)) 
+                    if let (point, label):(Vector3<Float>, [(Set<Style.Selector>, String)]) = 
+                        selection.labelSphere(at: .zero) 
                     {
                         for text:Text in definitions.line(label) 
                         {
-                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point))
+                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point._tuple))
                         }
                     } 
-                    if let (point, label):(Math<Float>.V3, [(Set<Style.Selector>, String)]) = preselection.labelSphere(at: (0, 0, 0)) 
+                    if let (point, label):(Vector3<Float>, [(Set<Style.Selector>, String)]) = 
+                        preselection.labelSphere(at: .zero) 
                     {
                         for text:Text in definitions.line(label) 
                         {
-                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point))
+                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point._tuple))
                         }
                     } 
                     

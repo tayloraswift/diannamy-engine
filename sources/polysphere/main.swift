@@ -22,9 +22,9 @@ class Window
     private 
     var eventsProcessed:Bool = true 
     
-    init(size:Math<Float>.V2, name:String)
+    init(size:Vector2<Float>, name:String)
     {
-        guard let window:OpaquePointer = glfwCreateWindow(CInt(size.x), CInt(size.y), name, nil, nil)
+        guard let window:OpaquePointer = glfwCreateWindow(.init(size.x), .init(size.y), name, nil, nil)
         else
         {
             Log.fatal("failed to create window")
@@ -52,7 +52,7 @@ class Window
             
             let window:Window   = .reconstitute(from: context)
             window.height       = .init(y)
-            window.coordinator.window(size: Math.cast((x, y), as: Float.self))
+            window.coordinator.window(size: Vector2<CInt>.init(x, y).map(Float.init(_:)))
         }
 
         glfwSetCharCallback(window)
@@ -99,7 +99,7 @@ class Window
             (context:OpaquePointer?, x:Double, y:Double) in
             
             let window:Window = .reconstitute(from: context)
-            window.coordinator.move(Math.cast((x, window.height - y), as: Float.self))
+            window.coordinator.move(Vector2<Double>.init(x, window.height - y).map(Float.init(_:)))
         }
 
         glfwSetMouseButtonCallback(window)
@@ -107,7 +107,7 @@ class Window
             (context:OpaquePointer?, code:CInt, direction:CInt, mods:CInt) in
 
             let window:Window = .reconstitute(from: context), 
-                position:Math<Float>.V2 = window.cursorPosition(context: context)
+                position:Vector2<Float> = window.cursorPosition(context: context)
             
             outer: 
             switch direction 
@@ -189,7 +189,7 @@ class Window
             (context:OpaquePointer?, x:Double, y:Double) in
 
             let window:Window           = .reconstitute(from: context), 
-                position:Math<Float>.V2 = window.cursorPosition(context: context)
+                position:Vector2<Float> = window.cursorPosition(context: context)
 
             if y > 0
             {
@@ -210,13 +210,11 @@ class Window
         }
     }
     
-    func cursorPosition(context:OpaquePointer?) -> Math<Float>.V2 
+    func cursorPosition(context:OpaquePointer?) -> Vector2<Float> 
     {
-        var position:Math<Double>.V2 = (0, 0)
-        glfwGetCursorPos(context, &position.x, &position.y)
-        position.y = self.height - position.y
-        
-        return Math.cast(position, as: Float.self)
+        var (x, y):(Double, Double) = (0, 0) 
+        glfwGetCursorPos(context, &x, &y)
+        return .init(.init(x), .init(self.height - y))
     }
 
     func loop()
@@ -287,7 +285,7 @@ func main()
 
     OpenGL.loader = unsafeBitCast(glfwGetProcAddress, to: OpenGL.LoaderFunction.self)
     
-    let window:Window = .init(size: (1200, 600), name: "Map Editor")
+    let window:Window = .init(size: .init(1200, 600), name: "Map Editor")
     
     window.loop()
 }
