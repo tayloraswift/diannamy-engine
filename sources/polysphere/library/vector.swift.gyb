@@ -19,6 +19,17 @@ infix operator !~ :ComparisonPrecedence     // distance test
     C                               = 'x', 'y', 'z', 'w'
 }%
 
+extension FixedWidthInteger 
+{
+    // rounds up to the next power of two, with 0 rounding up to 1. 
+    // numbers that are already powers of two return themselves
+    @inline(__always)
+    static 
+    func nextPowerOfTwo(_ n:Self) -> Self 
+    {
+        return 1 &<< (Self.bitWidth - (n - 1).leadingZeroBitCount)
+    }
+}
 extension FloatingPoint 
 {
     mutating 
@@ -137,6 +148,11 @@ struct Vector${N}<Scalar>:Hashable, Codable where Scalar:SIMDScalar
         return self.storage[index]
     }
     
+    init(repeating repeatedValue:Scalar)
+    {
+        self.init(.init(${ ', '.join(('repeatedValue',) * N) }))
+    }
+    
     init(${ ', '.join('_ {0}:Scalar'.format(c) for c in C[:N]) })
     {
         self.init(.init(${ ', '.join(C[:N]) }))
@@ -151,6 +167,36 @@ struct Vector${N}<Scalar>:Hashable, Codable where Scalar:SIMDScalar
         where Result:SIMDScalar 
     {
         return .init(${ ', '.join('try transform(self.{0})'.format(c) for c in C[:N]) })
+    }
+}
+
+extension Vector${N} where Scalar:BinaryInteger 
+{
+    static 
+    func cast<T>(_ v:Vector${N}<T>) -> Vector${N}<Scalar> where T:BinaryFloatingPoint 
+    {
+        return v.map(Scalar.init(_:))
+    }
+    static 
+    func cast<T>(_ v:Vector${N}<T>) -> Vector${N}<Scalar> where T:BinaryInteger 
+    {
+        return v.map(Scalar.init(_:))
+    }
+}
+extension Vector${N} where Scalar:FloatingPoint 
+{
+    static 
+    func cast<Source>(_ v:Vector${N}<Source>) -> Vector${N}<Scalar> where Source:BinaryInteger 
+    {
+        return v.map(Scalar.init(_:))
+    }
+}
+extension Vector${N} where Scalar:BinaryFloatingPoint 
+{
+    static 
+    func cast<Source>(_ v:Vector${N}<Source>) -> Vector${N}<Scalar> where Source:BinaryFloatingPoint 
+    {
+        return v.map(Scalar.init(_:))
     }
 }
 
@@ -226,8 +272,8 @@ extension Vector${N} where Scalar:FloatingPoint
         return .init(.zero) 
     }
     
-    prefix 
-    static func - (operand:Vector${N}<Scalar>) -> Vector${N}<Scalar>
+    prefix static 
+    func - (operand:Vector${N}<Scalar>) -> Vector${N}<Scalar>
     {
         return .init(-operand.storage)
     }

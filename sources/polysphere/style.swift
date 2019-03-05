@@ -136,14 +136,14 @@ struct Style
             {
                 let font:Typeface.Font, 
                     features:[Feature], 
-                    color:Math<UInt8>.V4
+                    color:Vector4<UInt8>
             }
             
             let font:Font?, 
                 features:[Feature]?, 
-                color:Math<UInt8>.V4?
+                color:Vector4<UInt8>?
             
-            init(font:Font? = nil, features:[Feature]? = nil, color:Math<UInt8>.V4? = nil) 
+            init(font:Font? = nil, features:[Feature]? = nil, color:Vector4<UInt8>? = nil) 
             {
                 self.font       = font 
                 self.features   = features 
@@ -163,7 +163,7 @@ struct Style
             .init(
                 font:       .text55_12, 
                 features:   [.kern(true), .onum(true), .liga(true), .calt(true)], 
-                color:      (.max, .max, .max, .max)
+                color:      .init(repeating: .max)
             )), 
             
             .init([.paragraph, .emphasis], 
@@ -186,7 +186,7 @@ struct Style
             .init(
                 font:       .text55_12, 
                 features:   [.kern(true), .onum(true), .tnum(true)], 
-                color:      (255, 0, 0, .max)
+                color:      .init(255, 0, 0, .max)
             )), 
             .init([.mapeditor, .label, .strong], 
             .init(
@@ -195,15 +195,15 @@ struct Style
             
             .init([.mapeditor, .label, .move], 
             .init(
-                color:      (255, 153, 0, .max)
+                color:      .init(255, 153, 0, .max)
             )), 
             .init([.mapeditor, .label, .new], 
             .init(
-                color:      (77, 51, 255, .max)
+                color:      .init(77, 51, 255, .max)
             )), 
             .init([.mapeditor, .label, .preselection], 
             .init(
-                color:      (255, 0, 255, .max)
+                color:      .init(255, 0, 255, .max)
             ))
         ]
         
@@ -245,7 +245,7 @@ struct Style
             
             let font:Definitions.Font           = Rule.collapse(styles, keyPath: \.font)     ?? .mono55_12, 
                 features:[Definitions.Feature]  = Rule.collapse(styles, keyPath: \.features) ?? [], 
-                color:Math<UInt8>.V4            = Rule.collapse(styles, keyPath: \.color)    ?? (.max, .max, .max, .max)
+                color:Vector4<UInt8>            = Rule.collapse(styles, keyPath: \.color)    ?? .init(repeating: .max)
             
             return .init(font: self[font: font], features: features, color: color)
         }
@@ -271,7 +271,7 @@ struct Style
             
             return Text.line(computed, atlas: self.atlas)
         }
-        func paragraph(_ runs:[(Set<Selector>, String)], linebox:Math<Int>.V2, block:Set<Selector> = []) -> [Text]
+        func paragraph(_ runs:[(Set<Selector>, String)], linebox:Vector2<Int>, block:Set<Selector> = []) -> [Text]
         {
             let computed:[(Inline.Computed, String)] = runs.map 
             {

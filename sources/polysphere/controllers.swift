@@ -2145,8 +2145,8 @@ extension Controller.MapEditor
                     self.textvao.bind().setVertexLayout(
                         .float(from: .float2), 
                         .float(from: .float2), 
-                        .float(from: .ubyte4_rgba), 
-                        .float(from: .float3))
+                        .float(from: .float3), 
+                        .float(from: .ubyte4_rgba))
                     self.textvao.unbind()
                 }
             }
@@ -2346,7 +2346,7 @@ extension Controller.MapEditor
                     {
                         for text:Text in definitions.line(label) 
                         {
-                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point._tuple))
+                            textVertices.append(contentsOf: text.vertices(at: .init(20, 20), tracing: point))
                         }
                     } 
                     if let (point, label):(Vector3<Float>, [(Set<Style.Selector>, String)]) = 
@@ -2354,7 +2354,7 @@ extension Controller.MapEditor
                     {
                         for text:Text in definitions.line(label) 
                         {
-                            textVertices.append(contentsOf: text.vertices(at: (20, 20), tracing: point._tuple))
+                            textVertices.append(contentsOf: text.vertices(at: .init(20, 20), tracing: point))
                         }
                     } 
                     
@@ -2438,8 +2438,8 @@ extension Controller.MapEditor
                 self.textvao.bind().setVertexLayout(
                     .float(from: .float2), 
                     .float(from: .float2), 
-                    .float(from: .ubyte4_rgba), 
-                    .padding(MemoryLayout<Math<Float>.V3>.stride))
+                    .padding(3 * MemoryLayout<Float>.size), 
+                    .float(from: .ubyte4_rgba))
                 self.textvao.unbind()
             }
         }
@@ -2457,10 +2457,10 @@ extension Controller.MapEditor
                     ([.strong],             " and no one. efficiency. 012345") 
                 ]
                 
-                let text:[Text] = definitions.paragraph(runs, linebox: (150, 20), block: [.paragraph])
+                let text:[Text] = definitions.paragraph(runs, linebox: .init(150, 20), block: [.paragraph])
                 let vertices:[Text.Vertex] = text.flatMap 
                 {
-                    $0.vertices(at: (20, 20))
+                    $0.vertices(at: .init(20, 20))
                 }
                 self.textvvo.assign(data: vertices, in: .array, usage: .static)
                 textRendered = true 

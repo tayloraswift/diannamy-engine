@@ -2,25 +2,6 @@ import PNG
 
 enum Programs
 {
-    static 
-    let monofont:(metrics:Math<Float>.V4, texture:GL.Texture<UInt8>) = 
-    {
-        let font:BasicFontAtlas = .init("assets/fonts/SourceCodePro-Medium.otf", size: 16) 
-        
-        let texture:GL.Texture<UInt8> = .generate()
-        texture.bind(to: .texture2d)
-        {
-            $0.data(font.atlas, layout: .r8, storage: .r8)
-            $0.setMagnificationFilter(.nearest)
-            $0.setMinificationFilter(.nearest, mipmap: nil)
-        }
-        
-        let fraction:Float = Float(font.metrics.advance) / Float(font.atlas.size.x), 
-            bounds:Math<Float>.V2 = Math.cast(font.metrics.bounds, as: Float.self)
-        return ((bounds.x, bounds.y, fraction, Float(font.metrics.advance)), texture)
-    }()
-    
-    
     static
     let sphere:GL.Program = .create(
         shaders:

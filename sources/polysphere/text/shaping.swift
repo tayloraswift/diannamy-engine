@@ -6,8 +6,10 @@ extension Style.Definitions.Feature
     fileprivate 
     var feature:hb_feature_t 
     {
-        let tag:Math<UInt8>.V4 = self.tag, 
-            slug:UInt32 = .init(tag.0) << 24 | .init(tag.1) << 16 | .init(tag.2) << 8 | .init(tag.3)
+        let slug:UInt32   = .init(self.tag.0) << 24 | 
+                            .init(self.tag.1) << 16 | 
+                            .init(self.tag.2) << 8  | 
+                            .init(self.tag.3)
         return .init(tag: slug, value: .init(self.value), start: 0, end: .max)
     }
     
@@ -51,233 +53,233 @@ extension Style.Definitions.Feature
     }
     
     private 
-    var tag:Math<UInt8>.V4 
+    var tag:(UInt8, UInt8, UInt8, UInt8)
     {
         switch self 
         {
         case .kern:
             return 
                 (
-                    .init(("k" as Unicode.Scalar).value), 
-                    .init(("e" as Unicode.Scalar).value), 
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value)
+                    .init(ascii: "k"), 
+                    .init(ascii: "e"), 
+                    .init(ascii: "r"), 
+                    .init(ascii: "n")
                 )
         case .calt:
             return 
                 (
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("l" as Unicode.Scalar).value), 
-                    .init(("t" as Unicode.Scalar).value)
+                    .init(ascii: "c"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "l"), 
+                    .init(ascii: "t")
                 )
         case .liga:
             return 
                 (
-                    .init(("l" as Unicode.Scalar).value), 
-                    .init(("i" as Unicode.Scalar).value), 
-                    .init(("g" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value)
+                    .init(ascii: "l"), 
+                    .init(ascii: "i"), 
+                    .init(ascii: "g"), 
+                    .init(ascii: "a")
                 )
         case .hlig:
             return 
                 (
-                    .init(("h" as Unicode.Scalar).value), 
-                    .init(("l" as Unicode.Scalar).value), 
-                    .init(("i" as Unicode.Scalar).value), 
-                    .init(("g" as Unicode.Scalar).value)
+                    .init(ascii: "h"), 
+                    .init(ascii: "l"), 
+                    .init(ascii: "i"), 
+                    .init(ascii: "g")
                 )
         case .`case`:
             return 
                 (
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("e" as Unicode.Scalar).value)
+                    .init(ascii: "c"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "s"), 
+                    .init(ascii: "e")
                 )
         case .cpsp:
             return 
                 (
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("p" as Unicode.Scalar).value), 
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("p" as Unicode.Scalar).value)
+                    .init(ascii: "c"), 
+                    .init(ascii: "p"), 
+                    .init(ascii: "s"), 
+                    .init(ascii: "p")
                 )
         case .smcp:
             return 
                 (
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("m" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("p" as Unicode.Scalar).value)
+                    .init(ascii: "s"), 
+                    .init(ascii: "m"), 
+                    .init(ascii: "c"), 
+                    .init(ascii: "p")
                 )
         case .pcap:
             return 
                 (
-                    .init(("p" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("p" as Unicode.Scalar).value)
+                    .init(ascii: "p"), 
+                    .init(ascii: "c"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "p")
                 )
         case .c2sc:
             return 
                 (
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("2" as Unicode.Scalar).value), 
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value)
+                    .init(ascii: "c"), 
+                    .init(ascii: "2"), 
+                    .init(ascii: "s"), 
+                    .init(ascii: "c")
                 )
         case .c2pc:
             return 
                 (
-                    .init(("c" as Unicode.Scalar).value), 
-                    .init(("2" as Unicode.Scalar).value), 
-                    .init(("p" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value)
+                    .init(ascii: "c"), 
+                    .init(ascii: "2"), 
+                    .init(ascii: "p"), 
+                    .init(ascii: "c")
                 )
         case .unic:
             return 
                 (
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("i" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value)
+                    .init(ascii: "u"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "i"), 
+                    .init(ascii: "c")
                 )
         case .ordn:
             return 
                 (
-                    .init(("o" as Unicode.Scalar).value), 
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("d" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value)
+                    .init(ascii: "o"), 
+                    .init(ascii: "r"), 
+                    .init(ascii: "d"), 
+                    .init(ascii: "n")
                 )
         case .zero:
             return 
                 (
-                    .init(("z" as Unicode.Scalar).value), 
-                    .init(("e" as Unicode.Scalar).value), 
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("o" as Unicode.Scalar).value)
+                    .init(ascii: "z"), 
+                    .init(ascii: "e"), 
+                    .init(ascii: "r"), 
+                    .init(ascii: "o")
                 )
         case .frac:
             return 
                 (
-                    .init(("f" as Unicode.Scalar).value), 
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value)
+                    .init(ascii: "f"), 
+                    .init(ascii: "r"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "c")
                 )
         case .afrc:
             return 
                 (
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("f" as Unicode.Scalar).value), 
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("c" as Unicode.Scalar).value)
+                    .init(ascii: "a"), 
+                    .init(ascii: "f"), 
+                    .init(ascii: "r"), 
+                    .init(ascii: "c")
                 )
         case .sinf:
             return 
                 (
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("i" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("f" as Unicode.Scalar).value)
+                    .init(ascii: "s"), 
+                    .init(ascii: "i"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "f")
                 )
         case .subs:
             return 
                 (
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("b" as Unicode.Scalar).value), 
-                    .init(("s" as Unicode.Scalar).value)
+                    .init(ascii: "s"), 
+                    .init(ascii: "u"), 
+                    .init(ascii: "b"), 
+                    .init(ascii: "s")
                 )
         case .sups:
             return 
                 (
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("p" as Unicode.Scalar).value), 
-                    .init(("s" as Unicode.Scalar).value)
+                    .init(ascii: "s"), 
+                    .init(ascii: "u"), 
+                    .init(ascii: "p"), 
+                    .init(ascii: "s")
                 )
         case .ital:
             return 
                 (
-                    .init(("i" as Unicode.Scalar).value), 
-                    .init(("t" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("l" as Unicode.Scalar).value)
+                    .init(ascii: "i"), 
+                    .init(ascii: "t"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "l")
                 )
         case .mgrk:
             return 
                 (
-                    .init(("m" as Unicode.Scalar).value), 
-                    .init(("g" as Unicode.Scalar).value), 
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("k" as Unicode.Scalar).value)
+                    .init(ascii: "m"), 
+                    .init(ascii: "g"), 
+                    .init(ascii: "r"), 
+                    .init(ascii: "k")
                 )
         case .lnum:
             return 
                 (
-                    .init(("l" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("m" as Unicode.Scalar).value)
+                    .init(ascii: "l"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "u"), 
+                    .init(ascii: "m")
                 )
         case .onum:
             return 
                 (
-                    .init(("o" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("m" as Unicode.Scalar).value)
+                    .init(ascii: "o"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "u"), 
+                    .init(ascii: "m")
                 )
         case .pnum:
             return 
                 (
-                    .init(("p" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("m" as Unicode.Scalar).value)
+                    .init(ascii: "p"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "u"), 
+                    .init(ascii: "m")
                 )
         case .tnum:
             return 
                 (
-                    .init(("t" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("u" as Unicode.Scalar).value), 
-                    .init(("m" as Unicode.Scalar).value)
+                    .init(ascii: "t"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "u"), 
+                    .init(ascii: "m")
                 )
         case .rand:
             return 
                 (
-                    .init(("r" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("n" as Unicode.Scalar).value), 
-                    .init(("d" as Unicode.Scalar).value)
+                    .init(ascii: "r"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "n"), 
+                    .init(ascii: "d")
                 )
         case .salt:
             return 
                 (
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("a" as Unicode.Scalar).value), 
-                    .init(("l" as Unicode.Scalar).value), 
-                    .init(("t" as Unicode.Scalar).value)
+                    .init(ascii: "s"), 
+                    .init(ascii: "a"), 
+                    .init(ascii: "l"), 
+                    .init(ascii: "t")
                 )
         case .swsh:
             return 
                 (
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("w" as Unicode.Scalar).value), 
-                    .init(("s" as Unicode.Scalar).value), 
-                    .init(("h" as Unicode.Scalar).value)
+                    .init(ascii: "s"), 
+                    .init(ascii: "w"), 
+                    .init(ascii: "s"), 
+                    .init(ascii: "h")
                 )
         case .titl:
             return 
                 (
-                    .init(("t" as Unicode.Scalar).value), 
-                    .init(("i" as Unicode.Scalar).value), 
-                    .init(("t" as Unicode.Scalar).value), 
-                    .init(("l" as Unicode.Scalar).value)
+                    .init(ascii: "t"), 
+                    .init(ascii: "i"), 
+                    .init(ascii: "t"), 
+                    .init(ascii: "l")
                 )
         }
     }
@@ -287,7 +289,7 @@ enum HarfBuzz
 {
     struct Glyph 
     {
-        let position:Math<Int>.V2, 
+        let position:Vector2<Int>, 
             index:Int
     }
     
@@ -344,19 +346,19 @@ enum HarfBuzz
             let deltas:UnsafeBufferPointer<hb_glyph_position_t> = 
                 .init(start: hb_buffer_get_glyph_positions(buffer, nil), count: count)
             
-            var cursor:Math<Int>.V2             = (0, 0), 
+            var cursor:Vector2<Int>             = .zero, 
                 result:[Line.ShapingElement]    = []
                 result.reserveCapacity(count)
             
             for (info, delta):(hb_glyph_info_t, hb_glyph_position_t) in zip(infos, deltas) 
             {
-                let o64:Math<Int>.V2 = Math.cast((delta.x_offset,  delta.y_offset),  as: Int.self), 
-                    a64:Math<Int>.V2 = Math.cast((delta.x_advance, delta.y_advance), as: Int.self), 
-                    p64:Math<Int>.V2 = Math.add(cursor, o64) 
+                let o64:Vector2<Int> = .cast(.init(delta.x_offset,  delta.y_offset)), 
+                    a64:Vector2<Int> = .cast(.init(delta.x_advance, delta.y_advance)), 
+                    p64:Vector2<Int> = cursor &+ o64
                 
-                cursor = Math.add(cursor, a64)
-                let element:Line.ShapingElement  = .init(position: (   p64.x >> 6,    p64.y >> 6), 
-                                                cumulativeAdvance: (cursor.x >> 6, cursor.y >> 6), 
+                cursor &+= a64
+                let element:Line.ShapingElement  = .init(position: p64    &>> 6, 
+                                                cumulativeAdvance: cursor &>> 6, 
                                                           cluster: .init(info.cluster), 
                                                        glyphIndex: .init(info.codepoint), 
                                                         breakable: info.mask & HB_GLYPH_FLAG_UNSAFE_TO_BREAK.rawValue == 0)
@@ -388,8 +390,8 @@ enum HarfBuzz
         {
             struct ShapingElement 
             {
-                let position:Math<Int>.V2, 
-                    cumulativeAdvance:Math<Int>.V2, 
+                let position:Vector2<Int>, 
+                    cumulativeAdvance:Vector2<Int>, 
                     cluster:Int, 
                     glyphIndex:Int, 
                     breakable:Bool 
@@ -414,7 +416,7 @@ enum HarfBuzz
                 self.init(buffer, range: buffer.indices)
             }
             
-            var origin:Math<Int>.V2 
+            var origin:Vector2<Int> 
             {
                 if self.startIndex > self.shapingBuffer.startIndex
                 {
@@ -423,7 +425,7 @@ enum HarfBuzz
                 }
                 else 
                 {
-                    return (0, 0)
+                    return .zero
                 }
             }
             
@@ -433,20 +435,20 @@ enum HarfBuzz
                 return self.shapingBuffer[index]
             }
             
-            subscript(advance index:Int) -> Math<Int>.V2 
+            subscript(advance index:Int) -> Vector2<Int> 
             {
-                return Math.sub(self[index].cumulativeAdvance, self.origin)
+                return self[index].cumulativeAdvance &- self.origin
             }
             
-            var footprint:Math<Int>.V2 
+            var footprint:Vector2<Int> 
             {
                 if let last:ShapingElement = self.last 
                 {
-                    return Math.sub(last.cumulativeAdvance, self.origin)
+                    return last.cumulativeAdvance &- self.origin
                 }
                 else 
                 {
-                    return (0, 0)
+                    return .zero
                 }
             }
             
@@ -471,7 +473,7 @@ enum HarfBuzz
             {
                 return self.map 
                 {
-                    .init(position: Math.sub($0.position, self.origin), index: $0.glyphIndex)
+                    .init(position: $0.position &- self.origin, index: $0.glyphIndex)
                 }
             }
         }

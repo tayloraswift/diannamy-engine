@@ -2,8 +2,8 @@
 
 layout(location = 0) in vec2 anchor;
 layout(location = 1) in vec2 offset;
-layout(location = 2) in vec4 color;
-layout(location = 3) in vec3 point;
+layout(location = 2) in vec3 point;
+layout(location = 3) in vec4 color;
 
 out Vertex
 {
