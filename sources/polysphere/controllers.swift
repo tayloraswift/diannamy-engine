@@ -1850,8 +1850,8 @@ extension Controller.MapEditor
         {
             private 
             let vao:GL.VertexArray, 
-                vbo:GL.Buffer<Vector3<Float>>,
-                ebo:GL.Buffer<Vector3<UInt8>>
+                vbo:GL.Buffer<(Float, Float, Float)>,
+                ebo:GL.Buffer<(UInt8, UInt8, UInt8)>
             
             init()
             {
@@ -1859,38 +1859,39 @@ extension Controller.MapEditor
                 self.vbo = .generate()
                 self.vao = .generate()
 
-                let cube:[Vector3<Float>] =
+                let cube:[(Float, Float, Float)] =
                 [
-                     .init(-1, -1, -1),
-                     .init( 1, -1, -1),
-                     .init( 1,  1, -1),
-                     .init(-1,  1, -1),
+                     (-1, -1, -1),
+                     ( 1, -1, -1),
+                     ( 1,  1, -1),
+                     (-1,  1, -1),
 
-                     .init(-1, -1,  1),
-                     .init( 1, -1,  1),
-                     .init( 1,  1,  1),
-                     .init(-1,  1,  1)
+                     (-1, -1,  1),
+                     ( 1, -1,  1),
+                     ( 1,  1,  1),
+                     (-1,  1,  1)
                 ]
-
-                let indices:[Vector3<UInt8>] =
+                
+                // can’t use Vector3<UInt8> because of its 16 byte alignment 
+                let indices:[(UInt8, UInt8, UInt8)] =
                 [
-                    .init(0, 2, 1),
-                    .init(0, 3, 2),
+                    (0, 2, 1),
+                    (0, 3, 2),
 
-                    .init(0, 1, 5),
-                    .init(0, 5, 4),
+                    (0, 1, 5),
+                    (0, 5, 4),
 
-                    .init(1, 2, 6),
-                    .init(1, 6, 5),
+                    (1, 2, 6),
+                    (1, 6, 5),
 
-                    .init(2, 3, 7),
-                    .init(2, 7, 6),
+                    (2, 3, 7),
+                    (2, 7, 6),
 
-                    .init(3, 0, 4),
-                    .init(3, 4, 7),
+                    (3, 0, 4),
+                    (3, 4, 7),
 
-                    .init(4, 5, 6),
-                    .init(4, 6, 7)
+                    (4, 5, 6),
+                    (4, 6, 7)
                 ]
 
                 self.vbo.bind(to: .array)
@@ -1928,8 +1929,33 @@ extension Controller.MapEditor
             @usableFromInline
             struct Vertex 
             {
-                var position:Vector3<Float>, 
-                    id:Int32
+                private 
+                var storage:(x:Float, y:Float, z:Float, id:Int32)
+                
+                var position:Vector3<Float> 
+                {
+                    get 
+                    {
+                        return .init(self.storage.x, self.storage.y, self.storage.z)
+                    }
+                    set(v)
+                    {
+                        self.storage.x = v.x
+                        self.storage.y = v.y
+                        self.storage.z = v.z
+                    }
+                }
+                var id:Int32 
+                {
+                    get 
+                    {
+                        return self.storage.id
+                    }
+                    set(id) 
+                    {
+                        self.storage.id = id
+                    }
+                }
                 
                 init(_ position:Vector3<Float>, id:Int)
                 {
@@ -1938,8 +1964,7 @@ extension Controller.MapEditor
                 
                 init(_ position:Vector3<Float>, id:Int32)
                 {
-                    self.position = position 
-                    self.id       = id
+                    self.storage = (position.x, position.y, position.z, id) 
                 }
             }
             
