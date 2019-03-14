@@ -61,7 +61,7 @@ class Typeface
                 size:Vector2<Int>   = Vector2.init(bitmap.width, bitmap.rows).map(Int.init(_:)), 
                 pitch:Int           = .init(bitmap.pitch)
             let buffer:UnsafeBufferPointer<UInt8> = .init(start: bitmap.buffer, count: pitch * size.y)
-            let image:Array2D<UInt8>    = .init(buffer, pitch: pitch, size: size._tuple)
+            let image:Array2D<UInt8>    = .init(buffer, pitch: pitch, size: size)
             
             let origin:Vector2<Int32>   = .init(self.ftface.object.pointee.glyph.pointee.bitmap_left,
                                                -self.ftface.object.pointee.glyph.pointee.bitmap_top)
@@ -123,7 +123,7 @@ class Typeface
                 }
                 
                 // guaranteed to be at least the width of the widest glyph
-                let width:Int                       = Atlas.optimalWidth(sizes: sorted.map{ ._struct($0.1.size) }) 
+                let width:Int                       = Atlas.optimalWidth(sizes: sorted.map{ $0.1.size }) 
                 var rows:[[(Int, Array2D<UInt8>)]]  = [], 
                     row:[(Int, Array2D<UInt8>)]     = [], 
                     x:Int                           = 0
@@ -142,7 +142,7 @@ class Typeface
                 rows.append(row)
                 
                 let height:Int                  = rows.reduce(0){ $0 + ($1.last?.1.size.y ?? 0) }
-                var packed:Array2D<UInt8>       = .init(repeating: 0, size: (width, height)), 
+                var packed:Array2D<UInt8>       = .init(repeating: 0, size: .init(width, height)), 
                     position:Vector2<Int>       = .zero
                 var sprites:[Rectangle<Float>]  = .init(repeating: .zero, count: bitmaps.count)
                 
@@ -151,10 +151,10 @@ class Typeface
                 {
                     for (index, bitmap):(Int, Array2D<UInt8>) in row 
                     {
-                        packed.assign(at: position._tuple, from: bitmap)
+                        packed.assign(at: position, from: bitmap)
                         sprites[index] = .init(
                             .cast(position               ) / divisor,
-                            .cast(position &+ ._struct(bitmap.size)) / divisor
+                            .cast(position &+ bitmap.size) / divisor
                         )
                         
                         position.x += bitmap.size.x
@@ -164,7 +164,10 @@ class Typeface
                     position.y += row.last?.1.size.y ?? 0
                 }
                 
-                try! PNG.encode(v: packed.buffer, size: packed.size, as: .v8, path: "fontatlas-debug.png")
+                try!    PNG.encode(v: packed.buffer, 
+                                size: (packed.size.x, packed.size.y), 
+                                  as: .v8, 
+                                path: "fontatlas-debug.png")
                 Log.note("rendered font atlas of \(sprites.count) glyphs, \(packed.buffer.count >> 10) KB")
                 
                 let texture:GL.Texture<UInt8> = .generate()
@@ -262,7 +265,7 @@ class Typeface
         {
             self.glyphs = zip(indices, unassembled.buffer).map 
             {
-                let vertices:Rectangle<Int> = .init($0.1.0, $0.1.0 &+ ._struct($0.1.1.size))
+                let vertices:Rectangle<Int> = .init($0.1.0, $0.1.0 &+ $0.1.1.size)
                 return .init(vertices: vertices, sprite: $0.0)
             }
             

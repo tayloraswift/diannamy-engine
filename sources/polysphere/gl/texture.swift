@@ -83,7 +83,7 @@ extension GL
             {
                 assert(target == .texture2d)
                 
-                let size:Math<OpenGL.Size>.V2 = Math.cast(data.size, as: OpenGL.Size.self)
+                let size:Vector2<OpenGL.Size> = .cast(data.size)
                 OpenGL.glTexImage2D(self.target.rawValue, 0, storage.rawValue, 
                     size.x, size.y, 0, layout.ordering, layout.type, data.buffer)
             }

@@ -1,6 +1,6 @@
 struct Array2D<Element> 
 {
-    var size:Math<Int>.V2, 
+    var size:Vector2<Int>, 
         buffer:[Element]
     
     subscript(y y:Int, x:Int) -> Element 
@@ -15,35 +15,35 @@ struct Array2D<Element>
         }
     }
     
-    init(_ buffer:[Element] = [], size:Math<Int>.V2 = (0, 0))
+    init(_ buffer:[Element] = [], size:Vector2<Int> = .zero)
     {
-        assert(Math.vol(size) == buffer.count)
+        assert(size.wrappingVolume == buffer.count)
         self.size   = size
         self.buffer = buffer
     }
     
-    init(repeating repeated:Element, size:Math<Int>.V2)
+    init(repeating repeated:Element, size:Vector2<Int>)
     {
         self.size   = size
-        self.buffer = .init(repeating: repeated, count: Math.vol(size))
+        self.buffer = .init(repeating: repeated, count: size.wrappingVolume)
     }
     
-    init(size:Math<Int>.V2, _ generator:(Math<Int>.V2) throws -> Element) rethrows
+    init(size:Vector2<Int>, _ generator:(Vector2<Int>) throws -> Element) rethrows
     {
         var mapped:[Element] = []
-            mapped.reserveCapacity(Math.vol(size))
+            mapped.reserveCapacity(size.wrappingVolume)
         for y:Int in 0 ..< size.y 
         {
             for x:Int in 0 ..< size.x 
             {
-                mapped.append(try generator((x, y)))
+                mapped.append(try generator(.init(x, y)))
             }
         }
         
         self.init(mapped, size: size)
     }
     
-    init<RAC>(_ source:RAC, pitch:Int, size:Math<Int>.V2) 
+    init<RAC>(_ source:RAC, pitch:Int, size:Vector2<Int>) 
         where RAC:RandomAccessCollection, RAC.Element == Element, RAC.Index == Int
     {
         guard pitch * size.y <= source.count 
@@ -60,26 +60,26 @@ struct Array2D<Element>
     }
     
     mutating 
-    func assign(at r0:Math<Int>.V2, from source:Array2D<Element>)
+    func assign(at r0:Vector2<Int>, from source:Array2D<Element>)
     {
-        for y:Int in max(0, r0.y) ..< min(r0.y + source.size.y, self.size.y) 
+        for y:Int in (r0.y ..< r0.y + source.size.y).clamped(to: 0 ..< self.size.y) 
         {
-            for x:Int in max(0, r0.x) ..< min(r0.x + source.size.x, self.size.x)
+            for x:Int in (r0.x ..< r0.x + source.size.x).clamped(to: 0 ..< self.size.x)
             {
                 self[y: y, x] = source[y: y - r0.y, x - r0.x]
             }
         }
     }
     
-    func mapEnumerated<Result>(_ body:(Math<Int>.V2, Element) throws -> Result) rethrows -> [Result]
+    func mapEnumerated<Result>(_ body:(Vector2<Int>, Element) throws -> Result) rethrows -> [Result]
     {
         var mapped:[Result] = []
-            mapped.reserveCapacity(Math.vol(self.size))
+            mapped.reserveCapacity(self.size.wrappingVolume)
         for y:Int in 0 ..< size.y 
         {
             for x:Int in 0 ..< size.x 
             {
-                mapped.append(try body((x, y), self[y: y, x]))
+                mapped.append(try body(.init(x, y), self[y: y, x]))
             }
         }
         
@@ -89,7 +89,7 @@ struct Array2D<Element>
 
 struct Array3D<Element> 
 {
-    var size:Math<Int>.V3, 
+    var size:Vector3<Int>, 
         buffer:[Element]
     
     subscript(z:Int, y:Int, x:Int) -> Element 
@@ -104,16 +104,16 @@ struct Array3D<Element>
         }
     }
     
-    init(_ buffer:[Element] = [], size:Math<Int>.V3 = (0, 0, 0))
+    init(_ buffer:[Element] = [], size:Vector3<Int> = .zero)
     {
-        assert(Math.vol(size) == buffer.count)
+        assert(size.wrappingVolume == buffer.count)
         self.size   = size
         self.buffer = buffer
     }
     
-    init(repeating repeated:Element, size:Math<Int>.V3)
+    init(repeating repeated:Element, size:Vector3<Int>)
     {
         self.size   = size
-        self.buffer = .init(repeating: repeated, count: Math.vol(size))
+        self.buffer = .init(repeating: repeated, count: size.wrappingVolume)
     }
 }

@@ -325,7 +325,7 @@ struct Model
             else 
             {
                 // generate checkerboard
-                let image:Array2D<PNG.RGBA<UInt8>> = .init(size: (16, 16)) 
+                let image:Array2D<PNG.RGBA<UInt8>> = .init(size: .init(16, 16)) 
                 {
                     ($0.y & 1 + $0.x) & 1 == 0 ? .init(60, .max) : .init(200, .max)
                 }
@@ -340,7 +340,7 @@ struct Model
                 return nil
             }
             
-            guard let (image, size):([PNG.RGBA<UInt8>], (x:Int, y:Int)) = 
+            guard let (image, (x, y)):([PNG.RGBA<UInt8>], (x:Int, y:Int)) = 
                 try? PNG.rgba(path: path, of: UInt8.self)
             else 
             {
@@ -349,7 +349,7 @@ struct Model
             
             self.background.bind(to: .texture2d)
             {
-                $0.data(.init(image, size: size), layout: .rgba8, storage: .rgba8)
+                $0.data(.init(image, size: .init(x, y)), layout: .rgba8, storage: .rgba8)
                 $0.setMagnificationFilter(.linear)
                 $0.setMinificationFilter(.linear, mipmap: .linear)
                 $0.generateMipmaps()
