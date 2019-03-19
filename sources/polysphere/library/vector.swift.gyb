@@ -44,7 +44,7 @@ extension FloatingPoint
     }
     
     static 
-    func lerp(_ a:Self, _ b:Self, _ t:Self) -> Self 
+    func interpolate(_ a:Self, _ b:Self, by t:Self) -> Self 
     {
         return a.addingProduct(a, -t).addingProduct(b, t)
     } 
@@ -353,7 +353,8 @@ extension Vector${N} where Scalar:FloatingPoint
         self.storage.round(rule)
     }
     
-    static func lerp(_ a:Vector${N}<Scalar>, _ b:Vector${N}<Scalar>, _ t:Scalar) 
+    static 
+    func interpolate(_ a:Vector${N}<Scalar>, _ b:Vector${N}<Scalar>, by t:Scalar) 
         -> Vector${N}<Scalar> 
     {
         return a.addingProduct(a, -t).addingProduct(b, t)

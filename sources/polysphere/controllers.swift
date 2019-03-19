@@ -1394,7 +1394,7 @@ enum Controller
         {
             didSet 
             {
-                self.plane.queueUpdate()
+                self.plane.invalidate()
             }
         }
         
@@ -1452,7 +1452,7 @@ enum Controller
             switch member 
             {
             case .viewport:
-                self.plane.queueUpdate()
+                self.plane.invalidate()
             
             case .model:
                 self.state.model.reset() 

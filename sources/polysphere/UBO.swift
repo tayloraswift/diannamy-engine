@@ -38,7 +38,7 @@ enum UBO
         }
         
         static 
-        func encode(matrices:Camera.Matrices, to target:GL.Buffer<UInt8>.BoundTarget) 
+        func encode(matrices:Camera<Float>.Matrices, to target:GL.Buffer<UInt8>.BoundTarget) 
         {
             let F:Matrix4<Float> = .init(
                 .extend(matrices.F[0], 0), 

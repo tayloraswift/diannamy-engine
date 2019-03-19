@@ -1,5 +1,6 @@
 // BinaryFloatingPoint, because we use float literals with math
-struct Quaternion<F>:Equatable where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematical & SIMDScalar
+struct Quaternion<F>:Equatable, Interpolable 
+    where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematical & SIMDScalar
 {
     private 
     var q:Vector4<F> 
@@ -82,5 +83,12 @@ struct Quaternion<F>:Equatable where F:FloatingPoint & ExpressibleByFloatLiteral
         let a:F          = q1.a * q2.a               - q1.b <> q2.b, 
             b:Vector3<F> = q1.a * q2.b + q2.a * q1.b + q1.b >< q2.b
         return Quaternion.init(a, b).normalized()
+    }
+    
+    // wrong implementation, need slerp 
+    static 
+    func interpolate(_ a:Quaternion<F>, _ b:Quaternion<F>, by t:F) -> Quaternion<F> 
+    {
+        return t < 0.5 ? a : b
     }
 }

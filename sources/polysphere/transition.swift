@@ -1,29 +1,68 @@
-protocol Interpolable 
+protocol Interpolable
 {
+    associatedtype Parameter:FloatingPoint 
+    
     static 
-    func interpolate<F>(_:Self, _:Self, by:F) -> Self where F:FloatingPoint 
+    func interpolate(_:Self, _:Self, by:Parameter) -> Self 
+}
+extension Vector2:Interpolable where Scalar:FloatingPoint 
+{
+    typealias Parameter = Scalar 
+}
+extension Vector3:Interpolable where Scalar:FloatingPoint 
+{
+    typealias Parameter = Scalar 
+}
+extension Vector4:Interpolable where Scalar:FloatingPoint 
+{
+    typealias Parameter = Scalar 
 }
 
-struct Transition<State> where State:Interpolable
+protocol InterpolationCurve 
+{
+    // x from 0 to 1
+    static
+    func parameter<Parameter>(_:Parameter) -> Parameter where Parameter:FloatingPoint
+}
+
+enum Curve 
+{
+    enum Linear:InterpolationCurve 
+    {
+        static
+        func parameter<Parameter>(_ x:Parameter) -> Parameter where Parameter:FloatingPoint
+        {
+            return x
+        }
+    }
+    enum Quadratic:InterpolationCurve 
+    {
+        static
+        func parameter<Parameter>(_ x:Parameter) -> Parameter where Parameter:FloatingPoint
+        {
+            return x * x
+        }
+    }
+}
+struct Transition<State, Curve> where State:Interpolable, Curve:InterpolationCurve
 {
     private 
     var base:State, 
         head:(next:State, remaining:Int, time:Int)?
     
-    private 
-    var mutated:Bool  
-    
-    var dirty:Bool 
-    {
-        return self.mutated 
-    }
-    
     var current:State 
     {
-        if let head:(next:State, remaining:Int, time:Int) = self.head 
+        if let (next, remaining, time):(State, Int, Int) = self.head 
         {
-            let phase:Double = .init(head.remaining) / .init(head.time)
-            return State.interpolate(head.next, self.base, by: phase) 
+            if remaining <= 0 
+            {
+                return next 
+            }
+            else 
+            {
+                let phase:State.Parameter = .init(remaining) / .init(time)
+                return State.interpolate(next, self.base, by: Curve.parameter(phase)) 
+            }
         }
         else 
         {
@@ -35,28 +74,35 @@ struct Transition<State> where State:Interpolable
     {
         self.base       = initial
         self.head       = nil 
-        self.mutated    = true 
     }
     
     mutating 
-    func charge(_ next:State, time:Int) 
+    func stop()
     {
-        if time > 0 
-        {
-            self.head = (next, time, time)
-        }
-        else 
-        {
-            self.base       = next 
-            self.head       = nil 
-            self.mutated    = true 
-        }
+        self.base = self.current 
+        self.head = (self.base, 0, 1) 
+    }
+    
+    mutating 
+    func charge(time:Int, _ next:State) 
+    {
+        self.base = self.current 
+        self.head = (next, time, max(time, 1))
+    }
+    
+    mutating 
+    func charge(time:Int, transform:(inout State) throws -> ()) rethrows 
+    {
+        self.base       = self.current 
+        var next:State  = self.base 
+        try transform(&next)
+        self.head       = (next, time, max(time, 1))
     }
     
     mutating 
     func process(_ delta:Int) -> Bool // time in ms 
     {
-        if let remaining:Int = self.head?.remaining, delta > 0
+        if let (next, remaining, _):(State, Int, Int) = self.head, delta > 0
         {
             if delta < remaining 
             {
@@ -64,26 +110,15 @@ struct Transition<State> where State:Interpolable
             }
             else 
             {
+                self.base = next 
                 self.head = nil 
             }
             
-            self.mutated = true 
-        }
-        
-        return self.mutated 
-    }
-
-    mutating 
-    func pop() -> State? 
-    {
-        if self.mutated 
-        {
-            self.mutated = false 
-            return self.current 
+            return true 
         }
         else 
         {
-            return nil 
+            return false 
         }
     }
 }

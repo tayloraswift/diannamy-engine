@@ -1,6 +1,12 @@
 struct ControlPlane
 {
     private 
+    enum Validity 
+    {
+        case invalid, mutated, valid 
+    }
+    
+    private 
     struct Ray 
     {
         let source:Vector3<Float>, 
@@ -30,7 +36,7 @@ struct ControlPlane
     enum State
     {
         case    none, 
-                orbit(Vector3<Float>, Rayfilm), 
+                orbit(Quaternion<Float>, Float, Vector3<Float>, Rayfilm), 
                 track(Vector3<Float>, Rayfilm), 
                 zoom(Float)
     }
@@ -46,42 +52,34 @@ struct ControlPlane
     {
         return .init(matrix: self.matrices.F, source: self.matrices.position)
     }
-
-    internal private(set)
-    var matrices:Camera.Matrices
     
-    private
-    var head:Camera.Rig,
-        base:Camera.Rig, 
+    private(set)
+    var matrices:Camera<Float>.Matrices
         
-        state:State, 
-
-        // animation: setting the phase to 0 will immediately update the state to 
-        // head while setting it to 1 will allow a transition from base to head
-        phase:Float?
+    private
+    var validity:Validity, 
+        animation:Transition<Camera<Float>.Rig, Curve.Quadratic>, 
+        state:State
     
-    mutating 
-    func queueUpdate() 
+    var mutated:Bool 
     {
-        if self.phase == nil 
+        if case .mutated = self.validity 
         {
-            self.phase = 0
+            return true 
+        }
+        else 
+        {
+            return false 
         }
     }
     
-    private(set)
-    var mutated:Bool = true
-    
-    init(_ base:Camera.Rig)
+    init(_ base:Camera<Float>.Rig)
     {
         self.matrices   = .identity
+        self.validity   = .mutated 
         
-        self.head       = base
-        self.base       = base
-        
+        self.animation  = .init(initial: base)
         self.state      = .none 
-        
-        self.phase      = 0
     }
     
     // project a point into 2D (normalized 0 ... 1 x 0 ... 1 coordinates )
@@ -92,25 +90,10 @@ struct ControlPlane
         return 0.5 + 0.5 * clip
     }
     
-    // kills any current animation and synchronizes the 2 current keyframes
-    private mutating
-    func rebase()
-    {
-        if let  phase:Float = self.phase,
-                phase > 0
-        {
-            self.head  = self.interpolate(phase: phase)
-            self.phase = 0
-        }
-        
-        self.base  = self.head
-        self.state = .none
-    }
-    
     // rebases to the current animation state and starts the transition timer to 
     // progress to whatever head will be set to
     private mutating 
-    func charge(_ body:(inout Camera.Rig) -> ())
+    func charge(_ body:(inout Camera<Float>.Rig) -> ())
     {
         // if an action is in progress, ignore
         guard case .none = self.state
@@ -118,15 +101,12 @@ struct ControlPlane
         {
             return 
         }
-
-        // ordering of operations here is important
-        self.rebase()
-        self.phase = 1
-        body(&self.head)
+        
+        self.animation.charge(time: 256, transform: body)
     }
     
     mutating 
-    func bump(_ direction:UI.Direction, action:Camera.Rig.Action)
+    func bump(_ direction:UI.Direction, action:Camera<Float>.Rig.Action)
     {
         self.charge 
         {
@@ -137,7 +117,7 @@ struct ControlPlane
     mutating 
     func jump(to target:Vector3<Float>)
     {
-        self.charge()
+        self.charge
         {
             $0.center = target 
         } 
@@ -146,18 +126,20 @@ struct ControlPlane
     mutating
     func down(_ position:Vector2<Float>, button:UI.Action)
     {
-        self.rebase()
-        switch (button, self.state) 
+        self.animation.stop()
+        self.state = .none 
+        switch button
         {
-            case    (.primary,  .none):
+            case .primary:
+                let rig:Camera<Float>.Rig = self.animation.current 
                 // save the current rayfilm
                 let rayfilm:Rayfilm  = self.rayfilm, 
                     ray:Ray          = rayfilm.cast(position), 
-                    c:Vector3<Float> = self.base.center - ray.source, 
+                    c:Vector3<Float> = rig.center - ray.source, 
                     l:Float          = c <> ray.vector, 
                     r:Float          = max(1, (c <> c - l * l).squareRoot()), 
-                    a:Vector3<Float> = ControlPlane.project(ray: ray, on: self.base.center, radius: r)
-                self.state = .orbit(a, rayfilm)
+                    a:Vector3<Float> = ControlPlane.project(ray: ray, on: rig.center, radius: r)
+                self.state = .orbit(rig.orientation, r, (a - rig.center).normalized(), rayfilm)
             
             default:
                 break
@@ -172,12 +154,13 @@ struct ControlPlane
             case .none:
                 break 
             
-            case .orbit(let anchor, let rayfilm):
-                let ray:Ray             = rayfilm.cast(position), 
-                    q:Quaternion<Float> = ControlPlane.attract(anchor, on: self.base.center, to: ray)
-                
-                self.head.orientation = q.inverse >< self.base.orientation
-                self.phase = 0
+            case .orbit(let orientation, let r, let anchor, let rayfilm):
+                self.animation.charge(time: 0)
+                {
+                    let ray:Ray             = rayfilm.cast(position), 
+                        q:Quaternion<Float> = ControlPlane.attract(anchor, on: $0.center, to: ray, radius: r)
+                    $0.orientation          = q.inverse >< orientation
+                }
             
             default:
                 break
@@ -191,83 +174,57 @@ struct ControlPlane
         switch (button, self.state) 
         {
             case    (.primary,  .orbit):
-                self.rebase()
+                self.state = .none
             
             default:
                 break
         }
     }
     
-    private static
-    func parameter(_ x:Float) -> Float
+    mutating 
+    func invalidate() 
     {
-        // x from 0 to 1
-        return x * x
+        self.validity = .invalid
     }
     
-    private 
-    func interpolate(phase:Float) -> Camera.Rig 
-    {
-        return Camera.Rig.lerp(self.head, self.base, ControlPlane.parameter(phase))
-    }
-
     // returns true if the view system has changed
     mutating
     func process(_ delta:Int, viewport:Vector2<Float>, frame:Rectangle<Float>) -> Bool 
     {
-        guard let phase:Float = self.phase
-        else
+        if self.animation.process(delta) || self.validity == .invalid 
         {
-            return self.mutated
-        }
-
-        let decremented:Float = phase - (1.0 / 250.0) * .init(delta),
-            interpolation:Camera.Rig
-        if decremented > 0
-        {
-            interpolation = self.interpolate(phase: decremented)
-            self.phase    = decremented
-        }
-        else
-        {
-            interpolation = self.head
-            self.phase    = nil
-        }
-        
-        self.updateMatrices(interpolation, viewport: viewport, frame: frame)
-        return self.mutated
-    }
-    
-    private mutating 
-    func updateMatrices(_ rig:Camera.Rig, viewport:Vector2<Float>, frame:Rectangle<Float>) 
-    {
-        self.matrices = rig.matrices(frame: frame, viewport: viewport, clip: .init(-0.1, -100))
-        self.mutated  = true
-    }
-    
-    mutating 
-    func pop() -> Camera.Matrices? 
-    {
-        if self.mutated 
-        {
-            self.mutated = false 
-            return self.matrices
+            self.matrices    = self.animation.current.matrices(frame: frame, 
+                                                            viewport: viewport, 
+                                                                clip: .init(-0.1, -100))
+            self.validity    = .mutated  
+            return true 
         }
         else 
         {
-            return nil
+            return false
+        }
+    }
+    
+    mutating 
+    func pop() -> Camera<Float>.Matrices? 
+    {
+        if case .mutated = self.validity 
+        {
+            self.validity = .valid 
+            return self.matrices 
+        }
+        else 
+        {
+            return nil 
         }
     }
     
     private static 
-    func attract(_ anchor:Vector3<Float>, on center:Vector3<Float>, to ray:Ray) 
+    func attract(_ anchor:Vector3<Float>, on center:Vector3<Float>, to ray:Ray, radius r:Float) 
         -> Quaternion<Float>
     {
-        let a:Vector3<Float> = anchor - center, 
-            r:Float          = a.length, 
-            b:Vector3<Float> = project(ray: ray, on: center, radius: r) - center
-        
-        return .init(from: a / r, to: b.normalized())
+        let b:Vector3<Float> = project(ray: ray, on: center, radius: r)
+        return .init(from: anchor, to: (b - center).normalized())
     }
     
     private static 
