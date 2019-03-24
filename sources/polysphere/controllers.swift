@@ -2344,18 +2344,14 @@ extension Controller.MapEditor
                     if let (point, label):(Vector3<Float>, [(Set<Style.Selector>, String)]) = 
                         selection.labelSphere(at: .zero) 
                     {
-                        for text:Text in definitions.line(label) 
-                        {
-                            textVertices.append(contentsOf: text.vertices(at: .init(20, 20), tracing: point))
-                        }
+                        let text:Text = definitions.line(label) 
+                        textVertices.append(contentsOf: text.vertices(at: .init(20, 20), tracing: point))
                     } 
                     if let (point, label):(Vector3<Float>, [(Set<Style.Selector>, String)]) = 
                         preselection.labelSphere(at: .zero) 
                     {
-                        for text:Text in definitions.line(label) 
-                        {
-                            textVertices.append(contentsOf: text.vertices(at: .init(20, 20), tracing: point))
-                        }
+                        let text:Text = definitions.line(label) 
+                        textVertices.append(contentsOf: text.vertices(at: .init(20, 20), tracing: point))
                     } 
                     
                     self.textvvo.assign(data: textVertices, in: .array, usage: .dynamic)
@@ -2457,12 +2453,8 @@ extension Controller.MapEditor
                     ([.strong],             " and no one. efficiency. 012345") 
                 ]
                 
-                let text:[Text] = definitions.paragraph(runs, linebox: .init(150, 20), block: [.paragraph])
-                let vertices:[Text.Vertex] = text.flatMap 
-                {
-                    $0.vertices(at: .init(20, 20))
-                }
-                self.textvvo.assign(data: vertices, in: .array, usage: .static)
+                let text:Text = definitions.paragraph(runs, linebox: .init(150, 20), block: [.paragraph])
+                self.textvvo.assign(data: text.vertices(at: .init(20, 20)), in: .array, usage: .static)
                 textRendered = true 
             }
             

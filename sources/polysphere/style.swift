@@ -152,7 +152,7 @@ struct Style
         }
         
         private(set)
-        var atlas:Typeface.Font.Atlas 
+        var atlas:Atlas 
         private 
         var fonts:[Typeface.Font]
         
@@ -262,7 +262,7 @@ struct Style
             return .init(lineheight: lineheight)
         }
         
-        func line(_ runs:[(Set<Selector>, String)]) -> [Text]
+        func line(_ runs:[(Set<Selector>, String)]) -> Text
         {
             let computed:[(Inline.Computed, String)] = runs.map 
             {
@@ -271,7 +271,7 @@ struct Style
             
             return Text.line(computed, atlas: self.atlas)
         }
-        func paragraph(_ runs:[(Set<Selector>, String)], linebox:Vector2<Int>, block:Set<Selector> = []) -> [Text]
+        func paragraph(_ runs:[(Set<Selector>, String)], linebox:Vector2<Int>, block:Set<Selector> = []) -> Text
         {
             let computed:[(Inline.Computed, String)] = runs.map 
             {
