@@ -2,37 +2,7 @@ struct Style
 {
     struct Definitions 
     {
-        enum Feature 
-        {
-            case kern(Bool)
-            case calt(Bool)
-            case liga(Bool)
-            case hlig(Bool)
-            case `case`(Bool)
-            case cpsp(Bool)
-            case smcp(Bool)
-            case pcap(Bool)
-            case c2sc(Bool)
-            case c2pc(Bool)
-            case unic(Bool)
-            case ordn(Bool)
-            case zero(Bool)
-            case frac(Bool)
-            case afrc(Bool)
-            case sinf(Bool)
-            case subs(Bool)
-            case sups(Bool)
-            case ital(Bool)
-            case mgrk(Bool)
-            case lnum(Bool)
-            case onum(Bool)
-            case pnum(Bool)
-            case tnum(Bool)
-            case rand(Bool)
-            case salt(Int)
-            case swsh(Int)
-            case titl(Bool)
-        }
+        
         
         enum Font:Int, CaseIterable
         {

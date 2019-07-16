@@ -1,8 +1,36 @@
+protocol RecursiveError:Swift.Error 
+{
+    func unpack() -> (String, Swift.Error?)
+}
+
 enum Log 
 {
     enum Source 
     {
         case diannamy, opengl, glsl, glfw, freetype, harfbuzz
+    }
+    
+    private 
+    enum Color 
+    {
+        static 
+        var reset:String    { "\u{1B}[39m" }
+        static 
+        var teal:String     { "\u{1B}[38;2;2;255;152m" }
+        static 
+        var blue:String     { "\u{1B}[38;2;20;120;255m" }
+        static 
+        var purple:String   { "\u{1B}[38;2;255;100;255m" }
+        static 
+        var red:String      { "\u{1B}[38;2;255;80;90m" }
+    }
+    private 
+    enum Bold 
+    {
+        static 
+        var on:String       { "\u{1B}[1m" }
+        static 
+        var off:String      { "\u{1B}[0m" }
     }
     
     private static 
@@ -21,7 +49,7 @@ enum Log
         if string == previous 
         {
             multiplicity   += 1
-            Swift.print("\u{1B}[1A\u{1B}[K\(string) \u{1B}[1m\u{1B}[38;2;20;120;255m(\(multiplicity))\u{1B}[39;0m")
+            Swift.print("\u{1B}[1A\u{1B}[K\(string) \(Bold.on)\(Color.blue)(\(multiplicity))\(Color.reset)\(Bold.off)")
         }
         else 
         {
@@ -32,56 +60,74 @@ enum Log
     }
     
     static 
-    func note(splitting messages:String, from source:Source, file:String = #file, line:Int = #line)
-    {
-        for message:Substring in messages.split(separator: "\n")
-        {
-            note(.init(message), from: source, file: file, line: line)
-        }
-    }
-    
-    static 
     func note(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
-        print("\u{1B}[1m(\(source))\u{1B}[0m \(message)")
+        Self.print("\(Bold.on)(\(source))\(Bold.off) \(message)")
     }
     
     static 
     func warning(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
-        print("\u{1B}[1m(\(source)) \u{1B}[38;2;255;100;255mwarning:\u{1B}[39m \(message)\u{1B}[0m")
+        Self.print("\(Bold.on)(\(source)) \(Color.purple)warning:\(Color.reset) \(message)\(Bold.off)")
     }
     
     static 
     func dump(_ items:Any..., from source:Source = .diannamy, file:String = #file, line:Int = #line)
     {
-        print("\u{1B}[1m(\(source)) \u{1B}[38;2;2;255;152mdump \(file):\(line):\u{1B}[39m \n\(items.map{ "\($0)" }.joined(separator: " "))\u{1B}[0m")
+        Self.print("\(Bold.on)(\(source)) \(Color.teal)\(file):\(line):\(Color.reset)\n\(items.map{ "\($0)" }.joined(separator: " "))\(Bold.off)")
     }
     
     static 
     func error(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
-        print("\u{1B}[1m(\(source)) \u{1B}[38;2;255;80;90merror:\u{1B}[39m \(message)\u{1B}[0m")
+        Self.print("\(Bold.on)(\(source)) \(Color.red)error:\(Color.reset) \(message)\(Bold.off)")
     }
     
     static 
     func fatal(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line) -> Never
     {
-        print("\u{1B}[1m(\(source)) \u{1B}[38;2;255;80;90mfatal error:\u{1B}[39m \(message)\u{1B}[0m")
+        Self.print("\(Bold.on)(\(source)) \(Color.red)fatal error:\(Color.reset) \(message)\(Bold.off)")
         fatalError()
     }
     
-    /* static 
-    func fatal(_ problem:Problem, file:String = #file, line:Int = #line)  -> Never
+    static 
+    func trace(error:Swift.Error) 
     {
-        print("\u{1B}[1m\(file):\(line): \u{1B}[38;2;255;80;90mfatal error:\u{1B}[39m \(problem)\u{1B}[0m")
-        fatalError()
-    } */
+        var stack:[(type:Swift.Error.Type, message:String)] = []
+        var error:Swift.Error = error 
+        var depth:Int = 0
+        while true 
+        {
+            switch error 
+            {
+            case let recursive as RecursiveError:
+                let (string, next):(String, Swift.Error?) = recursive.unpack()
+                stack.append((type(of: recursive), string))
+                if let next:Swift.Error = next 
+                {
+                    error = next 
+                    continue 
+                }
+            
+            default:
+                stack.append((type(of: error), String.init(describing: error)))
+            }
+            
+            break
+        }
+        
+        for (i, (type, message)):(Int, (type:Swift.Error.Type, message:String)) in 
+            stack.reversed().enumerated()
+        {
+            Self.print("\(Bold.on)\(Color.red)[\(i)]:\(Color.reset) \(String.init(describing: type))\(Bold.off)")
+            Self.print(message)
+        }
+    }
     
     static 
     func unreachable(file:String = #file, line:Int = #line) -> Never
     {
-        print("\u{1B}[1m\(file):\(line): \u{1B}[38;2;255;80;90munreachable code executed\u{1B}[0m")
+        print("\(Bold.on)\(file):\(line): \(Color.red)unreachable code executed\(Color.reset)\(Bold.off)")
         fatalError()
     }
 }

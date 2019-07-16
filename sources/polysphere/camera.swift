@@ -5,25 +5,21 @@ struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematica
         let U:Matrix4<F>, 
             V:Matrix4<F>, 
             F:Matrix3<F>, 
-            position:Vector3<F>
+            position:Vector3<F>, 
+            
+            frame:Rectangle<Float>, 
+            viewport:Vector2<Float>
         
         static 
         var identity:Matrices 
         {
-            return .init(U: .identity, V: .identity, F: .identity, position: .zero)
+            return .init(U: .identity, V: .identity, F: .identity, 
+                position: .zero, frame: .zero, viewport: .zero)
         }
     }
     
     struct Rig:Equatable, Interpolable
-    {
-        enum Action 
-        {
-            case    orbit, 
-                    track, 
-                    approach, 
-                    zoom 
-        }
-        
+    {        
         var center:Vector3<F>, 
             orientation:Quaternion<F>, 
             distance:F,  // negative is outwards, positive is inwards
@@ -163,7 +159,7 @@ struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematica
                 v2:Vector3<F> = a.z * S[2] + a.y * S[1] + a.x * S[0]
             let F:Matrix3<F>  = .init(v0, v1, v2)
             
-            return .init(U: P >< V, V: V, F: F, position: -t)
+            return .init(U: P >< V, V: V, F: F, position: -t, frame: frame, viewport: viewport)
         }
         
         private static  

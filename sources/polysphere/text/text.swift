@@ -1,298 +1,13 @@
 import HarfBuzz
 import FreeType
 
-extension Style.Definitions.Feature 
-{
-    fileprivate 
-    var feature:hb_feature_t 
-    {
-        let slug:UInt32   = .init(self.tag.0) << 24 | 
-                            .init(self.tag.1) << 16 | 
-                            .init(self.tag.2) << 8  | 
-                            .init(self.tag.3)
-        return .init(tag: slug, value: .init(self.value), start: 0, end: .max)
-    }
-    
-    private 
-    var value:Int 
-    {
-        switch self 
-        {
-        case    .kern(let on), 
-                .calt(let on), 
-                .liga(let on), 
-                .hlig(let on), 
-                .`case`(let on), 
-                .cpsp(let on), 
-                .smcp(let on), 
-                .pcap(let on), 
-                .c2sc(let on), 
-                .c2pc(let on), 
-                .unic(let on), 
-                .ordn(let on), 
-                .zero(let on), 
-                .frac(let on), 
-                .afrc(let on), 
-                .sinf(let on), 
-                .subs(let on), 
-                .sups(let on), 
-                .ital(let on), 
-                .mgrk(let on), 
-                .lnum(let on), 
-                .onum(let on), 
-                .pnum(let on), 
-                .tnum(let on), 
-                .rand(let on), 
-                .titl(let on):
-            return on ? 1 : 0
-        
-        case    .salt(let value), 
-                .swsh(let value):
-            return value
-        }
-    }
-    
-    private 
-    var tag:(UInt8, UInt8, UInt8, UInt8)
-    {
-        switch self 
-        {
-        case .kern:
-            return 
-                (
-                    .init(ascii: "k"), 
-                    .init(ascii: "e"), 
-                    .init(ascii: "r"), 
-                    .init(ascii: "n")
-                )
-        case .calt:
-            return 
-                (
-                    .init(ascii: "c"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "l"), 
-                    .init(ascii: "t")
-                )
-        case .liga:
-            return 
-                (
-                    .init(ascii: "l"), 
-                    .init(ascii: "i"), 
-                    .init(ascii: "g"), 
-                    .init(ascii: "a")
-                )
-        case .hlig:
-            return 
-                (
-                    .init(ascii: "h"), 
-                    .init(ascii: "l"), 
-                    .init(ascii: "i"), 
-                    .init(ascii: "g")
-                )
-        case .`case`:
-            return 
-                (
-                    .init(ascii: "c"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "s"), 
-                    .init(ascii: "e")
-                )
-        case .cpsp:
-            return 
-                (
-                    .init(ascii: "c"), 
-                    .init(ascii: "p"), 
-                    .init(ascii: "s"), 
-                    .init(ascii: "p")
-                )
-        case .smcp:
-            return 
-                (
-                    .init(ascii: "s"), 
-                    .init(ascii: "m"), 
-                    .init(ascii: "c"), 
-                    .init(ascii: "p")
-                )
-        case .pcap:
-            return 
-                (
-                    .init(ascii: "p"), 
-                    .init(ascii: "c"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "p")
-                )
-        case .c2sc:
-            return 
-                (
-                    .init(ascii: "c"), 
-                    .init(ascii: "2"), 
-                    .init(ascii: "s"), 
-                    .init(ascii: "c")
-                )
-        case .c2pc:
-            return 
-                (
-                    .init(ascii: "c"), 
-                    .init(ascii: "2"), 
-                    .init(ascii: "p"), 
-                    .init(ascii: "c")
-                )
-        case .unic:
-            return 
-                (
-                    .init(ascii: "u"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "i"), 
-                    .init(ascii: "c")
-                )
-        case .ordn:
-            return 
-                (
-                    .init(ascii: "o"), 
-                    .init(ascii: "r"), 
-                    .init(ascii: "d"), 
-                    .init(ascii: "n")
-                )
-        case .zero:
-            return 
-                (
-                    .init(ascii: "z"), 
-                    .init(ascii: "e"), 
-                    .init(ascii: "r"), 
-                    .init(ascii: "o")
-                )
-        case .frac:
-            return 
-                (
-                    .init(ascii: "f"), 
-                    .init(ascii: "r"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "c")
-                )
-        case .afrc:
-            return 
-                (
-                    .init(ascii: "a"), 
-                    .init(ascii: "f"), 
-                    .init(ascii: "r"), 
-                    .init(ascii: "c")
-                )
-        case .sinf:
-            return 
-                (
-                    .init(ascii: "s"), 
-                    .init(ascii: "i"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "f")
-                )
-        case .subs:
-            return 
-                (
-                    .init(ascii: "s"), 
-                    .init(ascii: "u"), 
-                    .init(ascii: "b"), 
-                    .init(ascii: "s")
-                )
-        case .sups:
-            return 
-                (
-                    .init(ascii: "s"), 
-                    .init(ascii: "u"), 
-                    .init(ascii: "p"), 
-                    .init(ascii: "s")
-                )
-        case .ital:
-            return 
-                (
-                    .init(ascii: "i"), 
-                    .init(ascii: "t"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "l")
-                )
-        case .mgrk:
-            return 
-                (
-                    .init(ascii: "m"), 
-                    .init(ascii: "g"), 
-                    .init(ascii: "r"), 
-                    .init(ascii: "k")
-                )
-        case .lnum:
-            return 
-                (
-                    .init(ascii: "l"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "u"), 
-                    .init(ascii: "m")
-                )
-        case .onum:
-            return 
-                (
-                    .init(ascii: "o"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "u"), 
-                    .init(ascii: "m")
-                )
-        case .pnum:
-            return 
-                (
-                    .init(ascii: "p"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "u"), 
-                    .init(ascii: "m")
-                )
-        case .tnum:
-            return 
-                (
-                    .init(ascii: "t"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "u"), 
-                    .init(ascii: "m")
-                )
-        case .rand:
-            return 
-                (
-                    .init(ascii: "r"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "n"), 
-                    .init(ascii: "d")
-                )
-        case .salt:
-            return 
-                (
-                    .init(ascii: "s"), 
-                    .init(ascii: "a"), 
-                    .init(ascii: "l"), 
-                    .init(ascii: "t")
-                )
-        case .swsh:
-            return 
-                (
-                    .init(ascii: "s"), 
-                    .init(ascii: "w"), 
-                    .init(ascii: "s"), 
-                    .init(ascii: "h")
-                )
-        case .titl:
-            return 
-                (
-                    .init(ascii: "t"), 
-                    .init(ascii: "i"), 
-                    .init(ascii: "t"), 
-                    .init(ascii: "l")
-                )
-        }
-    }
-}
-
 struct Text 
 {
-    private 
+    // private 
     struct Glyph 
     {
         let tc:Rectangle<Float>,    // texture coordinates
             pc:Rectangle<Float>     // physical coordinates 
-            
     }
     
     @_fixed_layout
@@ -314,307 +29,7 @@ struct Text
         }
     }
     
-    private 
-    let glyphs:[Glyph], 
-        runs:[(Style.Definitions.Inline.Computed, Range<Int>)]
-    
-    static 
-    func line(_ contents:[(Style.Definitions.Inline.Computed, String)], atlas:Atlas) -> Self 
-    {
-        let (linear, runRanges):([HarfBuzz.Glyph], [Range<Int>]) = Self.line(contents)
         
-        let runs:[(Style.Definitions.Inline.Computed, Range<Int>)] = zip(contents, runRanges).map 
-        {
-            ($0.0.0, $0.1)
-        }
-        
-        var glyphs:[Glyph] = []
-        for (style, runRange):(Style.Definitions.Inline.Computed, Range<Int>) in runs 
-        {
-            for g:HarfBuzz.Glyph in linear[runRange]
-            {                
-                let sort:Typeface.Font.SortInfo = style.font.sorts[g.index]                
-                let pc:Rectangle<Float> = .init(
-                    .cast(sort.vertices.a &+ g.position), 
-                    .cast(sort.vertices.b &+ g.position)
-                )
-                
-                glyphs.append(.init(tc: atlas[sort.sprite], pc: pc))
-            }
-        }
-        
-        return .init(glyphs: glyphs, runs: runs)
-    }
-    
-    static 
-    func paragraph(_ contents:[(Style.Definitions.Inline.Computed, String)], indent:Int = 0, 
-        linebox:Vector2<Int>, atlas:Atlas) -> Self 
-    {
-        let (linear, runRanges, lineRanges):([HarfBuzz.Glyph], [Range<Int>], [Range<Int>]) = 
-            Self.paragraph(contents, indent: indent, width: linebox.x)
-        
-        let runs:[(Style.Definitions.Inline.Computed, Range<Int>)] = zip(contents, runRanges).map 
-        {
-            ($0.0.0, $0.1)
-        }
-        
-        var glyphs:[Glyph] = []
-        
-        var l:Int = lineRanges.startIndex
-        for (style, runRange):(Style.Definitions.Inline.Computed, Range<Int>) in runs 
-        {
-            for (i, g):(Int, HarfBuzz.Glyph) in zip(runRange, linear[runRange])
-            {
-                while !(lineRanges[l] ~= i) 
-                {
-                    l += 1
-                }
-                
-                let sort:Typeface.Font.SortInfo = style.font.sorts[g.index], 
-                    position:Vector2<Int>       = g.position &+ .init(0, l * linebox.y)
-                
-                let pc:Rectangle<Float> = .init(
-                    .cast(sort.vertices.a &+ position), 
-                    .cast(sort.vertices.b &+ position)
-                )
-                
-                glyphs.append(.init(tc: atlas[sort.sprite], pc: pc))
-            }
-        }
-        
-        return .init(glyphs: glyphs, runs: runs)
-    }
-    
-    private static 
-    func line(_ contents:[(Style.Definitions.Inline.Computed, String)]) 
-        -> (glyphs:[HarfBuzz.Glyph], runs:[Range<Int>])
-    {
-        var glyphs:[HarfBuzz.Glyph] = [], 
-            runs:[Range<Int>]       = []
-        
-        var x:Int  = 0, 
-            ir:Int = glyphs.count 
-        for (style, text):(Style.Definitions.Inline.Computed, String) in contents 
-        {
-            let font:Typeface.Font = style.font 
-            func extent(of line:HarfBuzz.Line) -> Int 
-            {
-                return line.last.map{ $0.position.x + font.sorts[$0.index].footprint } ?? 0
-            }
-            
-            let features:[hb_feature_t] = style.features.map{ $0.feature }, 
-                characters:[Character]  = .init(text)
-            
-            let shaped:HarfBuzz.Line = font.hbfont.shape(characters[...], features: features)
-            glyphs.append(contentsOf: shaped.offset(x: x))
-            x += extent(of: shaped)
-            
-            runs.append(ir ..< glyphs.count)
-            ir = glyphs.count 
-        }
-        
-        return (glyphs, runs)
-    }
-    
-    private static 
-    func paragraph(_ contents:[(Style.Definitions.Inline.Computed, String)], indent:Int, width:Int) 
-        -> (glyphs:[HarfBuzz.Glyph], runs:[Range<Int>], lines:[Range<Int>]) 
-    {
-        var glyphs:[HarfBuzz.Glyph] = [], 
-            runs:[Range<Int>]       = [], 
-            lines:[Range<Int>]      = []
-        
-        var x:Int  = indent, 
-            ir:Int = glyphs.count, 
-            il:Int = glyphs.count
-        for (style, text):(Style.Definitions.Inline.Computed, String) in contents 
-        {
-            let font:Typeface.Font = style.font 
-            func extent(of line:HarfBuzz.Line) -> Int 
-            {
-                return line.last.map{ $0.position.x + font.sorts[$0.index].footprint } ?? 0
-            }
-            
-            let features:[hb_feature_t] = style.features.map{ $0.feature }, 
-                characters:[Character]  = .init(text)
-            
-            var newline:Bool = false 
-            for superline:ArraySlice<Character> in 
-                characters.split(separator: "\n", omittingEmptySubsequences: false)
-            {
-                var unshaped:ArraySlice<Character>  = superline, 
-                    shaped:HarfBuzz.Line            = font.hbfont.shape(unshaped, features: features)
-                
-                if newline
-                {
-                    x = 0
-                    lines.append(il ..< glyphs.count)
-                    il = glyphs.count 
-                }
-                else 
-                {
-                    newline = true 
-                }
-                
-                flow: 
-                while true 
-                {
-                    // find violating glyph 
-                    guard let overrun:Int = 
-                    (
-                        shaped.firstIndex 
-                        {
-                            x + $0.position.x + font.sorts[$0.index].footprint > width 
-                        }
-                    )
-                    else 
-                    {
-                        glyphs.append(contentsOf: shaped.offset(x: x))
-                        x += extent(of: shaped)
-                        break flow 
-                    }
-                    
-                    // need to explicitly find nextCluster, because cluster 
-                    // values may jump by more than 1 
-                    let nextCluster:Int = shaped.cluster(after: overrun) ?? unshaped.endIndex
-                    
-                    // consider each possible breakpoint before `nextCluster`
-                    for b:Int in (unshaped.startIndex ..< nextCluster).reversed() where unshaped[b] == " "
-                    {
-                        let candidate:HarfBuzz.Line = 
-                            font.hbfont.subshape(unshaped[..<b], features: features, from: shaped)
-                        // check if the candidate fits 
-                        let dx:Int = extent(of: candidate)
-                        guard x + dx <= width 
-                        else 
-                        {
-                            continue 
-                        }
-                        
-                        glyphs.append(contentsOf: candidate.offset(x: x))
-                        x += dx
-                        
-                        unshaped = unshaped[(b + 1)...].drop{ $0 == " " } 
-                        if unshaped.isEmpty 
-                        {
-                            break flow 
-                        }
-                        else 
-                        {
-                            shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
-                            continue flow 
-                        }
-                    }
-                    
-                    // if break failure occured, and we weren’t using the entire 
-                    // available line length (because we didn’t start from the 
-                    // beginning), move down to the next whole empty line 
-                    guard x == 0
-                    else 
-                    {
-                        x = 0
-                        lines.append(il ..< glyphs.count)
-                        il = glyphs.count 
-                        continue flow 
-                    }
-                    
-                    // break failure 
-                    for c:Int in (unshaped.startIndex ..< nextCluster).reversed().dropLast()
-                    {
-                        let candidate:HarfBuzz.Line = 
-                            font.hbfont.subshape(unshaped[..<c], features: features, from: shaped)
-                        let dx:Int = extent(of: candidate)
-                        guard x + dx <= width 
-                        else 
-                        {
-                            continue 
-                        }
-                        
-                        glyphs.append(contentsOf: candidate.offset(x: x))
-                        x += dx 
-                        
-                        unshaped = unshaped[c...]
-                        if unshaped.isEmpty 
-                        {
-                            break flow 
-                        }
-                        else 
-                        {
-                            shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
-                            continue flow 
-                        }
-                    }
-                    
-                    // last resort, just place one character on the line 
-                    let single:HarfBuzz.Line = 
-                        font.hbfont.subshape(unshaped.prefix(1), features: features, from: shaped)
-                    glyphs.append(contentsOf: single.offset(x: x))
-                    x += extent(of: single)
-                    
-                    unshaped = unshaped.dropFirst()
-                    if unshaped.isEmpty 
-                    {
-                        break flow 
-                    }
-                    else 
-                    {
-                        shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
-                    }
-                }
-            }
-            
-            runs.append(ir ..< glyphs.count)
-            ir = glyphs.count 
-        }
-        
-        lines.append(il ..< glyphs.count)
-        
-        return (glyphs, runs, lines)
-    }
-    
-    // assemble stops (for cursor positions, etc)
-    // stops map clusters (character indices) to grid layout positions 
-    private static 
-    func stops(_ run:(Style.Definitions.Inline.Computed, String), 
-        glyphs:ArraySlice<HarfBuzz.Glyph>, lines:[Range<Int>]) -> [(x:SIMD2<Int>, l:Int)] 
-    {
-        let (style, string) = run 
-        
-        var stops:[(x:SIMD2<Int>, l:Int)] = []
-        
-        // find l 
-        var l:Int = lines.startIndex
-        for (i, glyph):(Int, HarfBuzz.Glyph) in zip(glyphs.indices, glyphs) 
-        {
-            while !(lines[l] ~= i) 
-            {
-                l += 1
-            }
-            
-            // next cluster 
-            let next:Int 
-            if i + 1 < glyphs.endIndex 
-            {
-                next = glyphs[i + 1].cluster 
-            }
-            else 
-            {
-                next = string.count 
-            }
-            
-            let left:Int  = glyph.position.x, 
-                width:Int = style.font.sorts[glyph.index].footprint, 
-                count:Int = next - glyph.cluster
-            for c:Int in glyph.cluster ..< next 
-            {
-                let d:SIMD2<Int> = .init(c - glyph.cluster, c - glyph.cluster + 1)
-                stops.append((x: left &+ width &* d / count, l: l))
-            }
-        }
-        
-        return stops
-    }
-    
     func vertices(at origin:Vector2<Int>, tracing point:Vector3<Float> = .zero) -> [Vertex] 
     {
         let offset:Vector2<Float>   = .cast(origin)
@@ -666,7 +81,23 @@ class Typeface
         self.ftface.release()
     }
     
-    fileprivate 
+    
+    private
+    struct Sort 
+    {
+        let bitmap:Array2D<UInt8>, 
+            origin:Vector2<Int>, 
+            metric:Vector2<Int>
+            
+        init(_ bitmap:Array2D<UInt8>, origin:Vector2<Int>, metric:Vector2<Int>)
+        {
+            self.bitmap = bitmap 
+            self.origin = origin 
+            self.metric = metric 
+        }
+    }
+    
+    private 
     func render(size fontsize:Int) -> ([Font.Sort], HarfBuzz.Font)
     {
         FreeType.checkError
@@ -713,45 +144,24 @@ class Typeface
         return (sorts, .create(fromFreetype: self.ftface))
     }
     
-    final 
-    class Font 
+    static 
+    func assemble(_ selections:[FontSelection]) -> (Atlas, [Font])
     {
-        fileprivate
-        struct Sort 
+        var faces:[String: Typeface]    = [:], 
+            fallback:Typeface?          = nil 
+        var unassembled:[([Sort], HarfBuzz.Font)] = []
+        for selection:FontSelection in selections
         {
-            let bitmap:Array2D<UInt8>, 
-                origin:Vector2<Int>, 
-                metric:Vector2<Int>
-                
-            init(_ bitmap:Array2D<UInt8>, origin:Vector2<Int>, metric:Vector2<Int>)
+            let face:Typeface 
+            if let result:Typeface = faces[fontSelection.fontfile] 
             {
-                self.bitmap = bitmap 
-                self.origin = origin 
-                self.metric = metric 
+                face = result 
             }
-        }
-        
-        struct SortInfo 
-        {
-            let vertices:Rectangle<Int>, 
-                footprint:Int, 
-                sprite:Int
-        }
-        
-        fileprivate 
-        let sorts:[SortInfo], 
-            hbfont:HarfBuzz.Font 
-        
-        static 
-        func assemble(_ requests:[Style.Definitions.Font], from typefaces:[Style.Definitions.Face: (Typeface, Int)]) -> (Atlas, [Font])
-        {
-            var fallback:Typeface? = nil 
-            let unassembled:[([Sort], HarfBuzz.Font)] = requests.map
+            else 
             {
-                let typeface:Typeface 
-                if let lookup:Typeface = typefaces[$0.face]?.0 ?? fallback
+                if let result:Typeface = Typeface.init(fontSelection.fontfile) ?? fallback
                 {
-                    typeface = lookup 
+                    face = result 
                 }
                 else 
                 {
@@ -763,42 +173,56 @@ class Typeface
                         Log.fatal("failed to load fallback font")
                     }
                     
-                    typeface = fallback 
+                    face = fallback 
                 }
                 
-                let scale:Int = typefaces[$0.face]?.1 ?? 16
-                return typeface.render(size: $0.size * scale / 16)
+                faces[fontSelection.fontfile] = face 
             }
             
-            var indices:[Range<Int>]        = [], 
-                bitmaps:[Array2D<UInt8>]    = []
-            for (sorts, _):([Sort], HarfBuzz.Font) in unassembled
-            {
-                let base:Int = bitmaps.endIndex 
-                bitmaps.append(contentsOf: sorts.map{ $0.bitmap })
-                indices.append(base ..< bitmaps.endIndex) 
-            }
-            
-            let atlas:Atlas  = .init(bitmaps)
-            let fonts:[Font] = zip(unassembled, indices).map 
-            {
-                return .init($0.0.0, indices: $0.1, hbfontPreretained: $0.0.1)
-            }
-            
-            return (atlas, fonts)
+            unassembled.append(face.render(size: selection.size))
         }
         
-        private 
-        init(_ sorts:[Sort], indices:Range<Int>, hbfontPreretained hbfont:HarfBuzz.Font) 
+        var indices:[Range<Int>]        = [], 
+            bitmaps:[Array2D<UInt8>]    = []
+        for (sorts, _):([Sort], HarfBuzz.Font) in unassembled
         {
-            self.sorts = zip(indices, sorts).map 
+            let base:Int = bitmaps.endIndex 
+            bitmaps.append(contentsOf: sorts.map{ $0.bitmap })
+            indices.append(base ..< bitmaps.endIndex) 
+        }
+        
+        let atlas:Atlas  = .init(bitmaps)
+        let fonts:[Font] = zip(unassembled, indices).map 
+        {
+            let ((sorts, hbfont), indices):(([Sort], HarfBuzz.Font), Range<Int>) = $0
+            
+            let sortInfo:Font.SortInfo = zip(indices, sorts).map 
             {
-                let vertices:Rectangle<Int> = .init($0.1.origin, $0.1.origin &+ $0.1.bitmap.size)
-                return .init(vertices: vertices, footprint: $0.1.metric.x, sprite: $0.0)
+                let (index, sort):(Int, Sort) = $0 
+                
+                let vertices:Rectangle<Int> = .init(sort.origin, sort.origin &+ sort.bitmap.size)
+                return .init(vertices: vertices, footprint: sort.metric.x, sprite: index)
             }
             
-            self.hbfont = hbfont 
+            return .init(sorts: sortInfo, hbfont: hbfont)
         }
+        
+        return (atlas, fonts)
+    }
+    
+    final 
+    class Font 
+    { 
+        struct SortInfo 
+        {
+            let vertices:Rectangle<Int>, 
+                footprint:Int, 
+                sprite:Int
+        }
+        
+        fileprivate 
+        let sorts:[SortInfo], 
+            hbfont:HarfBuzz.Font 
         
         deinit 
         {
@@ -911,9 +335,14 @@ enum FreeType
     }
 }
 
-fileprivate
 enum HarfBuzz 
 {
+    struct ShapingParameters 
+    {
+        let font:Typeface.Font, 
+            features:[(UInt32, UInt32)]
+    }
+    
     struct Glyph 
     {
         let position:Vector2<Int>, 
@@ -926,6 +355,7 @@ enum HarfBuzz
         }
     }
     
+    fileprivate
     struct Font 
     {
         private  
@@ -1094,5 +524,244 @@ enum HarfBuzz
                 $0.glyph.relative(to: reference)
             }
         }
+    }
+    
+    static 
+    func paragraph<Runs>(_ runs:Runs, indent:Int, width:Int) 
+        -> ([HarfBuzz.Glyph], (runs:[Range<Int>], lines:[Range<Int>]))
+        where Runs:Sequence, Runs.Element == (String, ShapingParameters)
+    {
+        var glyphs:[HarfBuzz.Glyph]                         =  [], 
+            indices:(runs:[Range<Int>], lines:[Range<Int>]) = ([], [])
+        
+        var x:Int  = indent, 
+            ir:Int = glyphs.count, 
+            il:Int = glyphs.count
+        for (text, parameters):(String, ShapingParameters) in runs 
+        {
+            let font:Typeface.Font = parameters.font
+            func extent(of line:HarfBuzz.Line) -> Int 
+            {
+                return line.last.map{ $0.position.x + font.sorts[$0.index].footprint } ?? 0
+            }
+            
+            let features:[hb_feature_t] = parameters.features.map
+            { 
+                (slug, value) in 
+                .init(tag: slug, value: value, start: 0, end: .max) 
+            } 
+            let characters:[Character]  = .init(text)
+            
+            var newline:Bool = false 
+            for superline:ArraySlice<Character> in 
+                characters.split(separator: "\n", omittingEmptySubsequences: false)
+            {
+                var unshaped:ArraySlice<Character>  = superline, 
+                    shaped:HarfBuzz.Line            = font.hbfont.shape(unshaped, features: features)
+                
+                if newline
+                {
+                    x = 0
+                    indices.lines.append(il ..< glyphs.count)
+                    il = glyphs.count 
+                }
+                else 
+                {
+                    newline = true 
+                }
+                
+                flow: 
+                while true 
+                {
+                    // find violating glyph 
+                    guard let overrun:Int = 
+                    (
+                        shaped.firstIndex 
+                        {
+                            x + $0.position.x + font.sorts[$0.index].footprint > width 
+                        }
+                    )
+                    else 
+                    {
+                        glyphs.append(contentsOf: shaped.offset(x: x))
+                        x += extent(of: shaped)
+                        break flow 
+                    }
+                    
+                    // need to explicitly find nextCluster, because cluster 
+                    // values may jump by more than 1 
+                    let nextCluster:Int = shaped.cluster(after: overrun) ?? unshaped.endIndex
+                    
+                    // consider each possible breakpoint before `nextCluster`
+                    for b:Int in (unshaped.startIndex ..< nextCluster).reversed() where unshaped[b] == " "
+                    {
+                        let candidate:HarfBuzz.Line = 
+                            font.hbfont.subshape(unshaped[..<b], features: features, from: shaped)
+                        // check if the candidate fits 
+                        let dx:Int = extent(of: candidate)
+                        guard x + dx <= width 
+                        else 
+                        {
+                            continue 
+                        }
+                        
+                        glyphs.append(contentsOf: candidate.offset(x: x))
+                        x += dx
+                        
+                        unshaped = unshaped[(b + 1)...].drop{ $0 == " " } 
+                        if unshaped.isEmpty 
+                        {
+                            break flow 
+                        }
+                        else 
+                        {
+                            shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
+                            continue flow 
+                        }
+                    }
+                    
+                    // if break failure occured, and we weren’t using the entire 
+                    // available line length (because we didn’t start from the 
+                    // beginning), move down to the next whole empty line 
+                    guard x == 0
+                    else 
+                    {
+                        x = 0
+                        indices.lines.append(il ..< glyphs.count)
+                        il = glyphs.count 
+                        continue flow 
+                    }
+                    
+                    // break failure 
+                    for c:Int in (unshaped.startIndex ..< nextCluster).reversed().dropLast()
+                    {
+                        let candidate:HarfBuzz.Line = 
+                            font.hbfont.subshape(unshaped[..<c], features: features, from: shaped)
+                        let dx:Int = extent(of: candidate)
+                        guard x + dx <= width 
+                        else 
+                        {
+                            continue 
+                        }
+                        
+                        glyphs.append(contentsOf: candidate.offset(x: x))
+                        x += dx 
+                        
+                        unshaped = unshaped[c...]
+                        if unshaped.isEmpty 
+                        {
+                            break flow 
+                        }
+                        else 
+                        {
+                            shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
+                            continue flow 
+                        }
+                    }
+                    
+                    // last resort, just place one character on the line 
+                    let single:HarfBuzz.Line = 
+                        font.hbfont.subshape(unshaped.prefix(1), features: features, from: shaped)
+                    glyphs.append(contentsOf: single.offset(x: x))
+                    x += extent(of: single)
+                    
+                    unshaped = unshaped.dropFirst()
+                    if unshaped.isEmpty 
+                    {
+                        break flow 
+                    }
+                    else 
+                    {
+                        shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
+                    }
+                }
+            }
+            
+            indices.runs.append(ir ..< glyphs.count)
+            ir = glyphs.count 
+        }
+        
+        indices.lines.append(il ..< glyphs.count)
+        
+        return (glyphs, indices)
+    }
+    
+    static 
+    func line<Runs>(_ runs:Runs) 
+        -> ([HarfBuzz.Glyph], [Range<Int>], Int)
+        where Runs:Sequence, Runs.Element == (String, ShapingParameters)
+    {
+        var glyphs:[HarfBuzz.Glyph] = [], 
+            runs:[Range<Int>]       = []
+        
+        var x:Int  = 0, 
+            ir:Int = glyphs.count 
+        for (text, parameters):(String, ShapingParameters) in runs 
+        {
+            let font:Typeface.Font = parameters.font 
+            func extent(of line:HarfBuzz.Line) -> Int 
+            {
+                return line.last.map{ $0.position.x + font.sorts[$0.index].footprint } ?? 0
+            }
+            
+            let features:[hb_feature_t] = parameters.features.map
+            { 
+                (slug, value) in 
+                .init(tag: slug, value: value, start: 0, end: .max) 
+            } 
+            let characters:[Character]  = .init(text)
+            
+            let shaped:HarfBuzz.Line = font.hbfont.shape(characters[...], features: features)
+            glyphs.append(contentsOf: shaped.offset(x: x))
+            x += extent(of: shaped)
+            
+            runs.append(ir ..< glyphs.count)
+            ir = glyphs.count 
+        }
+        
+        return (glyphs, runs, x)
+    }
+    
+    // assemble stops (for cursor positions, etc)
+    // stops map clusters (character indices) to grid layout positions 
+    static 
+    func stops(_ run:(String, ShapingParameters), glyphs:ArraySlice<HarfBuzz.Glyph>, lines:[Range<Int>]) 
+        -> [(x:SIMD2<Int>, l:Int)] 
+    {
+        let (string, parameters) = run 
+        
+        var stops:[(x:SIMD2<Int>, l:Int)] = []
+        
+        // find l 
+        var l:Int = lines.startIndex
+        for (i, glyph):(Int, HarfBuzz.Glyph) in zip(glyphs.indices, glyphs) 
+        {
+            while !(lines[l] ~= i) 
+            {
+                l += 1
+            }
+            
+            // next cluster 
+            let next:Int 
+            if i + 1 < glyphs.endIndex 
+            {
+                next = glyphs[i + 1].cluster 
+            }
+            else 
+            {
+                next = string.count 
+            }
+            
+            let left:Int  = glyph.position.x, 
+                width:Int = parameters.font.sorts[glyph.index].footprint, 
+                count:Int = next - glyph.cluster
+            for c:Int in glyph.cluster ..< next 
+            {
+                let d:SIMD2<Int> = .init(c - glyph.cluster, c - glyph.cluster + 1)
+                stops.append((x: left &+ width &* d / count, l: l))
+            }
+        }
+        
+        return stops
     }
 }

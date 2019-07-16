@@ -1,0 +1,202 @@
+extension UI.Style 
+{
+    struct Selector
+    {
+        private 
+        var value:UInt64 
+        
+        static 
+        func | (rhs:Self, lhs:Self) -> Self 
+        {
+            return .init(value: rhs.value | lhs.value)
+        }
+        
+        static 
+        func & (rhs:Self, lhs:Self) -> Self 
+        {
+            return .init(value: rhs.value & lhs.value)
+        }
+        
+        static 
+        func ^ (rhs:Self, lhs:Self) -> Self 
+        {
+            return .init(value: rhs.value ^ lhs.value)
+        }
+        
+        func isSuperset(of other:Self) -> Bool 
+        {
+            return other.value & ~self.value == 0 
+        }
+        
+        func isSubset(of other:Self) -> Bool 
+        {
+            return other.isSuperset(of: self)
+        }
+        
+        static 
+        func == (rhs:Self, lhs:Self) -> Bool 
+        {
+            return rhs.value == lhs.value 
+        }
+        
+        // can only have 64 cases
+        %{
+        builtin = 'hover', 'focus', 'active', 'first', 'last'
+        classes = 'paragraph', 'emphasis', 'strong', 'label'
+        }%
+        
+        % for i, tag in enumerate(builtin + classes):
+        static 
+        let ${tag}:Self = .init(value: ${hex(1 << i)})
+        % end 
+    }
+
+    
+    struct FontSelection:Hashable, CustomStringConvertible
+    {
+        let fontfile:String, 
+            size:Int 
+        
+        var description:String 
+        {
+            return "'\(self.fontfile)'@\(self.size)"
+        }
+    }
+    
+    enum Feature:Equatable
+    {
+        %{
+        features = (
+            ('kern', 'Bool'), 
+            ('calt', 'Bool'), 
+            ('liga', 'Bool'), 
+            ('hlig', 'Bool'), 
+            ('case', 'Bool'), 
+            ('cpsp', 'Bool'), 
+            ('smcp', 'Bool'), 
+            ('pcap', 'Bool'), 
+            ('c2sc', 'Bool'), 
+            ('c2pc', 'Bool'), 
+            ('unic', 'Bool'), 
+            ('ordn', 'Bool'), 
+            ('zero', 'Bool'), 
+            ('frac', 'Bool'), 
+            ('afrc', 'Bool'), 
+            ('sinf', 'Bool'), 
+            ('subs', 'Bool'), 
+            ('sups', 'Bool'), 
+            ('ital', 'Bool'), 
+            ('mgrk', 'Bool'), 
+            ('lnum', 'Bool'), 
+            ('onum', 'Bool'), 
+            ('pnum', 'Bool'), 
+            ('tnum', 'Bool'), 
+            ('rand', 'Bool'), 
+            ('salt', 'Int'), 
+            ('swsh', 'Int'), 
+            ('titl', 'Bool')
+        )
+        }%
+        
+        % for name, T in features:
+            case `${name}`(${T})
+        % end
+        
+        var value:Int 
+        {
+            switch self 
+            {
+            case ${', '.join('.`{0}`(let on)'.format(name) for name, T in features if T == 'Bool')}:
+                return on ? 1 : 0
+            
+            case ${', '.join('.`{0}`(let value)'.format(name) for name, T in features if T == 'Int')}:
+                return value
+            }
+        }
+        
+        var tag:UInt32
+        {
+            let characters:(UInt8, UInt8, UInt8, UInt8)
+            switch self 
+            {
+            % for name, T in features:
+            case .`${name}`:
+                characters = (${', '.join(map(str, map(ord, name)))})
+            % end 
+            }
+            
+            return  .init(characters.0) << 24 | 
+                    .init(characters.1) << 16 | 
+                    .init(characters.2) << 8  | 
+                    .init(characters.3)
+        }
+    }
+    
+    enum Positioning:Equatable
+    {
+        case relative, absolute 
+    }
+    
+    enum Alignment 
+    {
+        case begin, middle, end, justify
+    }
+    
+    %{
+    inline_properties = (
+        ('color',           'Vector4<UInt8>',   '.init(repeating: .max)'), 
+        ('font',            'FontSelection',    '.init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16)'),
+        ('features',        '[Feature]',        '[.kern(true)]')
+    )
+    
+    block_properties = (
+        ('wrap',            'Bool',                 'true'), 
+        ('indent',          'Int',                  '0'), 
+        ('lineheight',      'Int',                  '0'), 
+        ('position2',       'Vector2<Int>',         '.init(0, 0)'), 
+        ('position3',       'Vector3<Float>',       '.init(.nan, .nan, .nan)'), 
+        ('padding',         '(Int, Int, Int, Int)', '(0, 0, 0, 0)'), 
+        ('positioning',     'Positioning',          '.relative'),
+        ('align',           'Alignment',            '.begin')
+    )
+    }%
+    
+    enum Rules 
+    {
+        % for T, properties in ('Inline', inline_properties), ('Block', block_properties):
+        struct ${T} 
+        {
+            % for property, property_type, default in properties:
+            let ${property}:${property_type}?
+            % end 
+        }
+        % end 
+    }
+    
+    % for T, properties in ('Inline', inline_properties), ('Block', block_properties):
+    struct ${T} 
+    {
+        % for property, property_type, default in properties:
+        var ${property}:${property_type} = ${default}
+        % end 
+        
+        mutating 
+        func update(with rules:Rules.${T}) 
+        {
+            % for property, property_type, default in properties:
+            if let ${property}:${property_type} = rules.${property} 
+            {
+                self.${property} = ${property}
+            }
+            % end 
+        }
+         
+        func updated(with rules:Rules.${T}) 
+        {
+            var new:Self = self 
+            new.update(with: rules)
+            return new
+        }
+    }
+    % end 
+}

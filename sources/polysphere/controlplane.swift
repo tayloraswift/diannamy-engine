@@ -1,51 +1,103 @@
-struct ControlPlane
+enum Display
 {
-    private 
-    enum Validity 
+    struct Plane3D 
     {
-        case invalid, mutated, valid 
-    }
-    
-    private 
-    struct Ray 
-    {
-        let source:Vector3<Float>, 
-            vector:Vector3<Float>
-    }
-    
-    private 
-    struct Rayfilm 
-    {
-        let matrix:Matrix3<Float>, 
-            source:Vector3<Float>
-        
-        init(matrix:Matrix3<Float>, source:Vector3<Float>) 
+        enum Movement 
         {
-            self.matrix = matrix
-            self.source = source
+            case orbit(Vector2<Float>, confirmation:UI.Event.Confirmation)
+            case jump(Vector3<Float>)
+            case jumpRelative(Vector3<Float>)
+            case jumpLocal(Vector3<Float>)
+            case zoom(UI.Event.Direction)
         }
         
-        func cast(_ position:Vector2<Float>) -> Ray
+        private 
+        typealias Update = (frame:Rectangle<Float>, viewport:Vector2<Float>)
+        
+        private 
+        enum Action
         {
-            let vector:Vector3<Float> = (self.matrix >< .extend(position, 1)).normalized()
-            return .init(source: self.source, vector: vector)
+            case none
+            case orbit(  orientation:Quaternion<Float>,     // the original orientation of the trackball
+                              radius:Float,                 // the original radius of the trackball
+                              anchor:Vector3<Float>,        // the part of the trackball clicked 
+                             rayfilm:Rayfilm,               // the original configuration of the view plane
+                        confirmation:UI.Event.Confirmation) // the event to watch for to end the action
         }
+        
+        
+        private 
+        struct Ray 
+        {
+            let source:Vector3<Float>, 
+                vector:Vector3<Float>
+        }
+        
+        private 
+        struct Rayfilm 
+        {
+            let matrix:Matrix3<Float>, 
+                source:Vector3<Float>
+            
+            init(matrix:Matrix3<Float>, source:Vector3<Float>) 
+            {
+                self.matrix = matrix
+                self.source = source
+            }
+            
+            func cast(_ position:Vector2<Float>) -> Ray
+            {
+                let vector:Vector3<Float> = (self.matrix >< .extend(position, 1)).normalized()
+                return .init(source: self.source, vector: vector)
+            }
+        }
+        
+        @State private(set)
+        var matrices:Camera<Float>.Matrices = .identity
+        
+        private
+        var update:Update?, 
+            action:Action, 
+            animation:Transition<Camera<Float>.Rig, Curve.Quadratic>
     }
-    
-    private 
-    enum State
+}
+
+extension Display.Plane3D
+{
+    init(_ camera:Camera<Float>.Rig)
     {
-        case    none, 
-                orbit(Quaternion<Float>, Float, Vector3<Float>, Rayfilm), 
-                track(Vector3<Float>, Rayfilm), 
-                zoom(Float)
+        self.update     = nil   
+        self.action     = .none 
+        self.animation  = .init(initial: camera)
     }
-    
     
     var position:Vector3<Float>
     {
         return self.matrices.position
     }
+    
+    var frame:Rectangle<Float> 
+    {
+        get 
+        {
+            self.update?.frame ?? self.matrices.frame
+        }
+        set(frame) 
+        {
+            self.update = (frame, self.viewport)
+        }
+    } 
+    var viewport:Vector2<Float> 
+    {
+        get 
+        {
+            self.update?.viewport ?? self.matrices.viewport
+        }
+        set(viewport) 
+        {
+            self.update = (self.frame, viewport)
+        }
+    } 
     
     private 
     var rayfilm:Rayfilm 
@@ -53,41 +105,92 @@ struct ControlPlane
         return .init(matrix: self.matrices.F, source: self.matrices.position)
     }
     
-    private(set)
-    var matrices:Camera<Float>.Matrices
-        
-    private
-    var validity:Validity, 
-        animation:Transition<Camera<Float>.Rig, Curve.Quadratic>, 
-        state:State
-    
-    var mutated:Bool 
-    {
-        if case .mutated = self.validity 
-        {
-            return true 
-        }
-        else 
-        {
-            return false 
-        }
-    }
-    
-    init(_ base:Camera<Float>.Rig)
-    {
-        self.matrices   = .identity
-        self.validity   = .mutated 
-        
-        self.animation  = .init(initial: base)
-        self.state      = .none 
-    }
-    
     // project a point into 2D (normalized 0 ... 1 x 0 ... 1 coordinates )
     func trace(_ point:Vector3<Float>) -> Vector2<Float>
     {
-        let h:Vector4<Float>    = self.matrices.U >< .extend(point, 1)
-        let clip:Vector2<Float> = .init(h.x, h.y) / h.w
+        let h:Vector4<Float>    = self.matrices.U >< .extend(point, 1), 
+            clip:Vector2<Float> = .init(h.x, h.y) / h.w
         return 0.5 + 0.5 * clip
+    }
+    
+    func project(_ position:Vector2<Float>, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
+    {
+        let ray:Ray             = self.rayfilm.cast(position), 
+            p:Vector3<Float>    = ControlPlane.project(ray: ray, on: center, radius: r)
+        return p
+    }
+    
+    
+    // returns true if the view system has changed
+    mutating
+    func process(_ delta:Int) // -> Bool 
+    {
+        if self.animation.process(delta) || self.update != nil 
+        {
+            self.matrices    = self.animation.current.matrices(frame: self.frame, 
+                                                            viewport: self.viewport, 
+                                                                clip: .init(-0.1, -100))
+            // return true 
+        }
+        else 
+        {
+            // return false
+        }
+    }
+    
+    mutating 
+    func move(_ movement:Movement) 
+    {
+        switch movement 
+        {
+        case .orbit(let s, let confirmation):
+            self.animation.stop()
+            let rig:Camera<Float>.Rig = self.animation.current 
+            // save the current rayfilm
+            let rayfilm:Rayfilm  = self.rayfilm, 
+                ray:Ray          = rayfilm.cast(s), 
+                c:Vector3<Float> = rig.center - ray.source, 
+                l:Float          = c <> ray.vector, 
+                r:Float          = max(1, (c <> c - l * l).squareRoot()), 
+                a:Vector3<Float> = Self.project(ray: ray, on: rig.center, radius: r)
+            self.action = .orbit(orientation: rig.orientation, 
+                                      radius: r, 
+                                      anchor: (a - rig.center).normalized(), 
+                                     rayfilm: rayfilm, 
+                                confirmation: confirmation)
+        
+        case .jump(let target):
+            self.charge
+            {
+                $0.center = target 
+            } 
+        
+        case .jumpRelative(let displacement):
+            self.charge
+            {
+                $0.center += displacement 
+            } 
+        
+        case .jumpLocal(let displacement):
+            self.charge
+            {
+                $0.center += $0.orientation.rotate(0.1 * displacement)
+            } 
+        
+        case .zoom(let direction):
+            self.charge
+            {
+                switch direction 
+                {
+                case .up:
+                    $0.focalLength =         $0.focalLength + 10
+                case .down:
+                    $0.focalLength = max(20, $0.focalLength - 10)
+                default:
+                    break
+                }
+            }
+        }
     }
     
     // rebases to the current animation state and starts the transition timer to 
@@ -96,7 +199,7 @@ struct ControlPlane
     func charge(_ body:(inout Camera<Float>.Rig) -> ())
     {
         // if an action is in progress, ignore
-        guard case .none = self.state
+        guard case .none = self.action 
         else
         {
             return 
@@ -104,127 +207,42 @@ struct ControlPlane
         
         self.animation.charge(time: 256, transform: body)
     }
-    
-    mutating 
-    func bump(_ direction:UI.Direction, action:Camera<Float>.Rig.Action)
-    {
-        self.charge 
-        {
-            $0.displace(action: action, direction)
-        }
-    }
-    
-    mutating 
-    func jump(to target:Vector3<Float>)
-    {
-        self.charge
-        {
-            $0.center = target 
-        } 
-    }
 
-    mutating
-    func down(_ position:Vector2<Float>, button:UI.Action)
+    // to *trigger* an action, have the caller sort the event, and call the `move(_:)` 
+    // method directly.
+    mutating 
+    func event(_ event:UI.Event, pass _:UI.Event.Pass) -> Bool 
     {
-        self.animation.stop()
-        self.state = .none 
-        switch button
+        switch self.action 
         {
-            case .primary:
-                let rig:Camera<Float>.Rig = self.animation.current 
-                // save the current rayfilm
-                let rayfilm:Rayfilm  = self.rayfilm, 
-                    ray:Ray          = rayfilm.cast(position), 
-                    c:Vector3<Float> = rig.center - ray.source, 
-                    l:Float          = c <> ray.vector, 
-                    r:Float          = max(1, (c <> c - l * l).squareRoot()), 
-                    a:Vector3<Float> = ControlPlane.project(ray: ray, on: rig.center, radius: r)
-                self.state = .orbit(rig.orientation, r, (a - rig.center).normalized(), rayfilm)
-            
-            default:
-                break
-        }
-    }
-
-    mutating
-    func move(_ position:Vector2<Float>)
-    {
-        switch self.state 
-        {
-            case .none:
-                break 
-            
-            case .orbit(let orientation, let r, let anchor, let rayfilm):
+        case .none:
+            return false 
+        
+        case .orbit(let orientation, let radius, let anchor, let rayfilm, let confirmation):
+            switch event 
+            {
+            case .enter(let s):
                 self.animation.charge(time: 0)
                 {
-                    let ray:Ray             = rayfilm.cast(position), 
-                        q:Quaternion<Float> = ControlPlane.attract(anchor, on: $0.center, to: ray, radius: r)
-                    $0.orientation          = q.inverse >< orientation
-                }
+                    let b:Vector3<Float>    = Self.project(ray: rayfilm.cast(s), on: $0.center, radius: radius), 
+                        q:Quaternion<Float> = .init(from: anchor, to: (b - $0.center).normalized())
+                    $0.orientation = q.inverse >< orientation
+                } 
             
+            case .leave:
+                self.action = .none 
+                        
             default:
-                break
-        }
-    }
-
-    mutating
-    func up(_ position:Vector2<Float>, button:UI.Action)
-    {
-        self.move(position)
-        switch (button, self.state) 
-        {
-            case    (.primary,  .orbit):
-                self.state = .none
+                break 
+            }
             
-            default:
-                break
-        }
-    }
-    
-    mutating 
-    func invalidate() 
-    {
-        self.validity = .invalid
-    }
-    
-    // returns true if the view system has changed
-    mutating
-    func process(_ delta:Int, viewport:Vector2<Float>, frame:Rectangle<Float>) -> Bool 
-    {
-        if self.animation.process(delta) || self.validity == .invalid 
-        {
-            self.matrices    = self.animation.current.matrices(frame: frame, 
-                                                            viewport: viewport, 
-                                                                clip: .init(-0.1, -100))
-            self.validity    = .mutated  
+            if confirmation ~= event 
+            {
+                self.action = .none 
+            }
+            
             return true 
         }
-        else 
-        {
-            return false
-        }
-    }
-    
-    mutating 
-    func pop() -> Camera<Float>.Matrices? 
-    {
-        if case .mutated = self.validity 
-        {
-            self.validity = .valid 
-            return self.matrices 
-        }
-        else 
-        {
-            return nil 
-        }
-    }
-    
-    private static 
-    func attract(_ anchor:Vector3<Float>, on center:Vector3<Float>, to ray:Ray, radius r:Float) 
-        -> Quaternion<Float>
-    {
-        let b:Vector3<Float> = project(ray: ray, on: center, radius: r)
-        return .init(from: anchor, to: (b - center).normalized())
     }
     
     private static 
@@ -265,12 +283,5 @@ struct ControlPlane
         }
         
         return ray.source + a * ray.vector
-    }
-    
-    func project(_ position:Vector2<Float>, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
-    {
-        let ray:Ray             = self.rayfilm.cast(position), 
-            p:Vector3<Float>    = ControlPlane.project(ray: ray, on: center, radius: r)
-        return p
     }
 }
