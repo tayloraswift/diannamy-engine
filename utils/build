@@ -4,15 +4,17 @@ from __future__ import print_function
 import os, fnmatch
 from argparse import ArgumentParser
 
-def shell(command):
-    print(command)
+def shell(command, silent = False):
+    if not silent:
+        print(command)
     os.system(command)
 
 def find_gyb_files( * filetypes ):
-    for root, directories, files in os.walk('.'):
+    for root, directories, files in os.walk('sources/'):
         for filetype in filetypes:
             for file in fnmatch.filter(files, '*.{0}.gyb'.format(filetype)):
-                yield os.path.join(root, file)
+                swiftfile = os.path.join(file)[:-4]
+                yield root, swiftfile
 
 def main():
     flags = {
@@ -26,16 +28,33 @@ def main():
     
     arguments = parser.parse_args()
     
-    gyb_targets = [path[:-4] for path in find_gyb_files('swift')]
+    gyb_targets = tuple(find_gyb_files('swift'))
     
     if not arguments.no_gyb:
-        for target in gyb_targets:
-            shell('utils/swift/gyb {0}.gyb -o {0}'.format(target))
+        for directory, swiftfile in gyb_targets:
+            shell('mkdir -p {0}'.format(os.path.join(directory, '__gyb__/')), silent = True)
+            shell('utils/swift/gyb {0}.gyb -o {1}'.
+                format(
+                os.path.join(directory, swiftfile), 
+                os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile))
+                ), 
+            silent = False)
+            shell('rsync -c {0} {1}'.
+                format(
+                os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile)), 
+                os.path.join(directory, '__gyb__/', swiftfile)
+                ),
+            silent = True)
+            shell('rm {0}'.
+                format(
+                os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile))
+                ),
+            silent = True)
     
     if arguments.debug:
         command = 'swift build -c debug -Xswiftc "-D" -Xswiftc "DEBUG" {cc} {ld}'
     else:
-        command = 'swift build -c release {cc} {ld}'
+        command = 'swift build -c release {cc} {ld} ' 
     
     command = command.format( ** flags )
     
@@ -43,9 +62,6 @@ def main():
         command = 'utils/swift/line-directive {0} -- {1}'.format(' '.join(gyb_targets), command)
     
     shell(command)
-    
-    if not arguments.no_gyb:
-        shell('rm {0}'.format(' '.join(gyb_targets)))
     
 if __name__ == '__main__':
     # set cwd

@@ -8,15 +8,14 @@ def shell(command):
     print(command)
     os.system(command)
 
-def find_gyb_files( * filetypes ):
-    for root, directories, files in os.walk('.'):
-        for filetype in filetypes:
-            for file in fnmatch.filter(files, '*.{0}.gyb'.format(filetype)):
-                yield os.path.join(root, file)
+def find_gyb_directories():
+    for root, directories, files in os.walk('sources/'):
+        for directory in directories:
+            if directory == '__gyb__':
+                yield os.path.join(root, directory)
 
 def main():
-    gyb_targets = [path[:-4] for path in find_gyb_files('swift')]
-    shell('rm {0}'.format(' '.join(gyb_targets)))
+    shell('rm -rf {0}'.format(' '.join(find_gyb_directories())))
     shell('rm -rf .build/ Package.resolved')
     
 if __name__ == '__main__':

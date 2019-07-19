@@ -2006,83 +2006,71 @@ extension _FX
 final 
 class Renderer 
 {
+    // per-command options
+    /* enum Option 
+    {
+        enum BlendMode 
+        {
+            case mix, add 
+        }
+        
+        enum DepthTest
+        {
+            case never, 
+                 less, 
+                 equal, 
+                 lessEqual, 
+                 greater, 
+                 notEqual, 
+                 greaterEqual, 
+                 always
+        }
+        
+        case blend(mode:BlendMode)
+        case depth(test:DepthTest)
+        case cull
+        case multisample
+    } */
+    
+    // per-layer options 
     enum Option 
     {
-        case debug 
+        case clear(color:Bool, depth:Bool)
     }
     
-    enum Backend 
+    private 
+    var options:[Option], 
+        viewport:Rectangle<Float> = .zero 
+    
+    init(options:Option...)
     {
-        private static 
-        var initialized:Bool = false 
-        
-        static 
-        func initialize(loader:@escaping (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?, 
-            options:Option...) 
-        {
-            if Self.initialized 
-            {
-                Log.warning("`Renderer.Backend.initialize()` called, but renderer has already been initialized")
-            }
-            
-            // set the opengl loader function
-            OpenGL.loader = loader 
-            
-            for option:Option in options 
-            {
-                switch option 
-                {
-                case .debug:
-                    Self.enableDebugOutput()
-                }
-            }
-        }
-        
-        // debug tools 
-        private static 
-        func enableDebugOutput()
-        {
-            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT)
-            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT_SYNCHRONOUS)
-            
-            OpenGL.glDebugMessageCallback(
-            {
-                (
-                    source:OpenGL.Enum, 
-                    type:OpenGL.Enum, 
-                    id:OpenGL.UInt, 
-                    severity:OpenGL.Enum, 
-                    length:OpenGL.Size, 
-                    message:UnsafePointer<OpenGL.Char>?,
-                    userParameter:UnsafeRawPointer?
-                ) in
-                
-                guard let message:UnsafePointer<OpenGL.Char> = message 
-                else 
-                {
-                    return
-                }
-                
-                switch severity 
-                {
-                case OpenGL.DEBUG_SEVERITY_HIGH:
-                    Log.error(.init(cString: message), from: .opengl)
-                case OpenGL.DEBUG_SEVERITY_MEDIUM, OpenGL.DEBUG_SEVERITY_LOW:
-                    Log.warning(.init(cString: message), from: .opengl)
-                case OpenGL.DEBUG_SEVERITY_NOTIFICATION:
-                    fallthrough
-                default:
-                    Log.note(.init(cString: message), from: .opengl)
-                }
-            }, nil)
-        }
+        self.options = options 
+    }
+    
+    func options(_ options:Option...) 
+    {
+        self.options = options
     }
     
     func viewport(_ viewport:Rectangle<Float>) 
     {
-        let a:Vector2<Int32> = .cast(viewport.a),
-            s:Vector2<Int32> = .cast(viewport.size)
+        self.viewport = viewport 
+    }
+    
+    func draw()
+    {
+        let a:Vector2<Int32> = .cast(self.viewport.a),
+            s:Vector2<Int32> = .cast(self.viewport.size)
         OpenGL.glViewport(a.x, a.y, s.x, s.y)
+        
+        for option:Option in self.options 
+        {
+            switch option 
+            {
+            case .clear(color: let color, depth: let depth):
+                OpenGL.glClear((color ? OpenGL.COLOR_BUFFER_BIT : 0) | (depth ? OpenGL.DEPTH_BUFFER_BIT : 0))
+            }
+        }
     }
     /* struct Command 
     {
@@ -2122,4 +2110,99 @@ class Renderer
         var vertices:[Vertex]
         let shader:Shader.Selector
     } */
+}
+extension Renderer 
+{
+    enum Backend 
+    {
+        enum Option 
+        {
+            case debug
+            case clear(r:Float, g:Float, b:Float, a:Float)
+            case clearDepth(Double)
+            
+            static 
+            func clear(color:Vector4<Float>) -> Self 
+            {
+                return .clear(r: color.x, g: color.y, b: color.z, a: color.w)
+            }
+        }
+        
+        private static 
+        var initialized:Bool = false 
+        
+        static 
+        func initialize(loader:@escaping (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?, 
+            options:Option...) 
+        {
+            if Self.initialized 
+            {
+                Log.warning("`Renderer.Backend.initialize()` called, but renderer has already been initialized")
+            }
+            
+            // set the opengl loader function
+            OpenGL.loader = loader 
+            
+            for option:Option in options 
+            {
+                switch option 
+                {
+                case .debug:
+                    Self.enableDebugOutput()
+                
+                case .clear(r: let r, g: let g, b: let b, a: let a):
+                    OpenGL.glClearColor(r, g, b, a)
+                
+                case .clearDepth(let depth):
+                    OpenGL.glClearDepth(depth)
+                }
+            }
+            
+            Self.initialized = true
+        }
+        
+        // debug tools 
+        private static 
+        func enableDebugOutput()
+        {
+            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT)
+            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT_SYNCHRONOUS)
+            
+            OpenGL.glDebugMessageCallback(
+            {
+                (
+                    source:OpenGL.Enum, 
+                    type:OpenGL.Enum, 
+                    id:OpenGL.UInt, 
+                    severityCode:OpenGL.Enum, 
+                    length:OpenGL.Size, 
+                    message:UnsafePointer<OpenGL.Char>?,
+                    userParameter:UnsafeRawPointer?
+                ) in
+                
+                guard let message:String = (message.map{ .init(cString: $0) })
+                else 
+                {
+                    return
+                }
+                
+                let severity:Log.Severity 
+                switch severityCode 
+                {
+                case OpenGL.DEBUG_SEVERITY_HIGH:
+                    severity = .error 
+                case OpenGL.DEBUG_SEVERITY_MEDIUM:
+                    severity = .warning  
+                case OpenGL.DEBUG_SEVERITY_LOW:
+                    severity = .advisory
+                case OpenGL.DEBUG_SEVERITY_NOTIFICATION:
+                    fallthrough
+                default:
+                    severity = .note 
+                }
+                
+                Log.print(severity, message, from: .opengl)
+            }, nil)
+        }
+    }
 }

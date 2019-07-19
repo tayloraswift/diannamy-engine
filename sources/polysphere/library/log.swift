@@ -10,6 +10,11 @@ enum Log
         case diannamy, opengl, glsl, glfw, freetype, harfbuzz
     }
     
+    enum Severity 
+    {
+        case note, advisory, warning, error, fatal
+    }
+    
     private 
     enum Color 
     {
@@ -19,6 +24,8 @@ enum Log
         var teal:String     { "\u{1B}[38;2;2;255;152m" }
         static 
         var blue:String     { "\u{1B}[38;2;20;120;255m" }
+        static 
+        var indigo:String   { "\u{1B}[38;2;120;0;255m" }
         static 
         var purple:String   { "\u{1B}[38;2;255;100;255m" }
         static 
@@ -60,15 +67,40 @@ enum Log
     }
     
     static 
+    func print(_ severity:Severity, _ message:String, from source:Source) 
+    {
+        let interjection:String 
+        switch severity 
+        {
+        case .note:
+            Self.print("\(Bold.on)(\(source))\(Bold.off) \(message)")
+            return 
+        
+        // only used for the opengl `SEVERITY_LOW` alert level
+        case .advisory:
+            interjection = "\(Color.indigo)advisory:\(Color.reset)"
+        
+        case .warning:
+            interjection = "\(Color.purple)warning:\(Color.reset)"
+        case .error:
+            interjection = "\(Color.red)error:\(Color.reset)"
+        case .fatal:
+            interjection = "\(Color.red)fatal error:\(Color.reset)"
+        }
+        
+        Self.print("\(Bold.on)(\(source)) \(interjection) \(message)\(Bold.off)")
+    }
+    
+    static 
     func note(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
-        Self.print("\(Bold.on)(\(source))\(Bold.off) \(message)")
+        Self.print(.note, message, from: source)
     }
     
     static 
     func warning(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
-        Self.print("\(Bold.on)(\(source)) \(Color.purple)warning:\(Color.reset) \(message)\(Bold.off)")
+        Self.print(.warning, message, from: source)
     }
     
     static 
@@ -80,13 +112,13 @@ enum Log
     static 
     func error(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
-        Self.print("\(Bold.on)(\(source)) \(Color.red)error:\(Color.reset) \(message)\(Bold.off)")
+        Self.print(.error, message, from: source)
     }
     
     static 
     func fatal(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line) -> Never
     {
-        Self.print("\(Bold.on)(\(source)) \(Color.red)fatal error:\(Color.reset) \(message)\(Bold.off)")
+        Self.print(.fatal, message, from: source)
         fatalError()
     }
     
@@ -126,7 +158,7 @@ enum Log
     static 
     func unreachable(file:String = #file, line:Int = #line) -> Never
     {
-        print("\(Bold.on)\(file):\(line): \(Color.red)unreachable code executed\(Color.reset)\(Bold.off)")
+        Self.print("\(Bold.on)\(file):\(line): \(Color.red)unreachable code executed\(Color.reset)\(Bold.off)")
         fatalError()
     }
 }

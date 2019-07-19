@@ -163,6 +163,7 @@ struct Coordinator
     private 
     func draw() 
     {
+        self.renderer.draw()
     }
 }
 

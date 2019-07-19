@@ -179,10 +179,6 @@ class Context
     {
         glfwSwapInterval(1)
         
-        GL.depthTest(.greaterEqual)
-        GL.clearColor(.init(0.02, 0.02, 0.02), 1)
-        GL.clearDepth(-1.0)
-        
         self.coordinator.window = self.framebufferSize()
         
         var t0:Double = glfwGetTime()
@@ -273,8 +269,11 @@ func main()
     typealias LoaderFunction    = (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?
     let loader:LoaderFunction   = unsafeBitCast(glfwGetProcAddress, to: LoaderFunction.self)
     
-    Renderer.Backend.initialize(loader: loader, options: .debug)
-    let coordinator:Coordinator = .init(renderer: .init())
+    Renderer.Backend.initialize(loader: loader, options: 
+        .debug, 
+        .clear(r: 0.3, g: 0, b: 1, a: 1), 
+        .clearDepth(-1))
+    let coordinator:Coordinator = .init(renderer: .init(options: .clear(color: true, depth: true)))
     let context:Context         = .init(coordinator, backpointer: window)
     withExtendedLifetime(context)
     {
