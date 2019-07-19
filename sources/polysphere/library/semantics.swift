@@ -34,7 +34,8 @@ func stringFromBuffer(capacity:Int,
 
 struct Weak<T> where T:AnyObject
 {
-    weak var object:T? 
+    weak 
+    var object:T? 
     
     init(_ object:T?) 
     {

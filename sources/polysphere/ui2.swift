@@ -11,7 +11,7 @@ protocol UIElement
     // up and down should provide complete traversal, left and right can offer 
     // skips and shortcuts
     mutating 
-    func navigate(_ direction:UI.CardinalDirection) -> Bool 
+    func navigate(_ direction:UI.Event.Direction.D2) -> Bool 
     
     // returns true if state changed (for example, updating an animation)
     mutating 
@@ -34,7 +34,7 @@ extension UIElement
         return false 
     }
     
-    func navigate(_:UI.CardinalDirection) -> Bool 
+    func navigate(_:UI.Event.Direction.D2) -> Bool 
     {
         return true 
     }
@@ -55,8 +55,15 @@ extension UI
     struct Style 
     {
         private 
-        let fonts:[FontSelection: Typeface.Font], 
-            atlas:Atlas 
+        let fonts:[FontSelection: Typeface.Font]
+        let atlas:Atlas 
+        
+        private 
+        var cache:
+        (
+            inline:[Selector: (sequence:UInt, style:Inline)],
+            block:[Selector: (sequence:UInt, style:Block)]
+        )
             
         private 
         let stack:
@@ -92,40 +99,12 @@ extension UI
                         font:       .init(fontfile: "assets/fonts/SourceSansPro-BoldItalic.ttf", size: 16)
                     )
                 ), 
-                
-                (
-                    .mapeditorUI, 
-                    .init(
-                        color:      .init(repeating: .max), 
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16), 
-                        features:  [.kern(true), .onum(true), .tnum(true)]
-                    )
-                ), 
-                (
-                    .mapeditorUI | .strong, 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Bold.ttf", size: 16)
-                    )
-                ), 
             ], 
             [
                 (
                     .paragraph, 
                     .init(
-                        lineHeight: 20
-                    )
-                ), 
-                
-                (
-                    .mapeditorUI, 
-                    .init(
-                        lineHeight: 20
-                    )
-                ), 
-                (
-                    .mapeditorUI | .strong, 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Bold.ttf", size: 16)
+                        lineheight: 20
                     )
                 ), 
             ]
@@ -134,9 +113,7 @@ extension UI
         init() 
         {
             // distinct fonts (differ by size) and distinct faces
-            var fontSelections:Set<FontSelection>   = [], 
-                faces:[String: Typeface]            = [:] 
-            var fallback:Typeface?                  = nil 
+            var fontSelections:Set<FontSelection>   = []
             for (_, rules):(Selector, Rules.Inline) in self.stack.inline 
             {
                 if let fontSelection:FontSelection = rules.font 
@@ -150,6 +127,7 @@ extension UI
             (self.atlas, fonts)             = Typeface.assemble(selections)
             
             self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
+            self.cache = ([:], [:])
         }
         
         func font(_ selection:FontSelection) -> Typeface.Font
@@ -161,6 +139,45 @@ extension UI
             }
             
             return font
+        }
+        
+        mutating 
+        func resolve(inline:Selector) -> (UInt, Inline) 
+        {
+            if let entry:(UInt, Inline) = self.cache.inline[inline] 
+            {
+                return entry 
+            }
+            
+            var style:Inline = .init()
+            for (selector, rules):(Selector, Rules.Inline) in self.stack.inline 
+                where inline ~= selector 
+            {
+                style.update(with: rules)
+            } 
+            
+            let entry:(UInt, Inline)  = (0, style)
+            self.cache.inline[inline] = entry
+            return entry
+        }
+        mutating
+        func resolve(block:Selector) -> (UInt, Block) 
+        {
+            if let entry:(UInt, Block) = self.cache.block[block] 
+            {
+                return entry 
+            }
+            
+            var style:Block = .init()
+            for (selector, rules):(Selector, Rules.Block) in self.stack.block 
+                where block ~= selector 
+            {
+                style.update(with: rules)
+            } 
+            
+            let entry:(UInt, Block) = (0, style)
+            self.cache.block[block] = entry
+            return entry
         }
     }
     
@@ -175,32 +192,47 @@ extension UI
             }
             typealias Triangle = (Int, Int, Int)
             
-            typealias Vertex = 
-            (
-                // screen coordinates (pixels)
-                sx:Float, 
-                sy:Float, 
+            @frozen 
+            @usableFromInline
+            struct Vertex:_FX.Geometry.StructuredVertex 
+            {
+                var fields:
+                (
+                    // screen coordinates (pixels)
+                    sx:Float, 
+                    sy:Float, 
+                    
+                    // padding 
+                    _o1:Float, 
+                    _o2:Float, 
+                    
+                    // tracer coordinates
+                    x:Float, 
+                    y:Float, 
+                    z:Float, 
+                    
+                    // color coordinates
+                    r:UInt8, 
+                    g:UInt8, 
+                    b:UInt8, 
+                    a:UInt8
+                )
                 
-                // padding 
-                _o1:Float, 
-                _o2:Float, 
-                
-                // tracer coordinates
-                x:Float, 
-                y:Float, 
-                z:Float, 
-                
-                // color coordinates
-                r:UInt8, 
-                g:UInt8, 
-                b:UInt8, 
-                a:UInt8
-            )
+                static 
+                let layout:[_FX.Geometry.Attribute] =
+                [
+                    .float32x2(as:  .float32),
+                    .float32x2(as:  .padding),
+                    .float32x3(as:  .float32),
+                    .uint8x3(as:    .float32(normalized: true))
+                ]
+            }
             
             // 3D tracing is disabled using a (.nan, .nan, .nan) triple
-            let points:[Point], 
-                triangles:[Triangle], 
-                position2:Vector2<Float>, 
+            private(set)
+            var points:[Point]
+            let triangles:[Triangle]
+            var position2:Vector2<Float>, 
                 position3:Vector3<Float> 
             
             var startIndex:Int 
@@ -215,7 +247,7 @@ extension UI
             subscript(index:Int) -> Vertex
             {
                 let p:Point = self.points[index]
-                return 
+                return .init(fields: 
                     (
                         sx: p.s.x, sy: p.s.y, 
                         _o1: 0, _o2: 0, 
@@ -226,6 +258,7 @@ extension UI
                         
                         r: p.color.x, g: p.color.y, b: p.color.z, a: p.color.w
                     )
+                )
             }
             
             mutating 
@@ -261,31 +294,46 @@ extension UI
                     color:Vector4<UInt8>
             }
             
-            typealias Vertex = 
-            (
-                // screen coordinates (pixels)
-                sx:Float, 
-                sy:Float, 
+            @frozen 
+            @usableFromInline
+            struct Vertex:_FX.Geometry.StructuredVertex 
+            {
+                var fields:
+                (
+                    // screen coordinates (pixels)
+                    sx:Float, 
+                    sy:Float, 
+                    
+                    // texture coordinates 
+                    tx:Float, 
+                    ty:Float, 
+                    
+                    // tracer coordinates
+                    x:Float, 
+                    y:Float, 
+                    z:Float, 
+                    
+                    // color coordinates
+                    r:UInt8, 
+                    g:UInt8, 
+                    b:UInt8, 
+                    a:UInt8
+                )
                 
-                // texture coordinates 
-                tx:Float, 
-                ty:Float, 
-                
-                // tracer coordinates
-                x:Float, 
-                y:Float, 
-                z:Float, 
-                
-                // color coordinates
-                r:UInt8, 
-                g:UInt8, 
-                b:UInt8, 
-                a:UInt8
-            )
+                static 
+                let layout:[_FX.Geometry.Attribute] =
+                [
+                    .float32x2(as:  .float32),
+                    .float32x2(as:  .float32),
+                    .float32x3(as:  .float32),
+                    .uint8x3(as:    .float32(normalized: true))
+                ]
+            }
             
             // 3D tracing is disabled using a (.nan, .nan, .nan) triple
-            let glyphs:[Glyph], 
-                position2:Vector2<Float>, 
+            private(set)
+            var glyphs:[Glyph]
+            var position2:Vector2<Float>, 
                 position3:Vector3<Float> 
             
             var startIndex:Int 
@@ -297,10 +345,17 @@ extension UI
                 return self.glyphs.endIndex 
             }
             
+            init(glyphs:[Glyph], position2:Vector2<Float>, position3:Vector3<Float>) 
+            {
+                self.glyphs    = glyphs 
+                self.position2 = position2 
+                self.position3 = position3
+            }
+            
             private 
             func vertex(s:Vector2<Float>, t:Vector2<Float>, color:Vector4<UInt8>) -> Vertex 
             {
-                return 
+                return .init(fields: 
                     (
                         sx: s.x, sy: s.y, 
                         tx: t.x, ty: t.y, 
@@ -311,6 +366,7 @@ extension UI
                         
                         r: color.x, g: color.y, b: color.z, a: color.w
                     )
+                )
             }
             
             subscript(index:Int) -> (Vertex, Vertex) 
@@ -386,10 +442,10 @@ extension UI
             {
                 switch self 
                 {
-                    case .deep, .semivalid:
-                        break 
-                    case .none(let cache):
-                        self = .semivalid(cache)
+                case .invalid, .semivalid:
+                    break 
+                case .valid(let cache):
+                    self = .semivalid(cache)
                 }
             }
         }
@@ -398,21 +454,27 @@ extension UI
         let selector:Style.Selector 
         
         private 
-        var runs:[(run:Run, sequence:Int)], 
+        var runs:[(run:Run, sequence:UInt?)], 
             _style:Style.Rules.Block
             
         private 
         var cache:Cache, 
-            sequence:Int
+            sequence:UInt?
+        
+        private 
+        var description:String 
+        {
+            "UI.Text{\(self.runs.map{ $0.run.text }.joined(separator: ""))}"
+        }
         
         init(_ runs:[Run], selector:Style.Selector, style:Style.Rules.Block = .init()) 
         {
-            self.runs       = runs.map{ ($0, -1) }
+            self.runs       = runs.map{ ($0, nil) }
             self.selector   = selector 
             self._style     = style 
             
             self.cache      = .invalid 
-            self.sequence   = -1
+            self.sequence   = nil
         }
         
         // setting the style as a whole (through the .style property) will 
@@ -443,7 +505,7 @@ extension UI
         }
         var position3:Vector3<Float>? 
         {
-            get         { return self.rules.position3 }
+            get         { return self._style.position3 }
             set(p3)     { self._style.position3 = p3    ; self.cache.semiinvalidate() }
         }
         
@@ -464,29 +526,38 @@ extension UI
         // UIElement conformance 
         func contribute(text:inout [Self.DrawElement], offset:Vector2<Float>) 
         {
-            text.append(self.cache.draw.offsetted(by: offset))
+            switch self.cache 
+            {
+            case .valid(let cache):
+                text.append(cache.draw.offsetted(by: offset))
+            case .semivalid(let cache):
+                text.append(cache.draw.offsetted(by: offset))
+                Log.warning("text element \(self.description) was drawn with semivalid cache")
+            case .invalid:
+                Log.error("text element \(self.description) could not be drawn (invalid cache)")
+            }
         }
         
         mutating 
         func layout(allotment:Vector2<Int>, styledefs:inout Style) -> Vector2<Int>
         {
-            var reshape:Bool = false
             // check block styles 
-            let lookup:(sequence:Int, style:Style.Block) = styledefs.block[self.selector]
-            if lookup.sequence != self.sequence 
+            let lookup:(sequence:UInt, style:Style.Block) = styledefs.resolve(block: self.selector)
+            if (self.sequence.map{ $0 != lookup.sequence }) ?? true 
             {
                 self.cache.invalidate()
                 self.sequence = lookup.sequence
             }
             
-            let style:Style.Block   = lookup.style.updated(with: self._style)
-            var styles:Style.Inline = []
+            let style:Style.Block     = lookup.style.updated(with: self._style)
+            var styles:[Style.Inline] = []
                 styles.reserveCapacity(self.runs.count)
             // compute styling for inline runs 
             for i:Int in self.runs.indices
             {
-                let lookup:(sequence:Int, style:Style.Inline) = styledefs.inline[self[i].selector] 
-                if lookup.sequence != self.runs[i].sequence 
+                // check inline styles
+                let lookup:(sequence:UInt, style:Style.Inline) = styledefs.resolve(inline: self[i].selector)
+                if (self.runs[i].sequence.map{ $0 != lookup.sequence }) ?? true
                 {
                     self.cache.invalidate()
                     self.runs[i].sequence = lookup.sequence
@@ -495,14 +566,13 @@ extension UI
                 styles.append(lookup.style.updated(with: self[i].style))
             }
             
-            
             switch self.cache 
             {
                 case .valid(let cache):
                     return cache.size 
                 
                 case .semivalid(var cache):
-                    cache.draw.position2 = style.position2 
+                    cache.draw.position2 = .cast(style.position2)
                     cache.draw.position3 = style.position3 
                     for (runstyle, range):(Style.Inline, Range<Int>) in zip(styles, cache.ranges) 
                     {
@@ -523,7 +593,7 @@ extension UI
         }
         
         private static  
-        func reshape(runs:(texts:[String], styles:[Style.Inline]), style:Style.Block, 
+        func reshape(_ runs:(texts:[String], styles:[Style.Inline]), style:Style.Block, 
             allotment:Vector2<Int>, styledefs:inout Style)
             -> Cache.Content
         {
@@ -532,8 +602,8 @@ extension UI
             {
                 let parameters:HarfBuzz.ShapingParameters = 
                     .init(
-                        font: styledefs.font(style.font), 
-                        features: style.features.map{ ($0.tag, $0.value) }
+                        font: styledefs.font($0.font), 
+                        features: $0.features.map{ ($0.tag, .init($0.value)) }
                     )
                 return parameters
             }
@@ -546,6 +616,7 @@ extension UI
                 // no concept of 2D grid layout, new lines just reset the x coordinate to 0 (or indent)
                 let (glyphs, indices):([HarfBuzz.Glyph], (runs:[Range<Int>], lines:[Range<Int>])) = 
                     HarfBuzz.paragraph(zip(runs.texts, parameters), indent: style.indent, width: allotment.x)
+                ranges = indices.runs 
                 stc.reserveCapacity(glyphs.count)
                 
                 // line number, should start at 0
@@ -572,7 +643,6 @@ extension UI
                     }
                 }
                 
-                ranges = indices.runs 
                 size = .init(allotment.x, indices.lines.count * style.lineheight)
             }
             else 
@@ -583,9 +653,9 @@ extension UI
                 stc.reserveCapacity(glyphs.count)
                 
                 for ((runstyle, parameters), range):((Style.Inline, HarfBuzz.ShapingParameters), Range<Int>) in 
-                    zip(zip(runs.styles, parameters), indices.runs) 
+                    zip(zip(runs.styles, parameters), ranges) 
                 {
-                    for g:HarfBuzz.Glyph in zip(range, glyphs[range])
+                    for g:HarfBuzz.Glyph in glyphs[range]
                     {
                         let sort:Typeface.Font.SortInfo = parameters.font.sorts[g.index]
                         let s:Rectangle<Float> = .init(
@@ -600,7 +670,7 @@ extension UI
                 size = .init(width, style.lineheight)
             }
             
-            let draw:DrawElement = .init(glyphs: stc, position2: style.position2, position3: style.position3)
+            let draw:DrawElement = .init(glyphs: stc, position2: .cast(style.position2), position3: style.position3)
             
             return .init(allotment: allotment, draw: draw, ranges: ranges, size: size)
         }

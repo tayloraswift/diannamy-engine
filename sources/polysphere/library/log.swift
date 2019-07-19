@@ -95,7 +95,6 @@ enum Log
     {
         var stack:[(type:Swift.Error.Type, message:String)] = []
         var error:Swift.Error = error 
-        var depth:Int = 0
         while true 
         {
             switch error 

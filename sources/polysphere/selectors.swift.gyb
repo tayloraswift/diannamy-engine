@@ -1,6 +1,6 @@
 extension UI.Style 
 {
-    struct Selector
+    struct Selector:Hashable
     {
         private 
         var value:UInt64 
@@ -23,14 +23,10 @@ extension UI.Style
             return .init(value: rhs.value ^ lhs.value)
         }
         
-        func isSuperset(of other:Self) -> Bool 
+        static 
+        func ~= (rhs:Self, lhs:Self) -> Bool 
         {
-            return other.value & ~self.value == 0 
-        }
-        
-        func isSubset(of other:Self) -> Bool 
-        {
-            return other.isSuperset(of: self)
+            return lhs.value & ~rhs.value == 0 
         }
         
         static 
@@ -167,8 +163,15 @@ extension UI.Style
         struct ${T} 
         {
             % for property, property_type, default in properties:
-            let ${property}:${property_type}?
+            var ${property}:${property_type}?
             % end 
+            
+            init(${', '.join('{0}:{1}? = nil'.format(property, property_type) for property, property_type, default in properties)})
+            {
+                % for property, property_type, default in properties:
+                self.${property} = ${property}
+                % end 
+            }
         }
         % end 
     }
@@ -191,7 +194,7 @@ extension UI.Style
             % end 
         }
          
-        func updated(with rules:Rules.${T}) 
+        func updated(with rules:Rules.${T}) -> Self
         {
             var new:Self = self 
             new.update(with: rules)

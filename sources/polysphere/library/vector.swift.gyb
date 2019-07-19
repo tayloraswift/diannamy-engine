@@ -173,12 +173,12 @@ struct Vector${N}<Scalar>:Hashable, Codable where Scalar:SIMDScalar
 extension Vector${N} where Scalar:BinaryInteger 
 {
     static 
-    func cast<T>(_ v:Vector${N}<T>) -> Vector${N}<Scalar> where T:BinaryFloatingPoint 
+    func cast<T>(_ v:Vector${N}<T>) -> Self where T:BinaryFloatingPoint 
     {
         return v.map(Scalar.init(_:))
     }
     static 
-    func cast<T>(_ v:Vector${N}<T>) -> Vector${N}<Scalar> where T:BinaryInteger 
+    func cast<T>(_ v:Vector${N}<T>) -> Self where T:BinaryInteger 
     {
         return v.map(Scalar.init(_:))
     }
@@ -186,7 +186,7 @@ extension Vector${N} where Scalar:BinaryInteger
 extension Vector${N} where Scalar:FloatingPoint 
 {
     static 
-    func cast<Source>(_ v:Vector${N}<Source>) -> Vector${N}<Scalar> where Source:BinaryInteger 
+    func cast<Source>(_ v:Vector${N}<Source>) -> Self where Source:BinaryInteger 
     {
         return v.map(Scalar.init(_:))
     }
@@ -194,7 +194,7 @@ extension Vector${N} where Scalar:FloatingPoint
 extension Vector${N} where Scalar:BinaryFloatingPoint 
 {
     static 
-    func cast<Source>(_ v:Vector${N}<Source>) -> Vector${N}<Scalar> where Source:BinaryFloatingPoint 
+    func cast<Source>(_ v:Vector${N}<Source>) -> Self where Source:BinaryFloatingPoint 
     {
         return v.map(Scalar.init(_:))
     }

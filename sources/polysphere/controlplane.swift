@@ -8,7 +8,7 @@ enum Display
             case jump(Vector3<Float>)
             case jumpRelative(Vector3<Float>)
             case jumpLocal(Vector3<Float>)
-            case zoom(UI.Event.Direction)
+            case zoom(UI.Event.Direction.D1)
         }
         
         private 
@@ -116,7 +116,7 @@ extension Display.Plane3D
     func project(_ position:Vector2<Float>, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
     {
         let ray:Ray             = self.rayfilm.cast(position), 
-            p:Vector3<Float>    = ControlPlane.project(ray: ray, on: center, radius: r)
+            p:Vector3<Float>    = Self.project(ray: ray, on: center, radius: r)
         return p
     }
     
@@ -186,8 +186,6 @@ extension Display.Plane3D
                     $0.focalLength =         $0.focalLength + 10
                 case .down:
                     $0.focalLength = max(20, $0.focalLength - 10)
-                default:
-                    break
                 }
             }
         }

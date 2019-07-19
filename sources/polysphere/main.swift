@@ -1,61 +1,42 @@
 import GLFW
 
 // use reference type because we want to attach `self` pointer to GLFW
-final
-class Window
+fileprivate final 
+class Context
 {
-    private
-    let window:OpaquePointer
-
-    private
+    private 
     var coordinator:Coordinator 
+    private 
+    let backpointer:OpaquePointer
+    
+    // need this to detect double clicks
+    private 
+    var lastPrimary:Double 
+    
+    init(_ coordinator:Coordinator, backpointer:OpaquePointer)
     {
-        didSet 
-        {
-            self.eventsProcessed = true 
-        }
+        self.coordinator = coordinator
+        self.backpointer = backpointer
+        
+        self.lastPrimary = glfwGetTime()
     }
-    private 
-    var height:Double, // need to store this to flip y axis
-        lastDown:(left:Double, middle:Double, right:Double)
     
-    private 
-    var eventsProcessed:Bool = true 
-    
-    init(size:Vector2<Float>, name:String)
+    func connect() 
     {
-        guard let window:OpaquePointer = glfwCreateWindow(.init(size.x), .init(size.y), name, nil, nil)
-        else
-        {
-            Log.fatal("failed to create window")
-        }
-
-        glfwMakeContextCurrent(window)
-        glfwSwapInterval(1)
-
-        self.window      = window
-        self.coordinator = .init()
-        self.height      = .init(size.y)
-        self.lastDown    = (glfwGetTime(), glfwGetTime(), glfwGetTime())
+        // attach pointer to window to handle
+        let context:UnsafeMutableRawPointer = 
+            .init(Unmanaged<Context>.passUnretained(self).toOpaque())
+        glfwSetWindowUserPointer(self.backpointer, context)
         
-        GL.enableDebugOutput()
-        
-        self.coordinator.window(size: size)
-        
-        // attach pointer to self to window
-        glfwSetWindowUserPointer(window,
-            UnsafeMutableRawPointer(Unmanaged<Window>.passUnretained(self).toOpaque()))
-
-        glfwSetFramebufferSizeCallback(window)
+        glfwSetFramebufferSizeCallback(self.backpointer)
         {
             (context:OpaquePointer?, x:CInt, y:CInt) in
             
-            let window:Window   = .reconstitute(from: context)
-            window.height       = .init(y)
-            window.coordinator.window(size: Vector2<CInt>.init(x, y).map(Float.init(_:)))
+            let context:Context         = .reconstitute(from: context)
+            context.coordinator.window  = .cast(.init(x, y))
         }
 
-        glfwSetCharCallback(window)
+        glfwSetCharCallback(self.backpointer)
         {
             (context:OpaquePointer?, value:UInt32) in
             
@@ -65,192 +46,180 @@ class Window
                 return 
             }
             
-            let window:Window   = .reconstitute(from: context)
-            window.coordinator.character(.init(codepoint))
+            let context:Context = .reconstitute(from: context)
+            context.coordinator.event(.character(.init(codepoint)))
         }
         
-        glfwSetKeyCallback(window)
+        glfwSetKeyCallback(self.backpointer)
         {
             (context:OpaquePointer?, keycode:CInt, scancode:CInt, action:CInt, modifiers:CInt) in
 
-            let key:UI.Key                  = .init(keycode), 
-                modifiers:UI.Key.Modifiers  = .init(modifiers)
+            let key:UI.Event.Key                    = .init(keycode), 
+                modifiers:UI.Event.Key.Modifiers    = .init(modifiers)
             
-            guard action == GLFW_PRESS || action == GLFW_REPEAT && key.isArrowKey
+            guard action == GLFW_PRESS || action == GLFW_REPEAT && key.repeatable
             else
             {
                 return
             }
             
-            let window:Window               = .reconstitute(from: context)
-            if  modifiers.control, 
-                key == .V 
+            let context:Context = .reconstitute(from: context)
+            let event:UI.Event 
+            if modifiers.control
             {
-                let string:String = .init(cString: glfwGetClipboardString(window.window))
-                window.coordinator.paste(string)
-                return                 
+                switch key 
+                {
+                case .X:
+                    event = .cut  
+                case .C:
+                    event = .copy 
+                case .V:
+                    event = .paste(.init(cString: glfwGetClipboardString(context.backpointer)))
+                default:
+                    event = .key(key, modifiers)
+                }
+            }
+            else 
+            {
+                event = .key(key, modifiers)
             }
             
-            window.coordinator.keypress(key, modifiers)
+            context.coordinator.event(event)
         }
         
-        glfwSetCursorPosCallback(window)
+        glfwSetCursorPosCallback(self.backpointer)
         {
             (context:OpaquePointer?, x:Double, y:Double) in
             
-            let window:Window = .reconstitute(from: context)
-            window.coordinator.move(Vector2<Double>.init(x, window.height - y).map(Float.init(_:)))
+            let context:Context = .reconstitute(from: context)
+            let position:Vector2<Float> = 
+                .init(.init(x), context.coordinator.window.y - .init(y))
+            context.coordinator.event(.enter(position))
         }
 
-        glfwSetMouseButtonCallback(window)
+        glfwSetMouseButtonCallback(self.backpointer)
         {
             (context:OpaquePointer?, code:CInt, direction:CInt, mods:CInt) in
 
-            let window:Window = .reconstitute(from: context), 
-                position:Vector2<Float> = window.cursorPosition(context: context)
+            let context:Context         = .reconstitute(from: context), 
+                position:Vector2<Float> = context.cursorPosition()
             
-            outer: 
+            let d1:UI.Event.Direction.D1
             switch direction 
             {
             case GLFW_PRESS:
-                let timestamp:Double = glfwGetTime(), 
-                    delta:Double, 
-                    action:UI.Action
-                
-                let threshold:Double = 0.3 
-                switch code 
-                {
-                case    GLFW_MOUSE_BUTTON_LEFT:
-                    delta                   = timestamp - window.lastDown.left
-                    action                  = .primary
-                    window.lastDown.left    = delta < threshold ? window.lastDown.left   : timestamp 
-                    
-                case    GLFW_MOUSE_BUTTON_MIDDLE:
-                    delta                   = timestamp - window.lastDown.middle
-                    action                  = .tertiary
-                    window.lastDown.middle  = delta < threshold ? window.lastDown.middle : timestamp 
-                
-                case    GLFW_MOUSE_BUTTON_RIGHT:
-                    delta                   = timestamp - window.lastDown.right
-                    action                  = .secondary
-                    window.lastDown.right   = delta < threshold ? window.lastDown.right  : timestamp 
-                
-                case    GLFW_MOUSE_BUTTON_4, 
-                        GLFW_MOUSE_BUTTON_5, 
-                        GLFW_MOUSE_BUTTON_6, 
-                        GLFW_MOUSE_BUTTON_7, 
-                        GLFW_MOUSE_BUTTON_8:
-                    return 
-                
-                default:
-                    break outer 
-                }
-                
-                window.coordinator.down(action, position, doubled: delta < threshold)
-                return 
-                
+                d1 = .down 
             case GLFW_RELEASE:
-                let action:UI.Action
-                
-                switch code 
+                d1 = .up 
+            default:
+                return 
+            }
+            
+            let event:UI.Event
+            switch code 
+            {
+            case    GLFW_MOUSE_BUTTON_LEFT:
+                let threshold:Double = 0.3, 
+                    timestamp:Double = glfwGetTime()
+                if d1 == .down, timestamp - context.lastPrimary < threshold
                 {
-                case GLFW_MOUSE_BUTTON_LEFT:
-                    action = .primary
-                    
-                case GLFW_MOUSE_BUTTON_MIDDLE:
-                    action = .tertiary
-                
-                case GLFW_MOUSE_BUTTON_RIGHT:
-                    action = .secondary
-                
-                case    GLFW_MOUSE_BUTTON_4, 
-                        GLFW_MOUSE_BUTTON_5, 
-                        GLFW_MOUSE_BUTTON_6, 
-                        GLFW_MOUSE_BUTTON_7, 
-                        GLFW_MOUSE_BUTTON_8:
-                    return 
-                
-                default:
-                    break outer 
+                    event = .double(d1, position)
                 }
+                else 
+                {
+                    event = .primary(d1, position)
+                }
+                context.lastPrimary = timestamp
                 
-                window.coordinator.up(action, position)
+            case    GLFW_MOUSE_BUTTON_MIDDLE:
+                return 
+            
+            case    GLFW_MOUSE_BUTTON_RIGHT:
+                event = .secondary(d1, position)
+            
+            case    GLFW_MOUSE_BUTTON_4, 
+                    GLFW_MOUSE_BUTTON_5, 
+                    GLFW_MOUSE_BUTTON_6, 
+                    GLFW_MOUSE_BUTTON_7, 
+                    GLFW_MOUSE_BUTTON_8:
                 return 
             
             default:
-                break 
+                return 
             }
             
-            Log.warning("unrecognized mouse action (\(code), \(direction)")
+            context.coordinator.event(event)
         }
         
-        glfwSetScrollCallback(window)
+        glfwSetScrollCallback(self.backpointer)
         {
             (context:OpaquePointer?, x:Double, y:Double) in
 
-            let window:Window           = .reconstitute(from: context), 
-                position:Vector2<Float> = window.cursorPosition(context: context)
-
-            if y > 0
+            let context:Context         = .reconstitute(from: context), 
+                position:Vector2<Float> = context.cursorPosition()
+            
+            let d2:UI.Event.Direction.D2
+            switch (x < y, -x < y)
             {
-                window.coordinator.scroll(.up, position)
+            case (true, true):
+                d2 = .up 
+            case (true, false):
+                d2 = .right 
+            case (false, true):
+                d2 = .left 
+            case (false, false):
+                d2 = .down 
             }
-            else if y < 0
-            {
-                window.coordinator.scroll(.down, position)
-            }
-            else if x > 0
-            {
-                window.coordinator.scroll(.left, position)
-            }
-            else if x < 0
-            {
-                window.coordinator.scroll(.right, position)
-            }
+            
+            context.coordinator.event(.scroll(d2, position))
         }
-    }
-    
-    func cursorPosition(context:OpaquePointer?) -> Vector2<Float> 
-    {
-        var (x, y):(Double, Double) = (0, 0) 
-        glfwGetCursorPos(context, &x, &y)
-        return .init(.init(x), .init(self.height - y))
     }
 
     func loop()
     {
+        glfwSwapInterval(1)
+        
         GL.depthTest(.greaterEqual)
         GL.clearColor(.init(0.02, 0.02, 0.02), 1)
         GL.clearDepth(-1.0)
         
+        self.coordinator.window = self.framebufferSize()
+        
         var t0:Double = glfwGetTime()
-        while glfwWindowShouldClose(self.window) == 0
+        while glfwWindowShouldClose(self.backpointer) == 0
         {
             glfwPollEvents()
-
+            
             let t1:Double = glfwGetTime()
             
-            if  self.coordinator.process(.init(t1 * 1000) - .init(t0 * 1000)) || 
-                self.eventsProcessed
+            if self.coordinator.process(delta: .init(t1 * 1000) - .init(t0 * 1000)) 
             {
-                self.eventsProcessed = false 
-                self.coordinator.draw()
-                glfwSwapBuffers(self.window)
+                glfwSwapBuffers(self.backpointer)
             }
             
             t0 = t1
         }
     }
 
-    deinit
+    static
+    func reconstitute(from context:OpaquePointer?) -> Self 
     {
-        glfwDestroyWindow(self.window)
+        return Unmanaged<Self>.fromOpaque(glfwGetWindowUserPointer(context)).takeUnretainedValue()
     }
-
-    private static
-    func reconstitute(from window:OpaquePointer?) -> Window
+    
+    private 
+    func cursorPosition() -> Vector2<Float> 
     {
-        return Unmanaged<Window>.fromOpaque(glfwGetWindowUserPointer(window)).takeUnretainedValue()
+        var (x, y):(Double, Double) = (0, 0) 
+        glfwGetCursorPos(self.backpointer, &x, &y)
+        return .init(.init(x), self.coordinator.window.y - .init(y))
+    }
+    private 
+    func framebufferSize() -> Vector2<Float> 
+    {
+        var (x, y):(Int32, Int32) = (0, 0) 
+        glfwGetFramebufferSize(self.backpointer, &x, &y)
+        return .cast(.init(x, y))
     }
 }
 
@@ -274,6 +243,10 @@ func main()
         {
             Log.error(.init(cString: description), from: .glfw)
         }
+        else 
+        {
+            Log.error("<no description available> (code \(error))", from: .glfw)
+        }
     }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3)
@@ -282,82 +255,34 @@ func main()
     glfwWindowHint(GLFW_RESIZABLE, 1)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1)
     glfwWindowHint(GLFW_SAMPLES, 4)
-
-    OpenGL.loader = unsafeBitCast(glfwGetProcAddress, to: OpenGL.LoaderFunction.self)
     
-    let window:Window = .init(size: .init(1200, 600), name: "Map Editor")
+    guard let window:OpaquePointer = 
+        glfwCreateWindow(1200, 600, "Map Editor", nil, nil)
+    else
+    {
+        Log.fatal("failed to create window")
+    }
+    defer
+    {
+        glfwDestroyWindow(window)
+    }
     
-    window.loop()
+    // must be called before any GL-related API calls are made
+    glfwMakeContextCurrent(window)
+    
+    typealias LoaderFunction    = (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?
+    let loader:LoaderFunction   = unsafeBitCast(glfwGetProcAddress, to: LoaderFunction.self)
+    
+    Renderer.Backend.initialize(loader: loader, options: .debug)
+    let coordinator:Coordinator = .init(renderer: .init())
+    let context:Context         = .init(coordinator, backpointer: window)
+    withExtendedLifetime(context)
+    {
+        (context:Context) in
+        
+        context.connect()
+        context.loop()
+    }
 }
 
 main()
-
-// define the pole to be crossed if the counterclockwise fan `[a, b)` includes
-// the pole, with `a` not parallel to `b`. this means a fan with its starting point
-// on the pole is defined to be crossing it, but a fan with its ending point on
-// the pole is not. a fan whose starting and ending point are both on the pole
-// does not cross it.
-func crossesPole<F>(_ a:Math<F>.V2, _ b:Math<F>.V2) -> Bool where F:FloatingPoint
-{
-    let aperture:F = Math.cross(a, b)
-    if  aperture == 0
-    {
-        // make sure fan is the 180° case, not the 0° case
-        // (degenerate cases where `a` or `b` are the zero vector are also filtered
-        // out as the entire result is undefined in those cases)
-        guard Math.dot(a, b) < 0
-        else
-        {
-            return false
-        }
-
-        // `a` has to be in quadrants III or IV for `a` crossing to occur, inclusive
-        // of the boundary with I, but exclusive of the boundary with II
-        if a.x < 0
-        {
-            return a.y <  0
-        }
-        else
-        {
-            return a.y <= 0
-        }
-    }
-    else if aperture < 0
-    {
-        return b.y >  0 || a.y <= 0
-    }
-    else
-    {
-        return a.y <= 0 && b.y >  0
-    }
-}
-
-/*
-let hours:[(Float, Float)] =
-[
-    (-1,  0),
-    (-1, -1),
-    ( 0, -1),
-    ( 1, -1),
-    ( 1,  0),
-    ( 1,  1),
-    ( 0,  1),
-    (-1,  1)
-]
-
-for i:Int in 0 ..< 5
-{
-    for j:Int in 0 ..< 8
-    {
-        print(crossesPole(hours[i], hours[(i + j) % 8]) == (i + j > 4))
-    }
-}
-
-for i:Int in 5 ..< 8
-{
-    for j:Int in 0 ..< 8
-    {
-        print(crossesPole(hours[i], hours[(i + j) % 8]) == (i + j > 12))
-    }
-}
-*/

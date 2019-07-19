@@ -36,7 +36,7 @@ extension UnsafeRawBufferPointer:ContiguousCollection
     }
 }
 
-protocol StructuredVertex 
+protocol _GeometryStructuredVertex 
 {
     static 
     var layout:[_FX.Geometry.Attribute] 
@@ -47,6 +47,11 @@ protocol StructuredVertex
 
 protocol _AnyBuffer:AnyObject
 {
+    static 
+    var stride:Int 
+    {
+        get 
+    }
     static 
     var target:_FX.Buffer.AnyTarget.Type
     {
@@ -88,6 +93,11 @@ protocol _AnyBufferIndexArray:_FX.AnyBuffer
 protocol _AnyTexture:AnyObject
 {
     static 
+    var stride:Int 
+    {
+        get 
+    }
+    static 
     var target:_FX.Texture.AnyTarget.Type
     {
         get 
@@ -122,6 +132,7 @@ enum _FX
     final 
     class Geometry 
     {
+        typealias StructuredVertex = _GeometryStructuredVertex
         enum Attribute 
         {
             enum Destination 
@@ -570,6 +581,11 @@ enum _FX
             
             // `AnyBuffer` conformance 
             static 
+            var stride:Int 
+            {
+                MemoryLayout<Element>.stride 
+            }
+            static 
             var target:AnyTarget.Type  
             {
                 Target.self 
@@ -626,171 +642,7 @@ enum _FX
     
     typealias AnyTexture = _AnyTexture
     enum Texture 
-    {
-        // global state management 
-        fileprivate
-        enum Manager 
-        {
-            // unit 0 is reserved as scratch space 
-            private static 
-            var units:[(unit:Weak<AnyTexture>, pinned:Bool)] = []
-            
-            private static 
-            var active:Int = 0 
-            {
-                willSet(index) 
-                {
-                    if Self.active != index 
-                    {
-                        OpenGL.glActiveTexture(OpenGL.TEXTURE0 + .init(index))
-                    }
-                }
-            } 
-            
-            private static 
-            var binding:AnyTexture? 
-            {
-                get 
-                {
-                    Self.units[Self.active].unit.object 
-                }
-                set(new) 
-                {
-                    switch (Self.units[Self.active].unit.object, new)
-                    {
-                    case (.some(let old),   .some(let new)):
-                        guard old !== new 
-                        else 
-                        {
-                            break 
-                        }
-                        
-                        if type(of: old).target != type(of: new).target 
-                        {
-                            OpenGL.glBindTexture(type(of: old).target.code, 0)
-                        }
-                        OpenGL.glBindTexture(type(of: new).target.code, new.core.texture)
-                    
-                    case (nil,              .some(let new)):
-                        OpenGL.glBindTexture(type(of: new).target.code, new.core.texture)
-                        Self.units[Self.active].unit.object = new 
-                    
-                    case (.some(let old),   nil):
-                        OpenGL.glBindTexture(type(of: old).target.code, 0)
-                        Self.units[Self.active] = (unit: .init(nil), pinned: false)
-                    
-                    case (nil,              nil):
-                        Self.units[Self.active].pinned = false
-                    }
-                    
-                }
-            }
-            
-            static 
-            func initialize() 
-            {
-                let unitsCount:Int = directReturn(default: 0, as: Int.self) 
-                {
-                    OpenGL.glGetIntegerv(OpenGL.MAX_COMBINED_TEXTURE_IMAGE_UNITS, $0)
-                } 
-                
-                Self.units = .init(repeating: (.init(), false), count: unitsCount)
-                Log.note("initialized texture units (\(unitsCount) available)")
-            }
-            
-            // look for a free texture unit, or one that is already bound to 
-            // the texture we’re trying to pin.
-            // this is a stateful API. the given texture is bound in the gl context 
-            // until the next call to this API.
-            static 
-            func pin(_ texture:AnyTexture) -> Int? 
-            {
-                assert(!Self.units.count.isEmpty, "call to texture APIs without initializing texture manager")
-                
-                var slot:Int? = nil 
-                // reverse search just so empty slots with low indices get picked 
-                // first.
-                for index:Int in Self.units.indices.reversed().dropLast()
-                {
-                    if let occupant:AnyTexture = Self.units[index].unit.object
-                    {
-                        if occupant === texture 
-                        {
-                            Self.active = index 
-                            Self.units[Self.active].pinned = true
-                            return Self.active 
-                        }
-                    }
-                    else 
-                    {
-                        Self.unpin(index)
-                    }
-                    
-                    if !Self.units[index].pinned 
-                    {
-                        slot = index 
-                    }
-                }
-                
-                if let slot:Int = slot 
-                {
-                    Self.active  = slot 
-                    Self.binding = texture 
-                    Self.units[Self.active].pinned = true
-                    return Self.active 
-                }
-                else 
-                {
-                    return nil
-                }
-            }
-            
-            // switches to the given texture unit, binds the given texture, executes the 
-            // given closure, then restores the state. 
-            static 
-            func with<R>(_ texture:AnyTexture, boundTo index:Int = 0, body:() throws -> R) 
-                rethrows -> R
-            {
-                let (unit, pinned):(Weak<AnyTexture>, Bool) = Self.units[index], 
-                    active:Int                              = Self.active 
-                
-                Self.active = index
-                defer 
-                {
-                    Self.active = active
-                }
-                
-                Self.binding = texture 
-                defer 
-                {
-                    Self.binding = unit.object 
-                }
-                
-                Self.units[Self.active].pinned = true 
-                defer 
-                {
-                    Self.units[Self.active].pinned = pinned 
-                }
-                
-                return try body()
-            }
-            
-            static 
-            func unpin(_ index:Int) 
-            {
-                Self.units[index].pinned = false
-            }
-            
-            static 
-            func unpinAll() 
-            {
-                for index:Int in Self.units.indices 
-                {
-                    Self.unpin(index)
-                }
-            }
-        }
-        
+    {    
         enum Layout
         {
             case r8, rg8, rgb8, rgba8, bgra8, argb32atomic
@@ -960,6 +812,11 @@ enum _FX
             
             // `AnyTexture` conformance 
             static 
+            var stride:Int 
+            {
+                MemoryLayout<Element>.stride 
+            }
+            static 
             var target:AnyTarget.Type  
             {
                 Target.self
@@ -980,7 +837,7 @@ enum _FX
                 self.mipmap     = mipmap != nil 
                 self.core       = .create()
                 self.debugName  = debugName
-                Manager.with(self) 
+                Manager.Texture.with(self) 
                 {
                     self.core.set(magnification: magnification, minification: minification, mipmap: mipmap)
                 }
@@ -1388,7 +1245,7 @@ enum _FX
                     
                     case    (.texture2, .texture2   (let texture as AnyTexture)), 
                             (.texture3, .texture3   (let texture as AnyTexture)):
-                        if let index:Int = Texture.Manager.pin(texture) 
+                        if let index:Int = Manager.Texture.pin(texture) 
                         {
                             OpenGL.glUniform1i(parameter.location, .init(index))
                         }
@@ -1404,7 +1261,7 @@ enum _FX
                             Log.warning("uniform (sub)buffer '\(buffer.debugName)' has size \(range.count), but block parameter '\(parameter.name)' has size \(size)")
                         }
                         
-                        if let index:Int = Buffer.Uniform.Manager.pin(buffer, range: range) 
+                        if let index:Int = Manager.UniformBuffer.pin((buffer, range)) 
                         {
                             OpenGL.glUniformBlockBinding(self.program, .init(parameter.location), .init(index))
                         }
@@ -1428,8 +1285,8 @@ enum _FX
                 let properties:[OpenGL.Enum] = 
                 [
                     OpenGL.NAME_LENGTH, 
-                    OpenGL.TYPE​, 
-                    OpenGL.ARRAY_SIZE​,
+                    OpenGL.TYPE, 
+                    OpenGL.ARRAY_SIZE,
                     OpenGL.LOCATION
                 ]
                 
@@ -1610,7 +1467,7 @@ enum _FX
                 }
                 catch 
                 {
-                    throw Error.source(type: type, name: path, error: error)
+                    throw Shader.Error.source(type: type, name: path, error: error)
                 }
             }
             
@@ -1682,7 +1539,7 @@ extension _FX.Texture.D2:_FX.Texture.AnyD2
 {
     func assign(_ data:Array2D<Element>)
     {
-        _FX.Texture.Manager.with(self) 
+        _FX.Manager.Texture.with(self) 
         {
             self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
         }
@@ -1692,7 +1549,7 @@ extension _FX.Texture.D3:_FX.Texture.AnyD3
 {
     func assign(_ data:Array3D<Element>)
     {
-        _FX.Texture.Manager.with(self) 
+        _FX.Manager.Texture.with(self) 
         {
             self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
         }
@@ -1709,9 +1566,524 @@ extension _FX.Buffer.IndexArray:_FX.Buffer.AnyIndexArray
 {
 }
 
+fileprivate 
+protocol _StateManager 
+{
+    associatedtype Instance 
+    
+    static 
+    var active:Int 
+    {
+        get 
+        set 
+    }
+    
+    static 
+    var indices:Range<Int> 
+    {
+        get 
+    }
+    
+    // reserved index, for anonymous transactions
+    static 
+    var reserved:Int 
+    {
+        get 
+    }
+    
+    static 
+    subscript(index:Int) -> (instance:Instance, pinned:Bool)? 
+    {
+        get 
+        set
+    }
+    
+    static 
+    var initialized:Bool 
+    {
+        get 
+    }
+    
+    static 
+    func initialize()
+    
+    // used to bypass retain/releases when toggling the pin flag
+    // does nothing if the instance unit at `index` is uninhabited
+    static 
+    func set(pin index:Int, to pinned:Bool)
+    
+    static 
+    func identical(_ instance1:Instance, _ instance2:Instance) -> Bool 
+    
+    static 
+    func bind(_ new:Instance)
+    
+    static 
+    func bind(_ new:Instance, replacing old:Instance)
+    
+    static 
+    func unbind(_ old:Instance) 
+}
+extension _FX.StateManager  
+{
+    static 
+    var reserved:Int 
+    {
+        0
+    }
+    
+    private static 
+    var binding:(instance:Instance, pinned:Bool)? 
+    {
+        get 
+        {
+            Self[Self.active] 
+        }
+        set(new) // setter does not update pinnings (but will clear them if set to `nil`)
+        {
+            switch (Self.binding?.instance, new)
+            {
+            case (let old?, let (new, pinned)?):
+                if Self.identical(old, new) 
+                {
+                    Self.set(pin: Self.active, to: pinned)
+                }
+                else 
+                {
+                    Self.bind(new, replacing: old)
+                    Self[Self.active] = (new, pinned)
+                }
+            
+            case (nil,      let (new, pinned)?):
+                Self.bind(new)
+                Self[Self.active] = (new, pinned)
+            
+            case (let old?, nil):
+                Self.unbind(old)
+                Self[Self.active] = nil 
+            
+            case (nil,      nil):
+                break
+            }
+        }
+    }
+    
+    // look for a free texture unit, or one that is already bound to 
+    // the texture we’re trying to pin.
+    // this is a stateful API. the given texture is bound in the gl context 
+    // until the next call to this API.
+    static 
+    func pin(_ instance:Instance) -> Int? 
+    {
+        if !Self.initialized 
+        {
+            Self.initialize()
+        }
+        
+        var slot:Int? = nil 
+        // reverse search just so empty slots with low indices get picked 
+        // first.
+        for index:Int in Self.indices.reversed() where index != Self.reserved
+        {
+            if let (occupant, pinned):(Instance, Bool) = Self[index]
+            {
+                if Self.identical(occupant, instance) 
+                {
+                    Self.active = index 
+                    Self.set(pin: index, to: true)
+                    return Self.active
+                }
+                else if pinned 
+                {
+                    continue 
+                }
+            }
+            
+            slot = index 
+        }
+        
+        if let slot:Int = slot 
+        {
+            Self.active  = slot 
+            Self.binding = (instance, true) 
+            return Self.active 
+        }
+        
+        return nil
+    }
+    
+    // switches to the given texture unit, binds the given texture, executes the 
+    // given closure, then restores the state. 
+    static 
+    func with<R>(_ instance:Instance, boundTo index:Int = 0, body:() throws -> R) 
+        rethrows -> R
+    {
+        if !Self.initialized 
+        {
+            Self.initialize()
+        }
+        
+        let old:(Instance, Bool)?   = Self[index],
+            active:Int              = Self.active 
+        
+        Self.active = index
+        defer 
+        {
+            Self.active = active
+        }
+        
+        Self.binding = (instance, true) 
+        defer 
+        {
+            Self.binding = old 
+        }
+        
+        return try body()
+    }
+    
+    static 
+    func unpin(_ index:Int) 
+    {
+        Self.set(pin: index, to: false)
+    }
+    
+    static 
+    func unpinAll() 
+    {
+        for index:Int in Self.indices 
+        {
+            Self.unpin(index)
+        }
+    }
+}
+
+// global state management 
+fileprivate 
+extension _FX 
+{
+    typealias StateManager = _StateManager
+    enum Manager 
+    {
+        enum Texture:StateManager
+        {
+            typealias Instance = AnyTexture
+            
+            // need this because an eraser type can’t be used as a generic parameter with 
+            // constraints (like `AnyObject`)
+            private 
+            struct Unit 
+            {
+                private weak 
+                var object:AnyTexture?
+                private 
+                var flag:Bool 
+                
+                var load:(instance:Instance, pinned:Bool)?
+                {
+                    self.object.map{ ($0, self.flag) }
+                }
+                
+                static 
+                func store(_ element:(instance:Instance, pinned:Bool)?) -> Self 
+                {
+                    return .init(object: element?.instance, flag: element?.pinned ?? false)
+                }
+                
+                mutating 
+                func pin(_ pinned:Bool) 
+                {
+                    self.flag = pinned && self.object != nil
+                }
+            }
+            
+            // unit 0 is reserved as scratch space 
+            private static 
+            var units:[Unit] = []
+            
+            static 
+            var active:Int = 0 
+            {
+                willSet(index) 
+                {
+                    if Self.active != index 
+                    {
+                        OpenGL.glActiveTexture(OpenGL.TEXTURE0 + .init(index))
+                    }
+                }
+            } 
+            
+            static 
+            var indices:Range<Int> 
+            {
+                self.units.indices
+            }
+            
+            static 
+            subscript(index:Int) -> (instance:Instance, pinned:Bool)? 
+            {
+                get 
+                {
+                    self.units[index].load 
+                }
+                set(new)
+                {
+                    self.units[index] = .store(new)
+                }
+            }
+            
+            static 
+            var initialized:Bool 
+            {
+                !self.units.isEmpty 
+            }
+            
+            static 
+            func initialize() 
+            {
+                let count:Int = directReturn(default: 0, as: Int.self) 
+                {
+                    OpenGL.glGetIntegerv(OpenGL.MAX_COMBINED_TEXTURE_IMAGE_UNITS, $0)
+                } 
+                
+                Self.units = .init(repeating: .store(nil), count: count)
+                Log.note("initialized texture units (\(count) available)")
+            }
+            
+            static 
+            func set(pin index:Int, to pinned:Bool)
+            {
+                Self.units[index].pin(pinned)
+            }
+            
+            static 
+            func identical(_ instance1:Instance, _ instance2:Instance) -> Bool 
+            {
+                return instance1 === instance2
+            }
+            
+            static 
+            func bind(_ new:Instance)
+            {
+                OpenGL.glBindTexture(type(of: new).target.code, new.texture)
+            }
+            
+            static 
+            func bind(_ new:Instance, replacing old:Instance)
+            {
+                if type(of: old).target != type(of: new).target 
+                {
+                    Self.unbind(old)
+                }
+                Self.bind(new)
+            }
+            
+            static 
+            func unbind(_ old:Instance) 
+            {
+                OpenGL.glBindTexture(type(of: old).target.code, 0)
+            }
+        }
+        
+        enum UniformBuffer:StateManager
+        {
+            typealias Instance = (Buffer.AnyUniform, Range<Int>)
+            
+            // need this because an eraser type can’t be used as a generic parameter with 
+            // constraints (like `AnyObject`)
+            private 
+            struct Unit 
+            {
+                private weak 
+                var object:Buffer.AnyUniform?
+                private 
+                let range:Range<Int>
+                private 
+                var flag:Bool 
+                
+                var load:(instance:Instance, pinned:Bool)?
+                {
+                    self.object.map{ (($0, self.range), self.flag) }
+                }
+                
+                static 
+                func store(_ element:(instance:Instance, pinned:Bool)?) -> Self 
+                {
+                    return .init(object: element?.instance.0, 
+                        range: element?.instance.1 ?? 0 ..< 0, 
+                        flag: element?.pinned ?? false)
+                }
+                
+                mutating 
+                func pin(_ pinned:Bool) 
+                {
+                    self.flag = pinned && self.object != nil
+                }
+            }
+            
+            // unit 0 is reserved as scratch space 
+            private static 
+            var units:[Unit] = []
+            
+            static 
+            var active:Int = 0 
+            
+            static 
+            var indices:Range<Int> 
+            {
+                self.units.indices
+            }
+            
+            static 
+            subscript(index:Int) -> (instance:Instance, pinned:Bool)? 
+            {
+                get 
+                {
+                    self.units[index].load 
+                }
+                set(new)
+                {
+                    self.units[index] = .store(new)
+                }
+            }
+            
+            static 
+            var initialized:Bool 
+            {
+                !self.units.isEmpty 
+            }
+            
+            static 
+            func initialize() 
+            {
+                let count:Int = directReturn(default: 0, as: Int.self) 
+                {
+                    OpenGL.glGetIntegerv(OpenGL.MAX_UNIFORM_BUFFER_BINDINGS, $0)
+                } 
+                
+                Self.units = .init(repeating: .store(nil), count: count)
+                Log.note("initialized uniform buffer binding points (\(count) available)")
+            }
+            
+            static 
+            func set(pin index:Int, to pinned:Bool)
+            {
+                Self.units[index].pin(pinned)
+            }
+            
+            static 
+            func identical(_ instance1:Instance, _ instance2:Instance) -> Bool 
+            {
+                return instance1.0 === instance2.0 && instance1.1 == instance2.1
+            }
+            
+            static 
+            func bind(_ new:Instance)
+            {
+                let stride:Int = type(of: new.0).stride
+                OpenGL.glBindBufferRange(type(of: new.0).target.code, .init(Self.active), new.0.buffer, new.1.lowerBound * stride, new.1.count * stride)
+            }
+            
+            static 
+            func bind(_ new:Instance, replacing old:Instance)
+            {
+                if type(of: old.0).target != type(of: new.0).target 
+                {
+                    Self.unbind(old)
+                }
+                Self.bind(new)
+            }
+            
+            static 
+            func unbind(_ old:Instance) 
+            {
+                OpenGL.glBindBufferBase(type(of: old.0).target.code, .init(Self.active), 0)
+            }
+        }
+    }
+}
+
+
 final 
 class Renderer 
 {
+    enum Option 
+    {
+        case debug 
+    }
+    
+    enum Backend 
+    {
+        private static 
+        var initialized:Bool = false 
+        
+        static 
+        func initialize(loader:@escaping (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?, 
+            options:Option...) 
+        {
+            if Self.initialized 
+            {
+                Log.warning("`Renderer.Backend.initialize()` called, but renderer has already been initialized")
+            }
+            
+            // set the opengl loader function
+            OpenGL.loader = loader 
+            
+            for option:Option in options 
+            {
+                switch option 
+                {
+                case .debug:
+                    Self.enableDebugOutput()
+                }
+            }
+        }
+        
+        // debug tools 
+        private static 
+        func enableDebugOutput()
+        {
+            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT)
+            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT_SYNCHRONOUS)
+            
+            OpenGL.glDebugMessageCallback(
+            {
+                (
+                    source:OpenGL.Enum, 
+                    type:OpenGL.Enum, 
+                    id:OpenGL.UInt, 
+                    severity:OpenGL.Enum, 
+                    length:OpenGL.Size, 
+                    message:UnsafePointer<OpenGL.Char>?,
+                    userParameter:UnsafeRawPointer?
+                ) in
+                
+                guard let message:UnsafePointer<OpenGL.Char> = message 
+                else 
+                {
+                    return
+                }
+                
+                switch severity 
+                {
+                case OpenGL.DEBUG_SEVERITY_HIGH:
+                    Log.error(.init(cString: message), from: .opengl)
+                case OpenGL.DEBUG_SEVERITY_MEDIUM, OpenGL.DEBUG_SEVERITY_LOW:
+                    Log.warning(.init(cString: message), from: .opengl)
+                case OpenGL.DEBUG_SEVERITY_NOTIFICATION:
+                    fallthrough
+                default:
+                    Log.note(.init(cString: message), from: .opengl)
+                }
+            }, nil)
+        }
+    }
+    
+    func viewport(_ viewport:Rectangle<Float>) 
+    {
+        let a:Vector2<Int32> = .cast(viewport.a),
+            s:Vector2<Int32> = .cast(viewport.size)
+        OpenGL.glViewport(a.x, a.y, s.x, s.y)
+    }
     /* struct Command 
     {
         enum Indexing 

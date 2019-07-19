@@ -7,8 +7,8 @@ struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematica
             F:Matrix3<F>, 
             position:Vector3<F>, 
             
-            frame:Rectangle<Float>, 
-            viewport:Vector2<Float>
+            frame:Rectangle<F>, 
+            viewport:Vector2<F>
         
         static 
         var identity:Matrices 
@@ -41,67 +41,6 @@ struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematica
                     orientation: .interpolate(a.orientation, b.orientation, by: t), 
                        distance: .interpolate(a.distance,    b.distance,    by: t),
                     focalLength: .interpolate(a.focalLength, b.focalLength, by: t))
-        }
-        
-        mutating 
-        func displace(action:Action, _ direction:UI.Direction)
-        {
-            switch action
-            {
-                case .orbit:
-                    let t:Vector3<F> 
-                    switch direction 
-                    {
-                        case .up:
-                            t = .init( 0,  1, 1)
-                        
-                        case .down:
-                            t = .init( 0, -1, 1)
-                        
-                        case .right:
-                            t = .init( 1,  0, 1)
-                        
-                        case .left:
-                            t = .init(-1,  0, 1)
-                    }
-                    
-                    let q:Quaternion<F> = .init(from: .init(0, 0, 1), to: t.normalized())
-                    self.orientation = q >< self.orientation
-                
-                case .track:
-                    let factor:F = 0.1
-                    let d:Vector3<F> 
-                    switch direction 
-                    {
-                        case .up:
-                            d = .init(0,  factor, 0)
-                        case .down:
-                            d = .init(0, -factor, 0)
-                        case .right:
-                            d = .init( factor, 0, 0)
-                        case .left:
-                            d = .init(-factor, 0, 0)
-                    }
-                    self.center += self.orientation.rotate(d)
-                
-                case .approach:
-                    break 
-                
-                case .zoom:
-                    switch direction 
-                    {
-                        case .up:
-                            self.focalLength =         self.focalLength + 10
-                        
-                        case .down:
-                            self.focalLength = max(20, self.focalLength - 10)
-                        
-                        default:
-                            break
-                    }
-                    
-                    self.focalLength.round()
-            }
         }
         
         // will rotate the camera (and world) into default position

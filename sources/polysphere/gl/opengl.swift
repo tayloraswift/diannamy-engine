@@ -124,49 +124,6 @@ enum GL
         OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, mode.rawValue)
     }
     
-    struct Vector<Element> 
-    {
-        let buffer:Buffer<Element>
-        internal private(set)
-        var count:Int
-        private 
-        var capacity:Int 
-        
-        static 
-        func generate() -> Vector
-        {
-            return .init(buffer: .generate(), count: 0, capacity: 0)
-        }
-        
-        func destroy()
-        {
-            self.buffer.destroy()
-        }
-        
-        mutating 
-        func assign(data:[Element], in target:Buffer<Element>.Target, usage:Buffer<Element>.Usage)
-        {
-            self.buffer.bind(to: target)
-            {
-                guard self.capacity != 0 || data.count != 0
-                else 
-                {
-                    return 
-                }
-                
-                let bin:Int = max(16, Math.nextPowerOfTwo(data.count))
-                if self.capacity != bin 
-                {
-                    $0.reserve(capacity: bin, usage: usage)
-                    self.capacity = bin
-                }
-                
-                $0.subData(data)
-                self.count = data.count
-            }
-        }
-    }
-    
     struct Buffer<Element> 
     {
         private 
@@ -594,40 +551,5 @@ enum GL
             }
         }
     }
-    
-    // debug tools 
-    static 
-    func enableDebugOutput(synchronous:Bool = false)
-    {
-        OpenGL.glEnable(OpenGL.DEBUG_OUTPUT)
-        if synchronous 
-        {
-            OpenGL.glEnable(OpenGL.DEBUG_OUTPUT_SYNCHRONOUS)
-        }
-        
-        OpenGL.glDebugMessageCallback(
-        {
-            (source:OpenGL.Enum, type:OpenGL.Enum, id:OpenGL.UInt, 
-            severity:OpenGL.Enum, length:OpenGL.Size, 
-            message:UnsafePointer<OpenGL.Char>?, userParameter:UnsafeRawPointer?) in
-            
-            guard let message:UnsafePointer<OpenGL.Char> = message 
-            else 
-            {
-                return
-            }
-            
-            switch severity 
-            {
-            case OpenGL.DEBUG_SEVERITY_HIGH:
-                Log.error(.init(cString: message), from: .opengl)
-            case OpenGL.DEBUG_SEVERITY_MEDIUM, OpenGL.DEBUG_SEVERITY_LOW:
-                Log.warning(.init(cString: message), from: .opengl)
-            case OpenGL.DEBUG_SEVERITY_NOTIFICATION:
-                break // ignore notifications
-            default:
-                Log.note(.init(cString: message), from: .opengl)
-            }
-        }, nil)
-    }
+
 }

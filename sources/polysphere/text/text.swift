@@ -1,58 +1,6 @@
 import HarfBuzz
 import FreeType
 
-struct Text 
-{
-    // private 
-    struct Glyph 
-    {
-        let tc:Rectangle<Float>,    // texture coordinates
-            pc:Rectangle<Float>     // physical coordinates 
-    }
-    
-    @_fixed_layout
-    @usableFromInline
-    struct Vertex 
-    {
-        // make this a perfect 32 B
-        var tc2:(Float, Float),                 // UV anchor, in normalized coordinates
-            pc2:(Float, Float),                 // screen offset, in pixels 
-            pc3:(Float, Float, Float),          // 3D trace source
-            color:(UInt8, UInt8, UInt8, UInt8)  // glyph color 
-        
-        init(tc:Vector2<Float>, pc:Vector2<Float>, color:Vector4<UInt8>, trace:Vector3<Float>) 
-        {
-            self.tc2    = (tc.x, tc.y)
-            self.pc2    = (pc.x, pc.y)
-            self.pc3    = (trace.x, trace.y, trace.z)
-            self.color  = (color.x, color.y, color.z, color.w)
-        }
-    }
-    
-        
-    func vertices(at origin:Vector2<Int>, tracing point:Vector3<Float> = .zero) -> [Vertex] 
-    {
-        let offset:Vector2<Float>   = .cast(origin)
-        var vertices:[Vertex]       = []
-            vertices.reserveCapacity(self.glyphs.count * 2)
-        for (style, run):(Style.Definitions.Inline.Computed, Range<Int>) in self.runs 
-        {
-            for glyph:Glyph in self.glyphs[run]
-            {
-                let pc:(Vector2<Float>, Vector2<Float>) = 
-                (
-                    glyph.pc.a + offset,
-                    glyph.pc.b + offset
-                )
-                vertices.append(.init(tc: glyph.tc.a, pc: pc.0, color: style.color, trace: point))
-                vertices.append(.init(tc: glyph.tc.b, pc: pc.1, color: style.color, trace: point))
-            }
-        }
-        
-        return vertices
-    }
-}
-
 final 
 class Typeface 
 {
@@ -98,7 +46,7 @@ class Typeface
     }
     
     private 
-    func render(size fontsize:Int) -> ([Font.Sort], HarfBuzz.Font)
+    func render(size fontsize:Int) -> ([Sort], HarfBuzz.Font)
     {
         FreeType.checkError
         {
@@ -106,7 +54,7 @@ class Typeface
         }
         
         // load ALL the glyphs         
-        let sorts:[Font.Sort] = (0 ..< self.ftface.object.pointee.num_glyphs).map 
+        let sorts:[Sort] = (0 ..< self.ftface.object.pointee.num_glyphs).map 
         {
             (index:Int) in
             
@@ -145,21 +93,21 @@ class Typeface
     }
     
     static 
-    func assemble(_ selections:[FontSelection]) -> (Atlas, [Font])
+    func assemble(_ selections:[UI.Style.FontSelection]) -> (Atlas, [Font])
     {
         var faces:[String: Typeface]    = [:], 
             fallback:Typeface?          = nil 
         var unassembled:[([Sort], HarfBuzz.Font)] = []
-        for selection:FontSelection in selections
+        for selection:UI.Style.FontSelection in selections
         {
             let face:Typeface 
-            if let result:Typeface = faces[fontSelection.fontfile] 
+            if let result:Typeface = faces[selection.fontfile] 
             {
                 face = result 
             }
             else 
             {
-                if let result:Typeface = Typeface.init(fontSelection.fontfile) ?? fallback
+                if let result:Typeface = Typeface.init(selection.fontfile) ?? fallback
                 {
                     face = result 
                 }
@@ -176,7 +124,7 @@ class Typeface
                     face = fallback 
                 }
                 
-                faces[fontSelection.fontfile] = face 
+                faces[selection.fontfile] = face 
             }
             
             unassembled.append(face.render(size: selection.size))
@@ -196,7 +144,7 @@ class Typeface
         {
             let ((sorts, hbfont), indices):(([Sort], HarfBuzz.Font), Range<Int>) = $0
             
-            let sortInfo:Font.SortInfo = zip(indices, sorts).map 
+            let sortInfo:[Font.SortInfo] = zip(indices, sorts).map 
             {
                 let (index, sort):(Int, Sort) = $0 
                 
@@ -212,7 +160,7 @@ class Typeface
     
     final 
     class Font 
-    { 
+    {
         struct SortInfo 
         {
             let vertices:Rectangle<Int>, 
@@ -220,9 +168,16 @@ class Typeface
                 sprite:Int
         }
         
+        fileprivate
+        let hbfont:HarfBuzz.Font 
+        let sorts:[SortInfo]
+        
         fileprivate 
-        let sorts:[SortInfo], 
-            hbfont:HarfBuzz.Font 
+        init(sorts:[SortInfo], hbfont:HarfBuzz.Font) 
+        {
+            self.sorts  = sorts 
+            self.hbfont = hbfont 
+        }
         
         deinit 
         {
@@ -692,7 +647,7 @@ enum HarfBuzz
         where Runs:Sequence, Runs.Element == (String, ShapingParameters)
     {
         var glyphs:[HarfBuzz.Glyph] = [], 
-            runs:[Range<Int>]       = []
+            indices:[Range<Int>]    = []
         
         var x:Int  = 0, 
             ir:Int = glyphs.count 
@@ -715,11 +670,11 @@ enum HarfBuzz
             glyphs.append(contentsOf: shaped.offset(x: x))
             x += extent(of: shaped)
             
-            runs.append(ir ..< glyphs.count)
+            indices.append(ir ..< glyphs.count)
             ir = glyphs.count 
         }
         
-        return (glyphs, runs, x)
+        return (glyphs, indices, x)
     }
     
     // assemble stops (for cursor positions, etc)

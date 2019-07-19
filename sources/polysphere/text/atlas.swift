@@ -1,9 +1,10 @@
 import PNG 
 
+// now that Texture has reference semantics, can we downgrade this to a struct?
 final 
 class Atlas 
 {
-    let texture:GL.Texture<UInt8> 
+    let texture:_FX.Texture.D2<UInt8> 
     
     private 
     let sprites:[Rectangle<Float>]
@@ -69,13 +70,13 @@ class Atlas
                         path: "fontatlas-debug.png")
         Log.note("rendered font atlas of \(sprites.count) glyphs, \(packed.buffer.count >> 10) KB")
         
-        let texture:GL.Texture<UInt8> = .generate()
-        texture.bind(to: .texture2d)
-        {
-            $0.data(packed, layout: .r8, storage: .r8)
-            $0.setMagnificationFilter(.nearest)
-            $0.setMinificationFilter(.nearest, mipmap: nil)
-        }
+        let texture:_FX.Texture.D2<UInt8> = .init(
+            layout:         .r8, 
+            magnification:  .nearest, 
+            minification:   .nearest, 
+            debugName:      "diannamy://fontatlas")
+        
+        texture.assign(packed)
         
         self.texture = texture 
         self.sprites = sprites 
@@ -83,7 +84,6 @@ class Atlas
     
     deinit 
     {
-        self.texture.destroy()
     }
     
     private static 

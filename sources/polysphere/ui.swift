@@ -4,17 +4,31 @@ struct UI
     {
         enum Direction 
         {
-            case up, down
-        }
-        
-        enum CardinalDirection
-        {
-            case up, down, left, right
+            enum D1 
+            {
+                case up, down
+            }
+            
+            enum D2 
+            {
+                case up, down, left, right
+                
+                init(_ d1:D1) 
+                {
+                    switch d1 
+                    {
+                    case .up: 
+                        self = .up 
+                    case .down: 
+                        self = .down 
+                    }
+                }
+            }
         }
         
         enum Key:Int32
         {
-            struct Modifiers 
+            struct Modifiers:Equatable
             {
                 private 
                 let bitfield:UInt8 
@@ -85,28 +99,45 @@ struct UI
             case space   = 32
             case period  = 46
             case unknown = -1
+            
+            var repeatable:Bool 
+            {
+                switch self 
+                {
+                case .right, .left, .down, .up:
+                    return true 
+                default:
+                    return false 
+                }
+            }
 
             init(_ keycode:Int32)
             {
-                self = .init(rawValue: keycode) ?? .unknown
+                self = Self.init(rawValue: keycode) ?? .unknown
             }
         }
         
         enum Pass:Comparable 
         {
-            case priority 
-            case preferred 
-            case general
+            // events will be captured by elements explicitly waiting on a confirmation. 
+            // usually, there should not be more than one such element at a time, 
+            // often, zero.
+            case confirmation 
+            
+            // events will be captured by local elements (within an active “panel”)
+            case local
+            // events will be captured by anything else (allowing context switches)
+            case global 
             
             static 
             func < (lhs:Self, rhs:Self) -> Bool 
             {
                 switch (lhs, rhs) 
                 {
-                    case    (.priority, .preferred), 
-                            (.priority, .general):
+                    case    (.confirmation, .local), 
+                            (.confirmation, .global):
                         return true 
-                    case    (.preferred, .general):
+                    case    (.local, .global):
                         return true
                     default:
                         return false 
@@ -116,8 +147,8 @@ struct UI
         
         enum Confirmation 
         {
-            case primary(Transition)
-            case secondary(Transition)
+            case primary(Direction.D1)
+            case secondary(Direction.D1)
             case key(Key, Key.Modifiers)
             
             static 
@@ -125,8 +156,8 @@ struct UI
             {
                 switch (confirmation, event) 
                 {
-                case    (.primary(  let transition1), .primary(  let transition2, let _)), 
-                        (.secondary(let transition1), .secondary(let transition2, let _)):
+                case    (.primary(  let transition1), .primary(  let transition2, _)), 
+                        (.secondary(let transition1), .secondary(let transition2, _)):
                     return transition1 == transition2 
                 
                 case    (.key(let key1, let modifiers1), .key(let key2, let modifiers2)):
@@ -138,60 +169,58 @@ struct UI
         }
         
         // buttons 
-        case primary(Direction, Vector2<Float>)
-        case secondary(Direction, Vector2<Float>)
+        case double(Direction.D1, Vector2<Float>)
+        case primary(Direction.D1, Vector2<Float>)
+        case secondary(Direction.D1, Vector2<Float>)
         
         // cursor 
         case enter(Vector2<Float>) // formerly known as "move"
         case leave 
         
-        case scroll(CardinalDirection, Vector2<Float>) 
+        case scroll(Direction.D2, Vector2<Float>) 
         
         // key events 
         case key(Key, Key.Modifiers)
         case character(Character)
+        
+        // instructs elements to provide clipboard responses
+        case cut 
+        case copy 
+        case paste(String)
     }
 
-    
-
-    
-    enum Action:UInt8 
+    /* struct BitVector 
     {
-        case primary = 1, secondary, tertiary
+        private 
+        var bitvector:UInt8 
         
-        struct BitVector 
+        var any:Bool 
         {
-            private 
-            var bitvector:UInt8 
-            
-            var any:Bool 
+            return self.bitvector == 0
+        }
+        
+        init() 
+        {
+            self.bitvector = 0
+        }
+        
+        subscript(action:Action) -> Bool 
+        {
+            get 
             {
-                return self.bitvector == 0
+                return self.bitvector & 1 << (action.rawValue - 1) == 0 
             }
-            
-            init() 
+            set(v) 
             {
-                self.bitvector = 0
-            }
-            
-            subscript(action:Action) -> Bool 
-            {
-                get 
+                if v 
                 {
-                    return self.bitvector & 1 << (action.rawValue - 1) == 0 
+                    self.bitvector |=   1 << (action.rawValue - 1)
                 }
-                set(v) 
+                else 
                 {
-                    if v 
-                    {
-                        self.bitvector |=   1 << (action.rawValue - 1)
-                    }
-                    else 
-                    {
-                        self.bitvector &= ~(1 << (action.rawValue - 1))
-                    }
+                    self.bitvector &= ~(1 << (action.rawValue - 1))
                 }
             }
         }
-    }
+    } */
 }
