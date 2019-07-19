@@ -16,9 +16,7 @@ def find_gyb_files( * filetypes ):
 
 def main():
     gyb_targets = [path[:-4] for path in find_gyb_files('swift')]
-    for target in gyb_targets:
-        shell('rm -f {0}'.format(' '.join(gyb_targets)))
-    
+    shell('rm {0}'.format(' '.join(gyb_targets)))
     shell('rm -rf .build/ Package.resolved')
     
 if __name__ == '__main__':

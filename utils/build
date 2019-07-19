@@ -45,8 +45,7 @@ def main():
     shell(command)
     
     if not arguments.no_gyb:
-        for target in gyb_targets:
-            shell('rm {0}'.format(' '.join(gyb_targets)))
+        shell('rm {0}'.format(' '.join(gyb_targets)))
     
 if __name__ == '__main__':
     # set cwd
