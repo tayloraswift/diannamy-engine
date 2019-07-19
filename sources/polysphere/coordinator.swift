@@ -123,6 +123,13 @@ struct Coordinator
     private 
     var redraw:Bool = true 
     
+    private 
+    let shaders:
+    (
+        text:_FX.Program, 
+        sphere:_FX.Program 
+    )
+    
     // window framebuffer size is distinct from viewport size, 
     // as multiple viewports can be tiled in the same window 
     var window:Vector2<Float> = .zero 
@@ -138,6 +145,31 @@ struct Coordinator
         self.renderer       = renderer 
         self.controllers    = []
         self._style         = .init(wrappedValue: .init())
+        
+        do 
+        {
+            // compile shaders 
+            self.shaders.text   = try .init(
+                [
+                    (.vertex,   "shaders/text.vert"),
+                    (.geometry, "shaders/text.geom"),
+                    (.fragment, "shaders/text.frag"),
+                ], 
+                debugName: "diannamy://engine/shaders/text*")
+            self.shaders.sphere = try .init(
+                [
+                    (.vertex,   "shaders/sphere.vert"),
+                    (.fragment, "shaders/sphere.frag"),
+                ], 
+                debugName: "diannamy://engine/shaders/sphere*")
+        }
+        catch 
+        {
+            Log.trace(error: error)
+            Log.fatal("failed to compile one or more shader programs")
+        }
+        
+        dump(self.shaders)
     }
     
     mutating 

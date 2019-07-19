@@ -253,7 +253,7 @@ func main()
     glfwWindowHint(GLFW_SAMPLES, 4)
     
     guard let window:OpaquePointer = 
-        glfwCreateWindow(1200, 600, "Map Editor", nil, nil)
+        glfwCreateWindow(1200, 600, "<anonymous>", nil, nil)
     else
     {
         Log.fatal("failed to create window")

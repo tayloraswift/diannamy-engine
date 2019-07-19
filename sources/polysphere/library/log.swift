@@ -150,7 +150,7 @@ enum Log
         for (i, (type, message)):(Int, (type:Swift.Error.Type, message:String)) in 
             stack.reversed().enumerated()
         {
-            Self.print("\(Bold.on)\(Color.red)[\(i)]:\(Color.reset) \(String.init(describing: type))\(Bold.off)")
+            Self.print("\(Bold.on)\(Color.red)[\(i)]:\(Color.reset) \(String.init(reflecting: type))\(Bold.off)")
             Self.print(message)
         }
     }

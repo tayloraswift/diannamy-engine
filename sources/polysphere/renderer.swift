@@ -1445,7 +1445,7 @@ enum _FX
             {
                 return 1 == directReturn(default: 0) 
                 {
-                    OpenGL.glGetShaderiv(self.program, OpenGL.LINK_STATUS, $0)
+                    OpenGL.glGetProgramiv(self.program, OpenGL.LINK_STATUS, $0)
                 }
             }
         }
@@ -1500,7 +1500,11 @@ enum _FX
                 }
                 
                 Log.note("compiled \(String.init(describing: type)) shader '\(name)' in program '\(debugName)'")
-                Log.note(core.info())
+                let log:String = core.info()
+                if !log.isEmpty 
+                {
+                    Log.note(log, from: .glsl)
+                }
                 shaders.append(core)
             }
             
@@ -1526,7 +1530,11 @@ enum _FX
             }
             
             Log.note("linked program '\(debugName)' (\(shaders.count) shaders)")
-            Log.note(self.core.info())
+            let log:String = self.core.info()
+            if !log.isEmpty 
+            {
+                Log.note(log, from: .glsl)
+            }
         }
         
         deinit 
