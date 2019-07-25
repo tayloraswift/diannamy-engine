@@ -126,17 +126,24 @@ struct Coordinator
     private 
     let shaders:
     (
-        text:_FX.Program, 
-        sphere:_FX.Program 
+        text:GPU.Program, 
+        sphere:GPU.Program 
     )
+    private 
+    let display:GPU.Buffer.Uniform<UInt8>
+    private 
+    let text:GPU.Vertex.Array<UI.Text.DrawElement.Vertex, UInt8>
+    private 
+    var ui:UI.Text
     
     // window framebuffer size is distinct from viewport size, 
     // as multiple viewports can be tiled in the same window 
-    var window:Vector2<Float> = .zero 
+    var window:Vector2<Int> = .zero 
     {
         didSet 
         {
             self.renderer.viewport(.init(.zero, self.window))
+            self.display.assign(std140: .float32x2(.cast(self.window)))
         }
     }
     
@@ -162,40 +169,80 @@ struct Coordinator
                     (.fragment, "shaders/sphere.frag"),
                 ], 
                 debugName: "diannamy://engine/shaders/sphere*")
+            
+            // display UBO 
+            self.display = .init(hint: .dynamic, debugName: "ubo/display")
+            
+            // ui elements 
+            let text:UI.Text = .init(
+                [
+                    .init("hello world!\n", selector: .strong | .emphasis), 
+                    .init("", selector: .none)
+                ], 
+                selector: .paragraph, 
+                style: .init(position2: .init(0, 50)))
+            self.ui = text
+            
+            // geometry 
+            let vertices:GPU.Buffer.Array<UI.Text.DrawElement.Vertex> = 
+                .init(hint: .streaming, debugName: "text/buffers/vertex")
+            let indices:GPU.Buffer.IndexArray<UInt8> = 
+                .init(hint: .static)
+            self.text = .init(vertices: vertices, indices: indices)
         }
         catch 
         {
             Log.trace(error: error)
             Log.fatal("failed to compile one or more shader programs")
         }
-        
-        dump(self.shaders)
     }
     
     mutating 
-    func event(_:UI.Event) 
+    func event(_ event:UI.Event) 
     {
-        self.redraw = true 
+        self.ui.event(event, pass: .global)
     }
     
     mutating 
     func process(delta:Int) -> Bool 
     {
-        guard ({ true }()) || self.redraw 
+        guard self.ui.process(delta: delta, allotment: self.window) 
         else 
         {
             return false 
         }
         
-        self.redraw = false 
         self.draw()
         return true 
     }
     
-    private 
+    private mutating 
     func draw() 
     {
+        self.ui.layout(styledefs: &self.style)
+        
+        // collect text 
+        let text:[UI.Text.DrawElement] = self.ui.contribute(textOffset: .zero)
+        var buffer:[UI.Text.DrawElement.Vertex] = []
+            buffer.reserveCapacity(2 * text.map{ $0.count }.reduce(0, +))
+        for element:UI.Text.DrawElement in text
+        {
+            for (v1, v2):(UI.Text.DrawElement.Vertex, UI.Text.DrawElement.Vertex) in element 
+            {
+                buffer.append(v1)
+                buffer.append(v2)
+            }
+        }
+        
+        self.text.buffers.vertex.assign(buffer)
         self.renderer.draw()
+        
+        self.shaders.text._push(constants: 
+            [
+                "Display"   : .block(self.display), 
+                "fontatlas" : .texture2(self.style.atlas.texture)
+            ])
+        self.text.draw(0 ..< buffer.count)
     }
 }
 

@@ -1,10 +1,10 @@
-import PNG 
+// import PNG 
 
 // now that Texture has reference semantics, can we downgrade this to a struct?
 final 
 class Atlas 
 {
-    let texture:_FX.Texture.D2<UInt8> 
+    let texture:GPU.Texture.D2<UInt8> 
     
     private 
     let sprites:[Rectangle<Float>]
@@ -64,13 +64,13 @@ class Atlas
             position.y += row.last?.1.size.y ?? 0
         }
         
-        try!    PNG.encode(v: packed.buffer, 
+        /* try!    PNG.encode(v: packed.buffer, 
                         size: (packed.size.x, packed.size.y), 
                           as: .v8, 
-                        path: "fontatlas-debug.png")
+                        path: "fontatlas-debug.png") */
         Log.note("rendered font atlas of \(sprites.count) glyphs, \(packed.buffer.count >> 10) KB")
         
-        let texture:_FX.Texture.D2<UInt8> = .init(
+        let texture:GPU.Texture.D2<UInt8> = .init(
             layout:         .r8, 
             magnification:  .nearest, 
             minification:   .nearest, 
@@ -93,7 +93,7 @@ class Atlas
             sizes.reduce(0){ $0 + $1.x }, 
             sizes.last?.y ?? 0
         )
-        let minWidth:Int    = .nextPowerOfTwo(sizes.map{ $0.x }.max() ?? 0)
+        let minWidth:Int    = (sizes.map{ $0.x }.max() ?? 0).nextPowerOfTwo
         var width:Int       = minWidth
         while width * width < slate.y * slate.x 
         {

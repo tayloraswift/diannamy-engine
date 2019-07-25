@@ -1,11 +1,11 @@
-protocol UIElement 
+protocol _UIElement 
 {
     func contribute(text:inout [UI.Text.DrawElement], offset:Vector2<Float>)
     func contribute(geometry:inout [UI.Geometry.DrawElement], offset:Vector2<Float>)
     
     // returns true if the event was captured in the given pass
     mutating 
-    func event(_ event:UI.Event, pass:UI.Event.Pass) -> Bool 
+    func event(_ event:UI.Event, pass:UI.Event.Pass)  
     
     // shifts focus in the given "direction", returns true if end is reached 
     // up and down should provide complete traversal, left and right can offer 
@@ -15,13 +15,27 @@ protocol UIElement
     
     // returns true if state changed (for example, updating an animation)
     mutating 
-    func process(delta:Int) -> Bool 
+    func process(delta:Int, allotment:Vector2<Int>) -> Bool 
     
+    // the equivalent of draw()
     mutating 
-    func layout(allotment:Vector2<Int>, styledefs:inout UI.Style) -> Vector2<Int>
+    func layout(styledefs:inout UI.Style) -> Vector2<Int>
 }
-extension UIElement 
+extension UI.Element 
 {
+    func contribute(textOffset offset:Vector2<Float>) -> [UI.Text.DrawElement]
+    {
+        var elements:[UI.Text.DrawElement] = [] 
+        self.contribute(text: &elements, offset: offset)
+        return elements
+    }
+    func contribute(geometryOffset offset:Vector2<Float>) -> [UI.Geometry.DrawElement]
+    {
+        var elements:[UI.Geometry.DrawElement] = [] 
+        self.contribute(geometry: &elements, offset: offset)
+        return elements
+    }
+    
     func contribute(text _:inout [UI.Text.DrawElement], offset _:Vector2<Float>) 
     {
     }
@@ -29,9 +43,8 @@ extension UIElement
     {
     }
     
-    func event(_:UI.Event, pass _:UI.Event.Pass) -> Bool 
+    func event(_:UI.Event, pass _:UI.Event.Pass)  
     {
-        return false 
     }
     
     func navigate(_:UI.Event.Direction.D2) -> Bool 
@@ -39,12 +52,12 @@ extension UIElement
         return true 
     }
     
-    func process(delta _:Int) -> Bool 
+    func process(delta _:Int, allotment:Vector2<Int>) -> Bool 
     {
         return false 
     }
     
-    func layout(allotment _:Vector2<Int>, styledefs _:inout UI.Style) -> Vector2<Int> 
+    func layout(styledefs _:inout UI.Style) -> Vector2<Int> 
     {
         return .zero 
     }
@@ -52,134 +65,7 @@ extension UIElement
 
 extension UI 
 {
-    struct Style 
-    {
-        private 
-        let fonts:[FontSelection: Typeface.Font]
-        let atlas:Atlas 
-        
-        private 
-        var cache:
-        (
-            inline:[Selector: (sequence:UInt, style:Inline)],
-            block:[Selector: (sequence:UInt, style:Block)]
-        )
-            
-        private 
-        let stack:
-        (
-            inline:[(selector:Selector, rules:Rules.Inline)], 
-            block: [(selector:Selector, rules:Rules.Block )]
-        ) = 
-        (
-            [
-                (
-                    .paragraph, 
-                    .init(
-                        color:      .init(repeating: .max), 
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16), 
-                        features:  [.kern(true), .onum(true), .liga(true), .calt(true)]
-                    )
-                ), 
-                (
-                    .paragraph | .emphasis, 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Italic.ttf", size: 16)
-                    )
-                ), 
-                (
-                    .paragraph | .strong, 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Bold.ttf", size: 16)
-                    )
-                ), 
-                (
-                    .paragraph | .emphasis | .strong, 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-BoldItalic.ttf", size: 16)
-                    )
-                ), 
-            ], 
-            [
-                (
-                    .paragraph, 
-                    .init(
-                        lineheight: 20
-                    )
-                ), 
-            ]
-        )
-        
-        init() 
-        {
-            // distinct fonts (differ by size) and distinct faces
-            var fontSelections:Set<FontSelection>   = []
-            for (_, rules):(Selector, Rules.Inline) in self.stack.inline 
-            {
-                if let fontSelection:FontSelection = rules.font 
-                {
-                    fontSelections.update(with: fontSelection)
-                }
-            }
-            
-            let selections:[FontSelection]  = .init(fontSelections)
-            let fonts:[Typeface.Font]
-            (self.atlas, fonts)             = Typeface.assemble(selections)
-            
-            self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
-            self.cache = ([:], [:])
-        }
-        
-        func font(_ selection:FontSelection) -> Typeface.Font
-        {
-            guard let font:Typeface.Font = self.fonts[selection] 
-            else 
-            {
-                Log.fatal("unrendered font selection \(selection) requested")
-            }
-            
-            return font
-        }
-        
-        mutating 
-        func resolve(inline:Selector) -> (UInt, Inline) 
-        {
-            if let entry:(UInt, Inline) = self.cache.inline[inline] 
-            {
-                return entry 
-            }
-            
-            var style:Inline = .init()
-            for (selector, rules):(Selector, Rules.Inline) in self.stack.inline 
-                where inline ~= selector 
-            {
-                style.update(with: rules)
-            } 
-            
-            let entry:(UInt, Inline)  = (0, style)
-            self.cache.inline[inline] = entry
-            return entry
-        }
-        mutating
-        func resolve(block:Selector) -> (UInt, Block) 
-        {
-            if let entry:(UInt, Block) = self.cache.block[block] 
-            {
-                return entry 
-            }
-            
-            var style:Block = .init()
-            for (selector, rules):(Selector, Rules.Block) in self.stack.block 
-                where block ~= selector 
-            {
-                style.update(with: rules)
-            } 
-            
-            let entry:(UInt, Block) = (0, style)
-            self.cache.block[block] = entry
-            return entry
-        }
-    }
+    typealias Element = _UIElement
     
     enum Geometry
     {
@@ -192,39 +78,23 @@ extension UI
             }
             typealias Triangle = (Int, Int, Int)
             
-            @frozen 
-            @usableFromInline
-            struct Vertex:_FX.Geometry.StructuredVertex 
+            struct Vertex:GPU.Vertex.Structured
             {
-                var fields:
-                (
-                    // screen coordinates (pixels)
-                    sx:Float, 
-                    sy:Float, 
-                    
-                    // padding 
-                    _o1:Float, 
-                    _o2:Float, 
-                    
-                    // tracer coordinates
-                    x:Float, 
-                    y:Float, 
-                    z:Float, 
-                    
-                    // color coordinates
-                    r:UInt8, 
-                    g:UInt8, 
-                    b:UInt8, 
-                    a:UInt8
-                )
+                // screen coordinates (pixels)
+                let s:(Float, Float) 
+                // padding 
+                let p:(Float, Float) = (0, 0)
+                // tracer coordinates
+                var r:(Float, Float, Float)
+                // color coordinates
+                var c:(UInt8, UInt8, UInt8, UInt8)
                 
                 static 
-                let layout:[_FX.Geometry.Attribute] =
+                let attributes:[GPU.Vertex.Attribute<Self>] =
                 [
-                    .float32x2(as:  .float32),
-                    .float32x2(as:  .padding),
-                    .float32x3(as:  .float32),
-                    .uint8x3(as:    .float32(normalized: true))
+                    .float32x2(\.s, as: .float32),
+                    .float32x3(\.r, as: .float32),
+                    .uint8x4(  \.c, as: .float32(normalized: true))
                 ]
             }
             
@@ -247,18 +117,10 @@ extension UI
             subscript(index:Int) -> Vertex
             {
                 let p:Point = self.points[index]
-                return .init(fields: 
-                    (
-                        sx: p.s.x, sy: p.s.y, 
-                        _o1: 0, _o2: 0, 
-                        
-                        x: self.position3.x, 
-                        y: self.position3.y, 
-                        z: self.position3.z, 
-                        
-                        r: p.color.x, g: p.color.y, b: p.color.z, a: p.color.w
-                    )
-                )
+                return .init(
+                    s: (p.s.x, p.s.y), 
+                    r: (self.position3.x, self.position3.y, self.position3.z), 
+                    c: (p.color.x, p.color.y, p.color.z, p.color.w))
             }
             
             mutating 
@@ -283,7 +145,7 @@ extension UI
         }
     }
     
-    struct Text:UIElement
+    struct Text:Element
     {
         struct DrawElement:RandomAccessCollection
         {
@@ -294,39 +156,24 @@ extension UI
                     color:Vector4<UInt8>
             }
             
-            @frozen 
-            @usableFromInline
-            struct Vertex:_FX.Geometry.StructuredVertex 
+            struct Vertex:GPU.Vertex.Structured
             {
-                var fields:
-                (
-                    // screen coordinates (pixels)
-                    sx:Float, 
-                    sy:Float, 
-                    
-                    // texture coordinates 
-                    tx:Float, 
-                    ty:Float, 
-                    
-                    // tracer coordinates
-                    x:Float, 
-                    y:Float, 
-                    z:Float, 
-                    
-                    // color coordinates
-                    r:UInt8, 
-                    g:UInt8, 
-                    b:UInt8, 
-                    a:UInt8
-                )
+                // screen coordinates (pixels)
+                let s:(Float, Float) 
+                // texture coordinates 
+                let t:(Float, Float)
+                // tracer coordinates
+                var r:(Float, Float, Float)
+                // color coordinates
+                var c:(UInt8, UInt8, UInt8, UInt8)
                 
                 static 
-                let layout:[_FX.Geometry.Attribute] =
+                let attributes:[GPU.Vertex.Attribute<Self>] =
                 [
-                    .float32x2(as:  .float32),
-                    .float32x2(as:  .float32),
-                    .float32x3(as:  .float32),
-                    .uint8x3(as:    .float32(normalized: true))
+                    .float32x2(\.s, as: .float32),
+                    .float32x2(\.t, as: .float32),
+                    .float32x3(\.r, as: .float32),
+                    .uint8x4(  \.c, as: .float32(normalized: true))
                 ]
             }
             
@@ -355,18 +202,11 @@ extension UI
             private 
             func vertex(s:Vector2<Float>, t:Vector2<Float>, color:Vector4<UInt8>) -> Vertex 
             {
-                return .init(fields: 
-                    (
-                        sx: s.x, sy: s.y, 
-                        tx: t.x, ty: t.y, 
-                        
-                        x: self.position3.x, 
-                        y: self.position3.y, 
-                        z: self.position3.z, 
-                        
-                        r: color.x, g: color.y, b: color.z, a: color.w
-                    )
-                )
+                return .init(
+                    s: (s.x, s.y), 
+                    t: (t.x, t.y), 
+                    r: (self.position3.x, self.position3.y, self.position3.z), 
+                    c: (color.x, color.y, color.z, color.w))
             }
             
             subscript(index:Int) -> (Vertex, Vertex) 
@@ -419,15 +259,13 @@ extension UI
         {
             struct Content 
             {
-                var allotment:Vector2<Int>
-                
                 var draw:DrawElement, 
                     ranges:[Range<Int>]
                 
                 var size:Vector2<Int>
             }
             
-            case invalid  
+            case invalid
             case semivalid(Content)
             case valid(Content)
             
@@ -462,6 +300,18 @@ extension UI
             sequence:UInt?
         
         private 
+        var allotment:Vector2<Int>
+        {
+            willSet(allotment)
+            {
+                if allotment != self.allotment  
+                {
+                    self.cache.invalidate()
+                }
+            }
+        }
+        
+        private 
         var description:String 
         {
             "UI.Text{\(self.runs.map{ $0.run.text }.joined(separator: ""))}"
@@ -475,6 +325,7 @@ extension UI
             
             self.cache      = .invalid 
             self.sequence   = nil
+            self.allotment  = .zero
         }
         
         // setting the style as a whole (through the .style property) will 
@@ -539,7 +390,37 @@ extension UI
         }
         
         mutating 
-        func layout(allotment:Vector2<Int>, styledefs:inout Style) -> Vector2<Int>
+        func event(_ event:UI.Event, pass _:UI.Event.Pass) 
+        {
+            switch event 
+            {
+            case .character(let character):
+                self[1].text.append(character)
+            
+            case .paste(let string):
+                self[1].text += string
+            default:
+                return 
+            }
+        }
+        
+        mutating 
+        func process(delta _:Int, allotment:Vector2<Int>) -> Bool 
+        {
+            self.allotment = allotment
+            
+            if case .valid = self.cache 
+            {
+                return false 
+            }
+            else 
+            {
+                return true 
+            }
+        }
+        
+        mutating 
+        func layout(styledefs:inout Style) -> Vector2<Int>
         {
             // check block styles 
             let lookup:(sequence:UInt, style:Style.Block) = styledefs.resolve(block: self.selector)
@@ -556,7 +437,7 @@ extension UI
             for i:Int in self.runs.indices
             {
                 // check inline styles
-                let lookup:(sequence:UInt, style:Style.Inline) = styledefs.resolve(inline: self[i].selector)
+                let lookup:(sequence:UInt, style:Style.Inline) = styledefs.resolve(inline: self[i].selector | self.selector)
                 if (self.runs[i].sequence.map{ $0 != lookup.sequence }) ?? true
                 {
                     self.cache.invalidate()
@@ -568,27 +449,27 @@ extension UI
             
             switch self.cache 
             {
-                case .valid(let cache):
-                    return cache.size 
+            case .valid(let cache):
+                return cache.size 
+            
+            case .semivalid(var cache):
+                cache.draw.position2 = .cast(style.position2)
+                cache.draw.position3 = style.position3 
+                for (runstyle, range):(Style.Inline, Range<Int>) in zip(styles, cache.ranges) 
+                {
+                    cache.draw.color(range, runstyle.color)
+                }
                 
-                case .semivalid(var cache):
-                    cache.draw.position2 = .cast(style.position2)
-                    cache.draw.position3 = style.position3 
-                    for (runstyle, range):(Style.Inline, Range<Int>) in zip(styles, cache.ranges) 
-                    {
-                        cache.draw.color(range, runstyle.color)
-                    }
-                    
-                    self.cache = .valid(cache)
-                    return cache.size
+                self.cache = .valid(cache)
+                return cache.size
+            
+            case .invalid:
+                let texts:[String]      = self.runs.map{ $0.run.text }
+                let cache:Cache.Content = Self.reshape((texts, styles), 
+                    style: style, allotment: self.allotment, styledefs: &styledefs)
                 
-                case .invalid:
-                    let texts:[String]      = self.runs.map{ $0.run.text }
-                    let cache:Cache.Content = Self.reshape((texts, styles), 
-                        style: style, allotment: allotment, styledefs: &styledefs)
-                    
-                    self.cache = .valid(cache)
-                    return cache.size
+                self.cache = .valid(cache)
+                return cache.size
             }
         }
         
@@ -618,7 +499,6 @@ extension UI
                     HarfBuzz.paragraph(zip(runs.texts, parameters), indent: style.indent, width: allotment.x)
                 ranges = indices.runs 
                 stc.reserveCapacity(glyphs.count)
-                
                 // line number, should start at 0
                 var l:Int = indices.lines.startIndex
                 for ((runstyle, parameters), range):((Style.Inline, HarfBuzz.ShapingParameters), Range<Int>) in 
@@ -672,8 +552,91 @@ extension UI
             
             let draw:DrawElement = .init(glyphs: stc, position2: .cast(style.position2), position3: style.position3)
             
-            return .init(allotment: allotment, draw: draw, ranges: ranges, size: size)
+            return .init(draw: draw, ranges: ranges, size: size)
         }
+    }
+    
+    enum Layout 
+    {
+        /* enum HorizontalBox<Child> where Child:Element
+        {
+            private 
+            enum Cache 
+            {
+                case invalid  
+                case valid(size:Vector2<Int>)
+                
+                mutating 
+                func invalidate() 
+                {
+                    self = .invalid 
+                }
+            }
+            
+            var style:Style.Rules.Block
+            {
+                willSet(style)
+                {
+                    if style.padding != self.style.padding 
+                    {
+                        self.cache.invalidate()
+                    }
+                }
+            }
+            
+            private 
+            var allotment:Vector2<Int>
+            {
+                willSet(allotment)
+                {
+                    if allotment != self.allotment  
+                    {
+                        self.cache.invalidate()
+                    }
+                }
+            }
+            
+            func contribute(text:inout [UI.Text.DrawElement], offset:Vector2<Float>) 
+            {
+                self.child.contribute(text: &text, offset: self.offset)
+            }
+            func contribute(geometry _:inout [UI.Geometry.DrawElement], offset _:Vector2<Float>)
+            {
+                self.child.contribute(geometry: &geometry, offset: self.offset)
+            }
+            
+            mutating 
+            func event(_ event:UI.Event, pass:UI.Event.Pass) 
+            {
+                self.child.event(event, pass: pass)
+            }
+            
+            mutating 
+            func navigate(_ direction:UI.Event.Direction.D2) -> Bool 
+            {
+                return self.child.navigate(direction)
+            }
+            
+            mutating 
+            func process(delta _:Int, allotment:Vector2<Int>) -> Bool 
+            {
+                self.allotment = allotment
+                
+                if case .valid = self.cache 
+                {
+                    return false 
+                }
+                else 
+                {
+                    return true 
+                }
+            }
+            
+            func layout(allotment _:Vector2<Int>, styledefs _:inout UI.Style) -> Vector2<Int> 
+            {
+                return .zero 
+            }
+        } */
     }
     
     /*

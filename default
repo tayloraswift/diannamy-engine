@@ -1,0 +1,21 @@
+text.paragraph 
+{
+    line_height : 20
+    
+    color       : rgb(255, 255, 255) 
+    font        : 'assets/fonts/SourceSansPro-Regular.ttf' @ 16 
+    features    : kern( true ), salt(1), onum, liga ( 0 ), calt
+}
+text.paragraph > * > .emphasis 
+{
+
+    // font        : 'assets/fonts/SourceSansPro-Italic.ttf' @ 16
+}
+text.paragraph > .strong
+{
+    // font        : 'assets/fonts/SourceSansPro-Bold.ttf' @ 16
+}
+text.paragraph > .emphasis.strong
+{
+    // font        : 'assets/fonts/SourceSansPro-BoldItalic.ttf' @ 16
+}

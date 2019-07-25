@@ -45,6 +45,9 @@ extension UI.Style
         static 
         let ${tag}:Self = .init(value: ${hex(1 << i)})
         % end 
+        
+        static 
+        let none:Self = .init(value: 0)
     }
 
     
@@ -126,6 +129,24 @@ extension UI.Style
                     .init(characters.2) << 8  | 
                     .init(characters.3)
         }
+        
+        init?(string:String, value:Int) 
+        {
+            switch string 
+            {
+            % for name, T in features:
+            case ${'"{0}"'.format(name)}:
+                % if T == 'Bool':
+                self = .${name}(value == 0 ? false : true)
+                % elif T == 'Int':
+                self = .${name}(value)
+                % end 
+            % end
+            
+            default:
+                return nil 
+            }
+        }
     }
     
     enum Positioning:Equatable
@@ -157,10 +178,82 @@ extension UI.Style
     )
     }%
     
+    %{
+    properties = (
+        ('color',           'Vector4<Float>',       '.init(1, 1, 1, 1)'), 
+        ('font',            'FontSelection',        '.init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16)'),
+        ('features',        '[Feature]',            '[.kern(true)]'), 
+        ('wrap',            'Bool',                 'true'), 
+        ('indent',          'Int',                  '0'), 
+        ('line_height',     'Int',                  '0'), 
+        ('offset',          'Vector2<Float>',       '.init(0, 0)'), 
+        ('trace',           'Vector3<Float>',       '.init(.nan, .nan, .nan)'), 
+        ('padding',         '(Int, Int, Int, Int)', '(0, 0, 0, 0)'), 
+        ('position',        'Positioning',          '.relative'),
+        ('align',           'Alignment',            '.begin')
+    )
+    }%
+    enum Property 
+    {
+        % for property, type, default in properties:
+        case ${property}
+        % end
+        
+        init?(_ string:String) 
+        {
+            switch string 
+            {
+            % for property, type, default in properties:
+            case ${'"{0}"'.format(property)}:
+                self = .${property}
+            % end
+            default:
+                return nil 
+            }
+        }
+    }
+    struct _Rules 
+    {
+        private 
+        var properties:[Property: Any] = [:]
+        
+        % for property, type, default in properties:
+        var ${property}:${type} 
+        {
+            get 
+            {
+                self.properties[.${property}] as? ${type} ?? ${default} 
+            }
+            set(${property})
+            {
+                self.properties[.${property}] = ${property}
+            }
+        }
+        % end
+        
+        mutating 
+        func overlay(with other:Self) 
+        {
+            self.properties.merge(other.properties)
+            { 
+                (_, new) in 
+                new 
+            }
+        }
+        func overlaid(with other:Self) -> Self
+        {
+            return .init(properties: self.properties.merging(other.properties)
+            { 
+                (_, new) in 
+                new 
+            })
+        }
+    }
+    
     enum Rules 
     {
         % for T, properties in ('Inline', inline_properties), ('Block', block_properties):
-        struct ${T} 
+        struct ${T}:CustomStringConvertible
         {
             % for property, property_type, default in properties:
             var ${property}:${property_type}?
@@ -172,12 +265,24 @@ extension UI.Style
                 self.${property} = ${property}
                 % end 
             }
+            
+            var description:String 
+            {
+                let rules:[String?] = 
+                [
+                % for property, property_type, default in properties:
+                    self.${property}.map{ ${'"    self.{0}: \($0)"'.format(property)} }, 
+                % end 
+                ]
+                
+                return "{\n\(rules.compactMap{ $0 }.joined(separator: "\n"))\n}"
+            }
         }
         % end 
     }
     
     % for T, properties in ('Inline', inline_properties), ('Block', block_properties):
-    struct ${T} 
+    struct ${T}:CustomStringConvertible
     {
         % for property, property_type, default in properties:
         var ${property}:${property_type} = ${default}
@@ -199,6 +304,11 @@ extension UI.Style
             var new:Self = self 
             new.update(with: rules)
             return new
+        }
+        
+        var description:String 
+        {
+            return ${'"{{\\n{0}\\n}}"'.format('\\n'.join('    {0}: \(self.{0})'.format(property) for property, property_type, default in properties))}
         }
     }
     % end 

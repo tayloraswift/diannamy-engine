@@ -24,10 +24,15 @@ extension FixedWidthInteger
     // rounds up to the next power of two, with 0 rounding up to 1. 
     // numbers that are already powers of two return themselves
     @inline(__always)
-    static 
-    func nextPowerOfTwo(_ n:Self) -> Self 
+    var nextPowerOfTwo:Self 
     {
-        return 1 &<< (Self.bitWidth - (n - 1).leadingZeroBitCount)
+        1 &<< (Self.bitWidth &- (self &- 1).leadingZeroBitCount)
+    }
+    
+    @inline(__always)
+    var isPowerOfTwo:Bool 
+    {
+        self > 0 && self & (self &- 1) == 0
     }
 }
 extension FloatingPoint 
@@ -111,7 +116,7 @@ extension SIMD${N}:Mathematical where Scalar:Mathematical
     }
 }
 
-struct Vector${N}<Scalar>:Hashable, Codable where Scalar:SIMDScalar 
+struct Vector${N}<Scalar>:Hashable, Codable, CustomStringConvertible where Scalar:SIMDScalar 
 {
     var storage:SIMD${N}<Scalar>
     
@@ -120,7 +125,7 @@ struct Vector${N}<Scalar>:Hashable, Codable where Scalar:SIMDScalar
     {
         get 
         {
-            return self.storage.${c}
+            self.storage.${c}
         }
         set(${c})
         {
@@ -129,23 +134,33 @@ struct Vector${N}<Scalar>:Hashable, Codable where Scalar:SIMDScalar
     }
     % end 
     
+    var tuple:(${ ', '.join(('Scalar',) * N) }) 
+    {
+        (${ ', '.join('self.{0}'.format(c) for c in C[:N]) }) 
+    }
+    
+    var description:String
+    {
+        "\(self.tuple)"
+    }
+    
     % if N > 2:
     var ${ ''.join(C[:N - 1]) }:Vector${ N - 1 }<Scalar> 
     {
-        return .init(${ ', '.join('self.{0}'.format(c) for c in C[:N - 1]) })
+        .init(${ ', '.join('self.{0}'.format(c) for c in C[:N - 1]) })
     }
     
     static 
     func extend(_ body:Vector${ N - 1 }<Scalar>, _ tail:Scalar) 
         -> Vector${N}<Scalar> 
     {
-        return .init(${ ', '.join('body.{0}'.format(c) for c in C[:N - 1]) }, tail)
+        .init(${ ', '.join('body.{0}'.format(c) for c in C[:N - 1]) }, tail)
     }
     % end 
     
     subscript(index:Int) -> Scalar 
     {
-        return self.storage[index]
+        self.storage[index]
     }
     
     init(repeating repeatedValue:Scalar)

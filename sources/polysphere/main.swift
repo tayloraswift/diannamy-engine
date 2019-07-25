@@ -93,7 +93,7 @@ class Context
             
             let context:Context = .reconstitute(from: context)
             let position:Vector2<Float> = 
-                .init(.init(x), context.coordinator.window.y - .init(y))
+                .init(.init(x), .init(context.coordinator.window.y) - .init(y))
             context.coordinator.event(.enter(position))
         }
 
@@ -208,10 +208,10 @@ class Context
     {
         var (x, y):(Double, Double) = (0, 0) 
         glfwGetCursorPos(self.backpointer, &x, &y)
-        return .init(.init(x), self.coordinator.window.y - .init(y))
+        return .init(.init(x), .init(self.coordinator.window.y) - .init(y))
     }
     private 
-    func framebufferSize() -> Vector2<Float> 
+    func framebufferSize() -> Vector2<Int> 
     {
         var (x, y):(Int32, Int32) = (0, 0) 
         glfwGetFramebufferSize(self.backpointer, &x, &y)
@@ -278,6 +278,16 @@ func main()
     withExtendedLifetime(context)
     {
         (context:Context) in
+        
+        do 
+        {
+            try UI.Style.Sheet.parse(path: "test")
+            try UI.Style.Sheet.parse(path: "default")
+        }
+        catch 
+        {
+            Log.trace(error: error)
+        }
         
         context.connect()
         context.loop()

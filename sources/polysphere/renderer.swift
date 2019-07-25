@@ -36,16 +36,16 @@ extension UnsafeRawBufferPointer:ContiguousCollection
     }
 }
 
-protocol _GeometryStructuredVertex 
+protocol _GPUVertexStructured 
 {
     static 
-    var layout:[_FX.Geometry.Attribute] 
+    var attributes:[GPU.Vertex.Attribute<Self>] 
     {
         get 
     }
 }
 
-protocol _AnyBuffer:AnyObject
+protocol _GPUAnyBuffer:AnyObject
 {
     static 
     var stride:Int 
@@ -53,7 +53,7 @@ protocol _AnyBuffer:AnyObject
         get 
     }
     static 
-    var target:_FX.Buffer.AnyTarget.Type
+    var target:GPU.Buffer.AnyTarget.Type
     {
         get 
     }
@@ -71,7 +71,7 @@ protocol _AnyBuffer:AnyObject
         get
     }
 } 
-protocol _AnyBufferTarget
+protocol _GPUAnyBufferTarget
 {
     static 
     var code:Int32 
@@ -80,17 +80,17 @@ protocol _AnyBufferTarget
     }
 }
 
-protocol _AnyBufferUniform:_FX.AnyBuffer 
+protocol _GPUAnyBufferUniform:GPU.AnyBuffer 
 {
 }
-protocol _AnyBufferArray:_FX.AnyBuffer 
+protocol _GPUAnyBufferArray:GPU.AnyBuffer 
 {
 }
-protocol _AnyBufferIndexArray:_FX.AnyBuffer 
+protocol _GPUAnyBufferIndexArray:GPU.AnyBuffer 
 {
 }
 
-protocol _AnyTexture:AnyObject
+protocol _GPUAnyTexture:AnyObject
 {
     static 
     var stride:Int 
@@ -98,7 +98,7 @@ protocol _AnyTexture:AnyObject
         get 
     }
     static 
-    var target:_FX.Texture.AnyTarget.Type
+    var target:GPU.Texture.AnyTarget.Type
     {
         get 
     }
@@ -111,7 +111,7 @@ protocol _AnyTexture:AnyObject
         get 
     }
 } 
-protocol _AnyTextureTarget
+protocol _GPUAnyTextureTarget
 {
     static 
     var code:Int32 
@@ -120,178 +120,216 @@ protocol _AnyTextureTarget
     }
 }
 
-protocol _AnyTextureD2:_FX.AnyTexture 
+protocol _GPUAnyTextureD2:GPU.AnyTexture 
 {
 }
-protocol _AnyTextureD3:_FX.AnyTexture 
+protocol _GPUAnyTextureD3:GPU.AnyTexture 
 {
 }
 
-enum _FX 
+enum GPU 
 {
-    final 
-    class Geometry 
+    enum Vertex 
     {
-        typealias StructuredVertex = _GeometryStructuredVertex
-        enum Attribute 
+        typealias Structured = _GPUVertexStructured
+        typealias Element = FixedWidthInteger & UnsignedInteger
+
+        enum Attribute<Vertex> where Vertex:Structured
         {
             enum Destination 
             {
                 enum General 
                 {
-                    case padding, float32
+                    case float32
                 }
                 enum HighPrecision
                 {
-                    case padding, float32, float64
+                    case float32, float64
                 }
                 enum FixedPoint 
                 {
-                    case padding, float32(normalized:Bool)
+                    case float32(normalized:Bool)
                 }
                 enum Integral
                 {
-                    case padding, float32(normalized:Bool), int32
+                    case float32(normalized:Bool), int32
                 }
                 
-                case padding, int32, float32(normalized:Bool), float64
+                case int32, float32(normalized:Bool), float64
             }
             
-            case float16    (as:Destination.General)
-            case float16x2  (as:Destination.General)
-            case float16x3  (as:Destination.General)
-            case float16x4  (as:Destination.General)
+            case float16    (KeyPath<Vertex,  UInt16>,                          as:Destination.General)
+            case float16x2  (KeyPath<Vertex, (UInt16, UInt16)>,                 as:Destination.General)
+            case float16x3  (KeyPath<Vertex, (UInt16, UInt16, UInt16)>,         as:Destination.General)
+            case float16x4  (KeyPath<Vertex, (UInt16, UInt16, UInt16, UInt16)>, as:Destination.General)
             
-            case float32    (as:Destination.General)
-            case float32x2  (as:Destination.General)
-            case float32x3  (as:Destination.General)
-            case float32x4  (as:Destination.General)
+            case float32    (KeyPath<Vertex,  Float>,                           as:Destination.General)
+            case float32x2  (KeyPath<Vertex, (Float, Float)>,                   as:Destination.General)
+            case float32x3  (KeyPath<Vertex, (Float, Float, Float)>,            as:Destination.General)
+            case float32x4  (KeyPath<Vertex, (Float, Float, Float, Float)>,     as:Destination.General)
             
-            case float64    (as:Destination.HighPrecision)
-            case float64x2  (as:Destination.HighPrecision)
-            case float64x3  (as:Destination.HighPrecision)
-            case float64x4  (as:Destination.HighPrecision)
+            case float64    (KeyPath<Vertex,  Double>,                          as:Destination.HighPrecision)
+            case float64x2  (KeyPath<Vertex, (Double, Double)>,                 as:Destination.HighPrecision)
+            case float64x3  (KeyPath<Vertex, (Double, Double, Double)>,         as:Destination.HighPrecision)
+            case float64x4  (KeyPath<Vertex, (Double, Double, Double, Double)>, as:Destination.HighPrecision)
             
+            case int8       (KeyPath<Vertex,  Int8>,                            as:Destination.Integral)
+            case int8x2     (KeyPath<Vertex, (Int8, Int8)>,                     as:Destination.Integral)
+            case int8x3     (KeyPath<Vertex, (Int8, Int8, Int8)>,               as:Destination.Integral)
+            case int8x4     (KeyPath<Vertex, (Int8, Int8, Int8, Int8)>,         as:Destination.Integral)
             
-            case int8       (as:Destination.Integral)
-            case int8x2     (as:Destination.Integral)
-            case int8x3     (as:Destination.Integral)
-            case int8x4     (as:Destination.Integral)
+            case int16      (KeyPath<Vertex,  Int16>,                           as:Destination.Integral)
+            case int16x2    (KeyPath<Vertex, (Int16, Int16)>,                   as:Destination.Integral)
+            case int16x3    (KeyPath<Vertex, (Int16, Int16, Int16)>,            as:Destination.Integral)
+            case int16x4    (KeyPath<Vertex, (Int16, Int16, Int16, Int16)>,     as:Destination.Integral)
             
-            case int16      (as:Destination.Integral)
-            case int16x2    (as:Destination.Integral)
-            case int16x3    (as:Destination.Integral)
-            case int16x4    (as:Destination.Integral)
+            case int32      (KeyPath<Vertex,  Int32>,                           as:Destination.Integral)
+            case int32x2    (KeyPath<Vertex, (Int32, Int32)>,                   as:Destination.Integral)
+            case int32x3    (KeyPath<Vertex, (Int32, Int32, Int32)>,            as:Destination.Integral)
+            case int32x4    (KeyPath<Vertex, (Int32, Int32, Int32, Int32)>,     as:Destination.Integral)
             
-            case int32      (as:Destination.Integral)
-            case int32x2    (as:Destination.Integral)
-            case int32x3    (as:Destination.Integral)
-            case int32x4    (as:Destination.Integral)
+            case uint10x3   (KeyPath<Vertex,  UInt32>,                          as:Destination.FixedPoint)
+            case uint8_bgra (KeyPath<Vertex, (UInt8, UInt8, UInt8, UInt8)>,     as:Destination.FixedPoint)
             
-            case uint10x3   (as:Destination.FixedPoint)
-            case uint8_bgra (as:Destination.FixedPoint)
+            case uint8      (KeyPath<Vertex,  UInt8>,                           as:Destination.Integral)
+            case uint8x2    (KeyPath<Vertex, (UInt8, UInt8)>,                   as:Destination.Integral)
+            case uint8x3    (KeyPath<Vertex, (UInt8, UInt8, UInt8)>,            as:Destination.Integral)
+            case uint8x4    (KeyPath<Vertex, (UInt8, UInt8, UInt8, UInt8)>,     as:Destination.Integral)
             
-            case uint8      (as:Destination.Integral)
-            case uint8x2    (as:Destination.Integral)
-            case uint8x3    (as:Destination.Integral)
-            case uint8x4    (as:Destination.Integral)
+            case uint16     (KeyPath<Vertex,  UInt16>,                          as:Destination.Integral)
+            case uint16x2   (KeyPath<Vertex, (UInt16, UInt16)>,                 as:Destination.Integral)
+            case uint16x3   (KeyPath<Vertex, (UInt16, UInt16, UInt16)>,         as:Destination.Integral)
+            case uint16x4   (KeyPath<Vertex, (UInt16, UInt16, UInt16, UInt16)>, as:Destination.Integral)
             
-            case uint16     (as:Destination.Integral)
-            case uint16x2   (as:Destination.Integral)
-            case uint16x3   (as:Destination.Integral)
-            case uint16x4   (as:Destination.Integral)
-            
-            case uint32     (as:Destination.Integral)
-            case uint32x2   (as:Destination.Integral)
-            case uint32x3   (as:Destination.Integral)
-            case uint32x4   (as:Destination.Integral)
+            case uint32     (KeyPath<Vertex,  UInt32>,                          as:Destination.Integral)
+            case uint32x2   (KeyPath<Vertex, (UInt32, UInt32)>,                 as:Destination.Integral)
+            case uint32x3   (KeyPath<Vertex, (UInt32, UInt32, UInt32)>,         as:Destination.Integral)
+            case uint32x4   (KeyPath<Vertex, (UInt32, UInt32, UInt32, UInt32)>, as:Destination.Integral)
             
             var destination:Destination 
             {
                 switch self 
                 {
-                case    .float16    (as: let destination),
-                        .float16x2  (as: let destination),
-                        .float16x3  (as: let destination),
-                        .float16x4  (as: let destination), 
+                case    .float16    (_, as: let destination),
+                        .float16x2  (_, as: let destination),
+                        .float16x3  (_, as: let destination),
+                        .float16x4  (_, as: let destination), 
                         
-                        .float32    (as: let destination),
-                        .float32x2  (as: let destination),
-                        .float32x3  (as: let destination),
-                        .float32x4  (as: let destination):
+                        .float32    (_, as: let destination),
+                        .float32x2  (_, as: let destination),
+                        .float32x3  (_, as: let destination),
+                        .float32x4  (_, as: let destination):
                     
                     switch destination 
                     {
-                    case .padding:
-                        return .padding 
                     case .float32: 
                         return .float32(normalized: false)
                     }
                 
-                case    .float64    (as: let destination),
-                        .float64x2  (as: let destination),
-                        .float64x3  (as: let destination),
-                        .float64x4  (as: let destination):
+                case    .float64    (_, as: let destination),
+                        .float64x2  (_, as: let destination),
+                        .float64x3  (_, as: let destination),
+                        .float64x4  (_, as: let destination):
                     
                     switch destination 
                     {
-                    case .padding:
-                        return .padding 
                     case .float32: 
                         return .float32(normalized: false)
                     case .float64: 
                         return .float64
                     }
                 
-                case    .uint10x3   (as: let destination),
-                        .uint8_bgra (as: let destination):
+                case    .uint10x3   (_, as: let destination),
+                        .uint8_bgra (_, as: let destination):
                     switch destination 
                     {
-                    case .padding:
-                        return .padding 
                     case .float32(normalized: let normalize): 
                         return .float32(normalized: normalize)
                     }
                 
-                case    .int8       (as: let destination),
-                        .int8x2     (as: let destination),
-                        .int8x3     (as: let destination),
-                        .int8x4     (as: let destination),
+                case    .int8       (_, as: let destination),
+                        .int8x2     (_, as: let destination),
+                        .int8x3     (_, as: let destination),
+                        .int8x4     (_, as: let destination),
                         
-                        .int16      (as: let destination),
-                        .int16x2    (as: let destination),
-                        .int16x3    (as: let destination),
-                        .int16x4    (as: let destination),
+                        .int16      (_, as: let destination),
+                        .int16x2    (_, as: let destination),
+                        .int16x3    (_, as: let destination),
+                        .int16x4    (_, as: let destination),
                         
-                        .int32      (as: let destination),
-                        .int32x2    (as: let destination),
-                        .int32x3    (as: let destination),
-                        .int32x4    (as: let destination),
+                        .int32      (_, as: let destination),
+                        .int32x2    (_, as: let destination),
+                        .int32x3    (_, as: let destination),
+                        .int32x4    (_, as: let destination),
                         
-                        .uint8      (as: let destination),
-                        .uint8x2    (as: let destination),
-                        .uint8x3    (as: let destination),
-                        .uint8x4    (as: let destination),
+                        .uint8      (_, as: let destination),
+                        .uint8x2    (_, as: let destination),
+                        .uint8x3    (_, as: let destination),
+                        .uint8x4    (_, as: let destination),
                         
-                        .uint16     (as: let destination),
-                        .uint16x2   (as: let destination),
-                        .uint16x3   (as: let destination),
-                        .uint16x4   (as: let destination),
+                        .uint16     (_, as: let destination),
+                        .uint16x2   (_, as: let destination),
+                        .uint16x3   (_, as: let destination),
+                        .uint16x4   (_, as: let destination),
                 
-                        .uint32     (as: let destination),
-                        .uint32x2   (as: let destination),
-                        .uint32x3   (as: let destination),
-                        .uint32x4   (as: let destination):
+                        .uint32     (_, as: let destination),
+                        .uint32x2   (_, as: let destination),
+                        .uint32x3   (_, as: let destination),
+                        .uint32x4   (_, as: let destination):
                     
                     switch destination 
                     {
-                    case .padding:
-                        return .padding 
                     case .float32(normalized: let normalize): 
                         return .float32(normalized: normalize)
                     case .int32: 
                         return .int32 
                     }
+                }
+            }
+            
+            var keyPath:PartialKeyPath<Vertex> 
+            {
+                switch self 
+                {
+                case    .float16    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float16x2  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float16x3  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float16x4  (let keyPath as PartialKeyPath<Vertex>, as: _), 
+                        .float32    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float32x2  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float32x3  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float32x4  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float64    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float64x2  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float64x3  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .float64x4  (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint10x3   (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint8_bgra (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int8       (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int8x2     (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int8x3     (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int8x4     (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int16      (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int16x2    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int16x3    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int16x4    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int32      (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int32x2    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int32x3    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .int32x4    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint8      (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint8x2    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint8x3    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint8x4    (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint16     (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint16x2   (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint16x3   (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint16x4   (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint32     (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint32x2   (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint32x3   (let keyPath as PartialKeyPath<Vertex>, as: _),
+                        .uint32x4   (let keyPath as PartialKeyPath<Vertex>, as: _):
+                    return keyPath
                 }
             }
             
@@ -337,130 +375,151 @@ enum _FX
             }
         }
         
-        fileprivate 
-        struct Core 
+        final 
+        class Array<Vertex, Index>
+            where Vertex:Structured, Index:Element
         {
-            let vertexarray:OpenGL.UInt 
-            
-            static 
-            func create() -> Self 
+            fileprivate 
+            struct Core 
             {
-                let vertexarray:OpenGL.UInt = directReturn(default: 0) 
-                {
-                    OpenGL.glGenVertexArrays(1, $0)
-                }
-                return .init(vertexarray: vertexarray)
-            }
-            
-            func destroy() 
-            {
-                withUnsafePointer(to: self.vertexarray)
-                {
-                    OpenGL.glDeleteVertexArrays(1, $0)
-                }
-            }
-            
-            func attach<Vertex, Index>(vertices:Buffer.Array<Vertex>, indices:Buffer.IndexArray<Index>)
-                where Vertex:StructuredVertex
-            {
-                OpenGL.glBindVertexArray(self.vertexarray)
-                OpenGL.glBindBuffer(Buffer.Target.Array.code, vertices.core.buffer)
+                let vertexarray:OpenGL.UInt 
                 
-                // set vertex attributes 
-                let stride:Int = Vertex.layout.map{ $0.size }.reduce(0, +)
-                var offset:Int = 0, 
-                    index:Int  = 0
-                for attribute:Attribute in Vertex.layout 
+                static 
+                func create() -> Self 
                 {
-                    let code:(count:OpenGL.Enum, type:OpenGL.Enum)
-                    
-                    switch attribute 
+                    let vertexarray:OpenGL.UInt = directReturn(default: 0) 
                     {
-                    case .uint8_bgra:
-                        code.count = OpenGL.BGRA 
-                    default:
-                        code.count = .init(attribute.count)
+                        OpenGL.glGenVertexArrays(1, $0)
                     }
-                    
-                    switch attribute 
-                    {
-                    case .int32, .int32x2, .int32x3, .int32x4:
-                        code.type = OpenGL.INT 
-                    case .int16, .int16x2, .int16x3, .int16x4:
-                        code.type = OpenGL.SHORT
-                    case .int8, .int8x2, .int8x3, .int8x4:
-                        code.type = OpenGL.BYTE
-                    
-                    case .uint10x3:
-                        code.type = OpenGL.UNSIGNED_INT_2_10_10_10_REV
-                    
-                    case .uint32, .uint32x2, .uint32x3, .uint32x4:
-                        code.type = OpenGL.UNSIGNED_INT 
-                    case .uint16, .uint16x2, .uint16x3, .uint16x4:
-                        code.type = OpenGL.UNSIGNED_SHORT
-                    case .uint8, .uint8x2, .uint8x3, .uint8x4, .uint8_bgra:
-                        code.type = OpenGL.UNSIGNED_BYTE
-                    
-                    case .float64, .float64x2, .float64x3, .float64x4:
-                        code.type = OpenGL.DOUBLE
-                    case .float32, .float32x2, .float32x3, .float32x4:
-                        code.type = OpenGL.FLOAT
-                    case .float16, .float16x2, .float16x3, .float16x4:
-                        code.type = OpenGL.HALF_FLOAT
-                    }
-                    
-                    defer 
-                    {
-                        offset += attribute.size 
-                    }
-                    
-                    switch attribute.destination 
-                    {
-                    case .padding:
-                        continue 
-                    
-                    case .int32:
-                        OpenGL.glVertexAttribIPointer(
-                            .init(index), code.count, code.type, .init(stride), 
-                            UnsafeRawPointer.init(bitPattern: offset))
-                    
-                    case .float32(normalized: let normalize):
-                        OpenGL.glVertexAttribPointer(
-                            .init(index), code.count, code.type, normalize, .init(stride), UnsafeRawPointer.init(bitPattern: offset))
-                    
-                    case .float64:
-                        OpenGL.glVertexAttribLPointer(
-                            .init(index), code.count, code.type, .init(stride), UnsafeRawPointer.init(bitPattern: offset))
-                    }
-                    
-                    OpenGL.glEnableVertexAttribArray(.init(index))
-                    index += 1
+                    return .init(vertexarray: vertexarray)
                 }
                 
-                OpenGL.glBindBuffer(Buffer.Target.IndexArray.code, indices.core.buffer)
-                OpenGL.glBindVertexArray(0)
-                OpenGL.glBindBuffer(Buffer.Target.Array.code, 0)
-                OpenGL.glBindBuffer(Buffer.Target.IndexArray.code, 0)
+                func destroy() 
+                {
+                    withUnsafePointer(to: self.vertexarray)
+                    {
+                        OpenGL.glDeleteVertexArrays(1, $0)
+                    }
+                }
+                
+                func attach(vertices:Buffer.Array<Vertex>, indices:Buffer.IndexArray<Index>)
+                {
+                    OpenGL.glBindVertexArray(self.vertexarray)
+                    OpenGL.glBindBuffer(Buffer.Target.Array.code, vertices.core.buffer)
+                    
+                    // set vertex attributes 
+                    let stride:Int = MemoryLayout<Vertex>.stride
+                    // warn unusual stride 
+                    if (stride.nextPowerOfTwo - stride).isPowerOfTwo 
+                    {
+                        Log.advisory("Vertex type '\(String.init(reflecting: Vertex.self))' has stride of \(stride) bytes, which is \(stride.nextPowerOfTwo - stride) bytes less than \(stride.nextPowerOfTwo)")
+                    }
+                    
+                    for (index, attribute):(Int, Attribute) in Vertex.attributes.enumerated() 
+                    {
+                        let code:(count:OpenGL.Enum, type:OpenGL.Enum)
+                        
+                        switch attribute 
+                        {
+                        case .uint8_bgra:
+                            code.count = OpenGL.BGRA 
+                        default:
+                            code.count = .init(attribute.count)
+                        }
+                        
+                        switch attribute 
+                        {
+                        case .int32, .int32x2, .int32x3, .int32x4:
+                            code.type = OpenGL.INT 
+                        case .int16, .int16x2, .int16x3, .int16x4:
+                            code.type = OpenGL.SHORT
+                        case .int8, .int8x2, .int8x3, .int8x4:
+                            code.type = OpenGL.BYTE
+                        
+                        case .uint10x3:
+                            code.type = OpenGL.UNSIGNED_INT_2_10_10_10_REV
+                        
+                        case .uint32, .uint32x2, .uint32x3, .uint32x4:
+                            code.type = OpenGL.UNSIGNED_INT 
+                        case .uint16, .uint16x2, .uint16x3, .uint16x4:
+                            code.type = OpenGL.UNSIGNED_SHORT
+                        case .uint8, .uint8x2, .uint8x3, .uint8x4, .uint8_bgra:
+                            code.type = OpenGL.UNSIGNED_BYTE
+                        
+                        case .float64, .float64x2, .float64x3, .float64x4:
+                            code.type = OpenGL.DOUBLE
+                        case .float32, .float32x2, .float32x3, .float32x4:
+                            code.type = OpenGL.FLOAT
+                        case .float16, .float16x2, .float16x3, .float16x4:
+                            code.type = OpenGL.HALF_FLOAT
+                        }
+                        
+                        guard let offset:Int = MemoryLayout<Vertex>.offset(of: attribute.keyPath)
+                        else 
+                        {
+                            Log.error("property '\(attribute.keyPath)' does not have storage in type '\(String.init(reflecting: Vertex.self))', vertex attribute \(index) disabled")
+                            continue 
+                        }
+                        
+                        switch attribute.destination 
+                        {
+                        case .int32:
+                            OpenGL.glVertexAttribIPointer(
+                                .init(index), code.count, code.type, .init(stride), 
+                                UnsafeRawPointer.init(bitPattern: offset))
+                        
+                        case .float32(normalized: let normalize):
+                            OpenGL.glVertexAttribPointer(
+                                .init(index), code.count, code.type, normalize, .init(stride), UnsafeRawPointer.init(bitPattern: offset))
+                        
+                        case .float64:
+                            OpenGL.glVertexAttribLPointer(
+                                .init(index), code.count, code.type, .init(stride), UnsafeRawPointer.init(bitPattern: offset))
+                        }
+                        
+                        OpenGL.glEnableVertexAttribArray(.init(index))
+                    }
+                    
+                    OpenGL.glBindBuffer(Buffer.Target.IndexArray.code, indices.core.buffer)
+                    OpenGL.glBindVertexArray(0)
+                    OpenGL.glBindBuffer(Buffer.Target.Array.code, 0)
+                    OpenGL.glBindBuffer(Buffer.Target.IndexArray.code, 0)
+                }
+                
+                func draw(_ range:Range<Int>)
+                {
+                    OpenGL.glBindVertexArray(self.vertexarray)
+                    OpenGL.glDrawArrays(OpenGL.LINES, .init(range.lowerBound), .init(range.count))
+                    OpenGL.glBindVertexArray(0)
+                }
             }
-        }
-        
-        fileprivate 
-        let core:Core 
-        
-        init<Vertex, Index>(vertices:Buffer.Array<Vertex>, indices:Buffer.IndexArray<Index>) 
-            where Vertex:StructuredVertex, Index:FixedWidthInteger & UnsignedInteger
-        {
-            self.core = .create()
-            self.core.attach(vertices: vertices, indices: indices)
-        }
-        
-        deinit
-        {
-            self.core.destroy()
+            
+            fileprivate 
+            let core:Core 
+            var buffers:(vertex:Buffer.Array<Vertex>, index:Buffer.IndexArray<Index>)
+            
+            init(vertices:Buffer.Array<Vertex>, indices:Buffer.IndexArray<Index>) 
+            {
+                self.core    = .create()
+                self.core.attach(vertices: vertices, indices: indices)
+                
+                self.buffers = (vertex: vertices, index: indices)
+            }
+            
+            deinit
+            {
+                self.core.destroy()
+            }
+            
+            func draw(_ range:Range<Int>) 
+            {
+                self.core.draw(range)
+            }
         }
     }
     
-    typealias AnyBuffer = _AnyBuffer
+    
+    typealias AnyBuffer = _GPUAnyBuffer
     enum Buffer 
     {
         enum Hint 
@@ -482,7 +541,65 @@ enum _FX
             }
         }
         
-        typealias AnyTarget = _AnyBufferTarget
+        enum Layout 
+        {
+            enum STD140 
+            {
+                case float32    (Float)
+                case float32x2  (Vector2<Float>)
+                case float32x4  (Vector4<Float>)
+                
+                case float64    (Double)
+                case float64x2  (Vector2<Double>)
+                case float64x4  (Vector4<Double>)
+                
+                case int32      (Int32)
+                case int32x2    (Vector2<Int32>)
+                case int32x4    (Vector4<Int32>)
+                
+                case uint32     (UInt32)
+                case uint32x2   (Vector2<UInt32>)
+                case uint32x4   (Vector4<UInt32>)
+                
+                case matrix2    (Matrix2<Float>)
+                case matrix3    (Matrix3<Float>)
+                case matrix4    (Matrix4<Float>)
+                
+                
+                var alignment:Int 
+                {
+                    let component:Int 
+                    switch self 
+                    {
+                    case    .float32,  .float32x2, .float32x4, 
+                            .matrix2,  .matrix3,   .matrix4:
+                        component = MemoryLayout<Float>.stride 
+                    case    .float64,  .float64x2, .float64x4:
+                        component = MemoryLayout<Double>.stride 
+                    case    .int32,    .int32x2,   .int32x4:
+                        component = MemoryLayout<Int32>.stride 
+                    case    .uint32,   .uint32x2,  .uint32x4:
+                        component = MemoryLayout<UInt32>.stride 
+                    }
+                    
+                    let count:Int 
+                    switch self 
+                    {
+                    case    .float32,   .float64,   .int32,     .uint32:
+                        count = 1 
+                    case    .float32x2, .float64x2, .int32x2,   .uint32x2:
+                        count = 2
+                    case    .float32x4, .float64x4, .int32x4,   .uint32x4, 
+                            .matrix2,   .matrix3,   .matrix4:
+                        count = 4
+                    }
+                    
+                    return component * count 
+                }
+            }
+        }
+        
+        typealias AnyTarget = _GPUAnyBufferTarget
         enum Target 
         {
             enum Uniform:AnyTarget 
@@ -557,9 +674,9 @@ enum _FX
             }
         }
         
-        typealias AnyUniform            = _AnyBufferUniform
-        typealias AnyArray              = _AnyBufferArray
-        typealias AnyIndexArray         = _AnyBufferIndexArray
+        typealias AnyUniform            = _GPUAnyBufferUniform
+        typealias AnyArray              = _GPUAnyBufferArray
+        typealias AnyIndexArray         = _GPUAnyBufferIndexArray
         
         typealias Uniform<Element>      = Buffer<Target.Uniform,    Element>
         typealias Array<Element>        = Buffer<Target.Array,      Element>
@@ -640,7 +757,7 @@ enum _FX
         }
     }
     
-    typealias AnyTexture = _AnyTexture
+    typealias AnyTexture = _GPUAnyTexture
     enum Texture 
     {    
         enum Layout
@@ -697,7 +814,7 @@ enum _FX
             case nearest, linear
         }
         
-        typealias AnyTarget = _AnyTextureTarget
+        typealias AnyTarget = _GPUAnyTextureTarget
         enum Target 
         {
             enum D2:AnyTarget 
@@ -795,8 +912,8 @@ enum _FX
             }
         }
         
-        typealias AnyD2         = _AnyTextureD2
-        typealias AnyD3         = _AnyTextureD3
+        typealias AnyD2         = _GPUAnyTextureD2
+        typealias AnyD3         = _GPUAnyTextureD3
         typealias D2<Element>   = Texture<Target.D2, Element>
         typealias D3<Element>   = Texture<Target.D3, Element>
         
@@ -853,8 +970,17 @@ enum _FX
     final 
     class Program 
     {
+        private static 
+        var bound:Weak<Program> = .init(nil)
+        
         enum Error:RecursiveError 
         {
+            static 
+            var namespace:String 
+            {
+                "program error"
+            }
+            
             case shader(name:String, error:Swift.Error)
             case linking(name:String, info:String)
             
@@ -876,6 +1002,12 @@ enum _FX
             
             enum Error:RecursiveError
             {
+                static 
+                var namespace:String 
+                {
+                    "shader error"
+                }
+                
                 case source(type:Shader, name:String, error:Swift.Error)
                 case compilation(type:Shader, name:String, info:String)
                 
@@ -1063,7 +1195,7 @@ enum _FX
         struct Core 
         {
             private 
-            struct Parameter  
+            struct Parameter:CustomStringConvertible
             {
                 enum Datatype 
                 {
@@ -1132,6 +1264,11 @@ enum _FX
                 let name:String, 
                     type:Datatype, 
                     location:OpenGL.Int
+                
+                var description:String 
+                {
+                    "@\(location): var \(name):\(type)"
+                }
             }
             
             let program:OpenGL.UInt 
@@ -1177,6 +1314,7 @@ enum _FX
             mutating 
             func push(constants:[String: Constant]) 
             {
+                var unused:Set<String> = .init(constants.keys)
                 for parameter:Parameter in self.parameters 
                 {
                     guard let constant:Constant = constants[parameter.name] 
@@ -1184,6 +1322,8 @@ enum _FX
                     {
                         continue 
                     }
+                    
+                    unused.remove(parameter.name)
                     
                     switch (parameter.type, constant) 
                     {
@@ -1256,7 +1396,7 @@ enum _FX
                         }
                     
                     case (.block(size: let size), .block(let buffer, let range)):
-                        if range.count != size 
+                        if size < range.count 
                         {
                             Log.warning("uniform (sub)buffer '\(buffer.debugName)' has size \(range.count), but block parameter '\(parameter.name)' has size \(size)")
                         }
@@ -1274,6 +1414,16 @@ enum _FX
                     default:
                         Log.error("cannot push constant of type '\(constant.typeIdentifier)' to parameter '\(parameter.name)' of type '\(parameter.type.identifier)'")
                     }
+                }
+                
+                guard unused.isEmpty 
+                else 
+                {
+                    for identifier:String in unused 
+                    {
+                        Log.warning("could not push constant of type '\(constants[identifier]?.typeIdentifier ?? "")' to non-existent parameter '\(identifier)'")
+                    }
+                    return
                 }
             }
             
@@ -1467,7 +1617,9 @@ enum _FX
                 }
                 catch 
                 {
-                    throw Shader.Error.source(type: type, name: path, error: error)
+                    throw   Error.shader(name: debugName, error: 
+                            Shader.Error.source(type: type, name: path, error: error)
+                            )
                 }
             }
             
@@ -1495,8 +1647,9 @@ enum _FX
                         }    
                     }
                     
-                    throw Error.shader(name: debugName, 
-                        error: Shader.Error.compilation(type: type, name: name, info: core.info()))
+                    throw   Error.shader(name: debugName, error: 
+                            Shader.Error.compilation(type: type, name: name, info: core.info())
+                            )
                 }
                 
                 Log.note("compiled \(String.init(describing: type)) shader '\(name)' in program '\(debugName)'")
@@ -1541,36 +1694,145 @@ enum _FX
         {
             self.core.destroy()
         }
+        
+        func _bind() 
+        {
+            if let old:Program = Self.bound.object
+            {
+                guard old !== self 
+                else 
+                {
+                    return 
+                }
+            }
+            
+            OpenGL.glUseProgram(self.core.program)
+        }
+        
+        func _push(constants:[String: Constant]) 
+        {
+            self._bind()
+            self.core.push(constants: constants)
+        }
     }
 }
-extension _FX.Texture.D2:_FX.Texture.AnyD2
+extension GPU.Texture.D2:GPU.Texture.AnyD2
 {
     func assign(_ data:Array2D<Element>)
     {
-        _FX.Manager.Texture.with(self) 
+        GPU.Manager.Texture.with(self) 
         {
             self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
         }
     }
 }
-extension _FX.Texture.D3:_FX.Texture.AnyD3
+extension GPU.Texture.D3:GPU.Texture.AnyD3
 {
     func assign(_ data:Array3D<Element>)
     {
-        _FX.Manager.Texture.with(self) 
+        GPU.Manager.Texture.with(self) 
         {
             self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
         }
     }
 }
 
-extension _FX.Buffer.Uniform:_FX.Buffer.AnyUniform
+extension GPU.Buffer.Uniform:GPU.Buffer.AnyUniform
 {
 }
-extension _FX.Buffer.Array:_FX.Buffer.AnyArray
+extension GPU.Buffer.Uniform where Element == UInt8
+{
+    func assign(std140:GPU.Buffer.Layout.STD140...)
+    {
+        var data:[UInt8] = []
+            data.reserveCapacity(self.count)
+        for attribute:GPU.Buffer.Layout.STD140 in std140 
+        {
+            // insert padding if needed 
+            let padding:Int = attribute.alignment - data.count % attribute.alignment
+            if padding != attribute.alignment 
+            {
+                data.append(contentsOf: repeatElement(0, count: padding))
+            }
+            
+            switch attribute 
+            {
+            case .float32(let value):
+                withUnsafeBytes(of: value)          { data.append(contentsOf: $0) }
+            case .float32x2(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .float32x4(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .float64(let value):
+                withUnsafeBytes(of: value)          { data.append(contentsOf: $0) }
+            case .float64x2(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .float64x4(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .int32(let value):
+                withUnsafeBytes(of: value)          { data.append(contentsOf: $0) }
+            case .int32x2(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .int32x4(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .uint32(let value):
+                withUnsafeBytes(of: value)          { data.append(contentsOf: $0) }
+            case .uint32x2(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            case .uint32x4(let value):
+                withUnsafeBytes(of: value.tuple)    { data.append(contentsOf: $0) }
+            
+            case .matrix2(let M):
+                let slug:
+                (
+                    (Float, Float, Float, Float),
+                    (Float, Float, Float, Float)
+                ) = 
+                (
+                    (M[0].x, M[0].y, 0, 0),
+                    (M[1].x, M[1].y, 0, 0)
+                )
+                withUnsafeBytes(of: slug){ data.append(contentsOf: $0) }
+            
+            case .matrix3(let M):
+                let slug:
+                (
+                    (Float, Float, Float, Float),
+                    (Float, Float, Float, Float),
+                    (Float, Float, Float, Float)
+                ) = 
+                (
+                    (M[0].x, M[0].y, M[0].z, 0),
+                    (M[1].x, M[1].y, M[1].z, 0),
+                    (M[2].x, M[2].y, M[2].z, 0)
+                )
+                withUnsafeBytes(of: slug){ data.append(contentsOf: $0) }
+            
+            case .matrix4(let M):
+                let slug:
+                (
+                    (Float, Float, Float, Float),
+                    (Float, Float, Float, Float),
+                    (Float, Float, Float, Float),
+                    (Float, Float, Float, Float)
+                ) = 
+                (
+                    (M[0].x, M[0].y, M[0].z, M[0].w),
+                    (M[1].x, M[1].y, M[1].z, M[1].w),
+                    (M[2].x, M[2].y, M[2].z, M[2].w),
+                    (M[3].x, M[3].y, M[3].z, M[3].w)
+                )
+                withUnsafeBytes(of: slug){ data.append(contentsOf: $0) }
+            }
+        }
+        
+        self.assign(data)
+    }
+}
+extension GPU.Buffer.Array:GPU.Buffer.AnyArray
 {
 }
-extension _FX.Buffer.IndexArray:_FX.Buffer.AnyIndexArray
+extension GPU.Buffer.IndexArray:GPU.Buffer.AnyIndexArray
 {
 }
 
@@ -1632,7 +1894,7 @@ protocol _StateManager
     static 
     func unbind(_ old:Instance) 
 }
-extension _FX.StateManager  
+extension GPU.StateManager  
 {
     static 
     var reserved:Int 
@@ -1767,7 +2029,7 @@ extension _FX.StateManager
 
 // global state management 
 fileprivate 
-extension _FX 
+extension GPU 
 {
     typealias StateManager = _StateManager
     enum Manager 
@@ -2048,7 +2310,7 @@ class Renderer
     
     private 
     var options:[Option], 
-        viewport:Rectangle<Float> = .zero 
+        viewport:Rectangle<Int> = .zero 
     
     init(options:Option...)
     {
@@ -2060,7 +2322,7 @@ class Renderer
         self.options = options
     }
     
-    func viewport(_ viewport:Rectangle<Float>) 
+    func viewport(_ viewport:Rectangle<Int>) 
     {
         self.viewport = viewport 
     }
@@ -2165,6 +2427,15 @@ extension Renderer
                     OpenGL.glClearDepth(depth)
                 }
             }
+            
+            // options always set to constant value 
+            OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, OpenGL.FILL)
+            
+            // DEBUG
+            OpenGL.glEnable(OpenGL.BLEND)
+            OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
+            OpenGL.glEnable(OpenGL.DEPTH_TEST)
+            OpenGL.glDepthFunc(OpenGL.GEQUAL)
             
             Self.initialized = true
         }

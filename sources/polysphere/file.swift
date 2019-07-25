@@ -15,8 +15,14 @@ import typealias Glibc.FILE
 
 enum File 
 {
-    enum Error:Swift.Error, CustomStringConvertible
+    enum Error:RecursiveError
     {
+        static 
+        var namespace:String 
+        {
+            "file error"
+        }
+        
         case fopen(path:String, code:Int32)
         case fseek(path:String, code:Int32)
         case ftell(path:String, code:Int32)
@@ -24,7 +30,7 @@ enum File
         case fwrite(path:String, code:Int32)
         case fclose(path:String, code:Int32)
         
-        var description:String 
+        func unpack() -> (String, Swift.Error?)
         {
             let thrower:String
             switch self 
@@ -52,7 +58,7 @@ enum File
                     .fwrite(path: let path, code: let code),
                     .fclose(path: let path, code: let code):
                 let message:String = .init(cString: strerror(code))
-                return "\(thrower) '\(path)': \(message)"
+                return ("\(thrower) '\(path)': \(message)", nil)
             }
         }
     }

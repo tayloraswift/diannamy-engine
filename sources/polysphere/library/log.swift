@@ -1,6 +1,27 @@
 protocol RecursiveError:Swift.Error 
 {
     func unpack() -> (String, Swift.Error?)
+    
+    static 
+    var namespace:String 
+    {
+        get 
+    }
+}
+extension Swift.Error 
+{
+    static 
+    var description:String 
+    {
+        if let type:RecursiveError.Type = Self.self as? RecursiveError.Type
+        {
+            return type.namespace
+        }
+        else 
+        {
+            return .init(reflecting: Self.self)
+        }
+    }
 }
 
 enum Log 
@@ -15,29 +36,68 @@ enum Log
         case note, advisory, warning, error, fatal
     }
     
-    private 
-    enum Color 
+    enum Highlight 
     {
+        enum RGB 
+        {
+            case black
+            case white 
+            case gray 
+            case darkGray
+            case red 
+            case purple 
+            case indigo 
+            case blue 
+            case cyan 
+            case teal 
+            
+            var rgb:(r:UInt8, g:UInt8, b:UInt8) 
+            {
+                switch self 
+                {
+                    case .black:    return (0,   0,   0)
+                    case .white:    return (255, 255, 255)
+                    case .gray:     return (160, 160, 160)
+                    case .darkGray: return (60,  60,  60)
+                    case .red:      return (255, 80,  90)
+                    case .purple:   return (255, 100, 255)
+                    case .indigo:   return (160, 40,  255)
+                    case .blue:     return (20,  120, 255)
+                    case .cyan:     return (10,  220, 255)
+                    case .teal:     return (2,   255, 152)
+                }
+            } 
+        }
+        
         static 
-        var reset:String    { "\u{1B}[39m" }
+        var bold:String     = "\u{1B}[1m"
         static 
-        var teal:String     { "\u{1B}[38;2;2;255;152m" }
+        var reset:String    = "\u{1B}[0m"
+        
         static 
-        var blue:String     { "\u{1B}[38;2;20;120;255m" }
+        func fg(_ color:RGB?) -> String 
+        {
+            if let color:(r:UInt8, g:UInt8, b:UInt8) = color?.rgb
+            {
+                return "\u{1B}[38;2;\(color.r);\(color.g);\(color.b)m"
+            }
+            else 
+            {
+                return "\u{1B}[39m"
+            }
+        }
         static 
-        var indigo:String   { "\u{1B}[38;2;120;0;255m" }
-        static 
-        var purple:String   { "\u{1B}[38;2;255;100;255m" }
-        static 
-        var red:String      { "\u{1B}[38;2;255;80;90m" }
-    }
-    private 
-    enum Bold 
-    {
-        static 
-        var on:String       { "\u{1B}[1m" }
-        static 
-        var off:String      { "\u{1B}[0m" }
+        func bg(_ color:RGB?) -> String 
+        {
+            if let color:(r:UInt8, g:UInt8, b:UInt8) = color?.rgb
+            {
+                return "\u{1B}[48;2;\(color.r);\(color.g);\(color.b)m"
+            }
+            else 
+            {
+                return "\u{1B}[49m"
+            }
+        }
     }
     
     private static 
@@ -56,7 +116,7 @@ enum Log
         if string == previous 
         {
             multiplicity   += 1
-            Swift.print("\u{1B}[1A\u{1B}[K\(string) \(Bold.on)\(Color.blue)(\(multiplicity))\(Color.reset)\(Bold.off)")
+            Swift.print("\u{1B}[1A\u{1B}[K\(string) \(Highlight.bold)\(Highlight.fg(.blue))(\(multiplicity))\(Highlight.reset)")
         }
         else 
         {
@@ -67,34 +127,46 @@ enum Log
     }
     
     static 
+    func print(_ anything:Any...) 
+    {
+        Self.print(anything.map{ "\($0)" }.joined(separator: " "))
+    }
+    
+    static 
     func print(_ severity:Severity, _ message:String, from source:Source) 
     {
         let interjection:String 
         switch severity 
         {
         case .note:
-            Self.print("\(Bold.on)(\(source))\(Bold.off) \(message)")
+            Self.print("\(Highlight.bold)(\(source))\(Highlight.reset) \(message)")
             return 
         
         // only used for the opengl `SEVERITY_LOW` alert level
         case .advisory:
-            interjection = "\(Color.indigo)advisory:\(Color.reset)"
+            interjection = "\(Highlight.fg(.indigo))advisory:\(Highlight.fg(nil))"
         
         case .warning:
-            interjection = "\(Color.purple)warning:\(Color.reset)"
+            interjection = "\(Highlight.fg(.purple))warning:\(Highlight.fg(nil))"
         case .error:
-            interjection = "\(Color.red)error:\(Color.reset)"
+            interjection = "\(Highlight.fg(.red))error:\(Highlight.fg(nil))"
         case .fatal:
-            interjection = "\(Color.red)fatal error:\(Color.reset)"
+            interjection = "\(Highlight.fg(.red))fatal error:\(Highlight.fg(nil))"
         }
         
-        Self.print("\(Bold.on)(\(source)) \(interjection) \(message)\(Bold.off)")
+        Self.print("\(Highlight.bold)(\(source)) \(interjection) \(message)\(Highlight.reset)")
     }
     
     static 
     func note(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
     {
         Self.print(.note, message, from: source)
+    }
+    
+    static 
+    func advisory(_ message:String, from source:Source = .diannamy, file _:String = #file, line _:Int = #line)
+    {
+        Self.print(.advisory, message, from: source)
     }
     
     static 
@@ -106,7 +178,7 @@ enum Log
     static 
     func dump(_ items:Any..., from source:Source = .diannamy, file:String = #file, line:Int = #line)
     {
-        Self.print("\(Bold.on)(\(source)) \(Color.teal)\(file):\(line):\(Color.reset)\n\(items.map{ "\($0)" }.joined(separator: " "))\(Bold.off)")
+        Self.print("\(Highlight.bold)(\(source)) \(Highlight.fg(.teal))\(file):\(line):\(Highlight.fg(nil))\n\(items.map{ "\($0)" }.joined(separator: " "))\(Highlight.reset)")
     }
     
     static 
@@ -150,7 +222,7 @@ enum Log
         for (i, (type, message)):(Int, (type:Swift.Error.Type, message:String)) in 
             stack.reversed().enumerated()
         {
-            Self.print("\(Bold.on)\(Color.red)[\(i)]:\(Color.reset) \(String.init(reflecting: type))\(Bold.off)")
+            Self.print("\(Highlight.bold)[\(i)]: \(Highlight.fg(.red))\(type.description)\(Highlight.reset)")
             Self.print(message)
         }
     }
@@ -158,7 +230,7 @@ enum Log
     static 
     func unreachable(file:String = #file, line:Int = #line) -> Never
     {
-        Self.print("\(Bold.on)\(file):\(line): \(Color.red)unreachable code executed\(Color.reset)\(Bold.off)")
+        Self.print("\(Highlight.bold)\(file):\(line): \(Highlight.fg(.red))unreachable code executed\(Highlight.reset)")
         fatalError()
     }
 }

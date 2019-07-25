@@ -1,0 +1,61 @@
+// selector tests 
+text.p1{}
+text._p2 {}
+text.__p3 {} 
+text.p4__ { // }
+  } 
+
+.p_5 {   }
+> .p6{
+}
+
+text  >  text.p7 {}
+text  >  text .p8 {}
+text  text .p9_{}
+
+text.p10__#foo{}
+text#foo_.p12 {}
+text #__foo__.p13 {} 
+#foo { // }
+} 
+  
+ * { }
+
+> * > * * {}
+* *{}
+* text text * text > text 
+{
+  }
+
+// property tests 
+*   #bar 
+{
+    line_height : 20   
+indent:1_9_8_9
+    
+    color   :(1, 
+                    0.6, 
+                    0x1p-2, 1
+)
+font: 
+    'assets/fonts/SourceSansPro-Regular.ttf'@     // 16 
+    18
+    features    : kern( true ), salt(1
+    ), onum, liga ( 0 ), 
+        calt
+        
+        
+        offset: (1.490435,-0x0p2)
+}
+
+.foo{wrap:true}
+.bar{ features:  kern(true) 
+    trace: none
+align: justify}
+
+#baz  {
+    color: rgba (255,255 ,255 , 127 )
+    align: begin 
+    position: relative 
+    trace: none
+}
