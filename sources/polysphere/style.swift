@@ -1,7 +1,20 @@
+protocol _UIStyleSheetEnumeration:Hashable
+{
+    static 
+    var type:UI.Style.Sheet.Parse.Expression.Keyword 
+    {
+        get
+    }
+    
+    init?(string:String)
+}
+
 extension UI.Style 
 {
     enum Sheet 
     {
+        typealias Enumeration = _UIStyleSheetEnumeration
+        
         enum Error:RecursiveError 
         {
             typealias Location = (line:Int, column:Int)
@@ -12,7 +25,7 @@ extension UI.Style
                 "stylesheet error"
             }
             
-            case source(name:String, error:Swift.Error)
+            case source(name:String, error:Swift.Error?)
             case syntax(name:String, source:String, error:Swift.Error)
             
             func unpack() -> (String, Swift.Error?)
@@ -156,7 +169,7 @@ extension UI.Style
                 }
             }
             
-            enum Lexeme:CustomStringConvertible
+            enum Lexeme:Equatable, CustomStringConvertible
             {
                 case identifier(String)
                 case bool(Bool)
@@ -573,6 +586,64 @@ extension UI.Style
                         return "' '"
                     }
                 }
+                
+                static 
+                func load(identifier lexeme:Self) -> String? 
+                {
+                    switch lexeme
+                    {
+                    case .identifier(let identifier):
+                        return identifier
+                    default:
+                        return nil 
+                    }
+                }
+                static 
+                func load(bool lexeme:Self) -> Bool? 
+                {
+                    switch lexeme
+                    {
+                    case .bool(let value):
+                        return value
+                    default:
+                        return nil 
+                    }
+                }
+                static 
+                func load(int lexeme:Self) -> Int? 
+                {
+                    switch lexeme
+                    {
+                    case .int(let value):
+                        return value
+                    default:
+                        return nil 
+                    }
+                }
+                static 
+                func load(float lexeme:Self) -> Float? 
+                {
+                    switch lexeme
+                    {
+                    case .int(let value):
+                        return .init(value)
+                    case .float(let value):
+                        return value
+                    default:
+                        return nil 
+                    }
+                }
+                static 
+                func load(string lexeme:Self) -> String? 
+                {
+                    switch lexeme
+                    {
+                    case .string(let string):
+                        return string
+                    default:
+                        return nil 
+                    }
+                }
             }
             
             static 
@@ -631,23 +702,47 @@ extension UI.Style
         {
             enum Expression 
             {
+                enum Keyword 
+                {
+                    case element, property, feature, positioning, alignment, colortype
+                    
+                    var prosaicDescription:String 
+                    {
+                        switch self 
+                        {
+                        case .element:
+                            return "element type"
+                        case .property:
+                            return "stylesheet property"
+                        case .feature:
+                            return "font feature"
+                        case .positioning:
+                            return "positioning mode"
+                        case .alignment:
+                            return "alignment mode"
+                        case .colortype:
+                            return "color type"
+                        }
+                    }
+                }
+                
                 case selector 
                 case combinator 
                 case rules
                 case rule 
                 
-                case boolean 
-                case integer 
-                case float 
+                indirect 
+                case value(Property, Self?)
                 
-                case tuple(Int)
+                case keyword(Keyword)
+                case bool, int, float, string, color
                 
-                case font 
-                case features
-                case feature
+                indirect 
+                case tuple(Int, Self)
                 
-                case enumeration(Identifier)
-                case color 
+                indirect 
+                case metrics(Self)
+                case rawcolor
                 
                 var prosaicDescription:String 
                 {
@@ -662,34 +757,32 @@ extension UI.Style
                     case .rule:
                         return "stylesheet rule"
                         
-                    case .boolean:
-                        return "boolean literal"
-                    case .integer:
-                        return "integer literal"
+                    case .keyword(let keyword):
+                        return keyword.prosaicDescription
+                    
+                    case .bool:
+                        return "boolean"
+                    case .int:
+                        return "integer"
                     case .float:
-                        return "float literal"
-                    
-                    case .tuple(let count):
-                        return "vector<\(count)> literal"
-                    
-                    case .font:
-                        return "font selection expression"
-                    case .features:
-                        return "font features list"
-                    case .feature:
-                        return "font feature mode expression"
-                    
-                    case .enumeration(let type):
-                        return "\(type) specifier"
+                        return "floating-point"
+                    case .string:
+                        return "string"
                     case .color:
-                        return "color literal"
+                        return "color"
+                    
+                    case .tuple(let count, let type):
+                        return "\(type.prosaicDescription) \(count)-tuple"
+                    
+                    case .metrics(let type):
+                        return "\(type.prosaicDescription) metrics expression"
+                    case .rawcolor:
+                        return "floating-point raw color expression"
+                        
+                    case .value(let property, let expected):
+                        return "\(property.prosaicDescription) expression\(expected.map{ ", expected \($0.prosaicDescription) literal" } ?? "")"
                     }
                 }
-            }
-            
-            enum Identifier 
-            {
-                case element, property, fontFeature, positioning, alignment, colortype
             }
             
             enum Error:RecursiveError 
@@ -700,44 +793,28 @@ extension UI.Style
                     "stylesheet parsing error"
                 }
                 
-                case undefined(Identifier, String, in:Expression, range:Range<String.Index>)
+                case undefined(Expression.Keyword, String, in:Expression, range:Range<String.Index>)
                 case duplicate(Lex.Lexeme, in:Expression, range:Range<String.Index>)
-                case unexpected(Lex.Lexeme, in:Expression, range:Range<String.Index>)
+                case unexpected(Lex.Lexeme?, in:Expression, range:Range<String.Index>)
                 case missing(Lex.Lexeme, before:Lex.Lexeme, in:Expression, range:Range<String.Index>)
-                case end(Expression, range:Range<String.Index>)
                 case other(String, range:Range<String.Index>)
                 
                 func unpack() -> (String, Swift.Error?)
                 {
                     switch self 
                     {
-                    case .undefined(let type, let identifier, in: _, range: _):
-                        let message:String 
-                        switch type 
-                        {
-                        case .element:
-                            message = "not a valid element type"
-                        case .property:
-                            message = "not a valid stylesheet property"
-                        case .fontFeature:
-                            message = "not a valid font feature"
-                        case .positioning:
-                            message = "not a valid positioning mode"
-                        case .alignment:
-                            message = "not a valid alignment mode"
-                        case .colortype:
-                            message = "not a valid color type"
-                        }
-                        return ("'\(identifier)' is \(message)", nil)
+                    case .undefined(let type, let identifier, in: let expression, range: _):
+                        return ("'\(identifier)' is not a valid \(type.prosaicDescription) in \(expression.prosaicDescription)", nil)
                     
-                    case .duplicate(let lexeme, in: let expression, range: _):
+                    case .duplicate(let lexeme,     in: let expression, range: _):
                         return ("duplicate \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
-                    case .unexpected(let lexeme, in: let expression, range: _):
+                    case .unexpected(let lexeme?,   in: let expression, range: _):
                         return ("unexpected \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                    case .unexpected(nil,           in: let expression, range: _):
+                        return ("unexpected end of stylesheet while parsing \(expression.prosaicDescription)", nil)
+                    
                     case .missing(let expected, before: let lexeme, in: let expression, range: _):
                         return ("missing \(expected.prosaicDescription) before \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
-                    case .end(let expression, range: _):
-                        return ("unexpected end of stylesheet while parsing \(expression.prosaicDescription)", nil)
                     case .other(let message, range: _):
                         return (message, nil)
                     }
@@ -751,13 +828,13 @@ extension UI.Style
                             .duplicate(_, in: _,            range: let range), 
                             .unexpected(_, in: _,           range: let range), 
                             .missing(_, before: _, in: _,   range: let range), 
-                            .end(_,                         range: let range), 
                             .other(_,                       range: let range):
                         return range
                     }
                 }
             }
             
+            private 
             struct Buffer 
             {
                 private 
@@ -807,7 +884,7 @@ extension UI.Style
                 
                 // parsing functions 
                 mutating 
-                func selector() throws -> _Selector?
+                func selector() throws -> Selector.Pattern?
                 {
 
                     enum State 
@@ -830,9 +907,9 @@ extension UI.Style
                         case expectBodyComponent(Component)
                     }
                     
-                    var levels:[(vector:Bool, level:_Selector.Level)] = []
+                    var levels:[(vector:Bool, level:Selector.Level)] = []
                     var vector:Bool = true, 
-                        level:_Selector.Level = .any
+                        level:Selector.Level = .any
                     var state:State = .startHead(first: true)
                     
                     while true 
@@ -841,31 +918,31 @@ extension UI.Style
                         
                         switch (state, lexeme) 
                         {
-                        case    (.startHead,            .identifier("text")):
+                        case    (.startHead,            .identifier("text")?):
                             level.element = UI.Text.self 
                             state = .startBodyComponent
                         
-                        case    (.startHead,            .identifier(let identifier)):
+                        case    (.startHead,            .identifier(let identifier)?):
                             throw Error.undefined(.element, identifier, in: .selector, range: range)
                             
-                        case    (.startHead,            .star):
+                        case    (.startHead,            .star?):
                             state = .startBodyComponent
                         
-                        case    (.startHead,            .period), 
-                                (.startBodyComponent,   .period):
+                        case    (.startHead,            .period?), 
+                                (.startBodyComponent,   .period?):
                             state = .expectBodyComponent(.class)
                         
-                        case    (.startBodyComponent,   .hashtag):
+                        case    (.startBodyComponent,   .hashtag?):
                             guard level.identifier == nil 
                             else 
                             {
                                 throw Error.duplicate(.hashtag, in: .selector, range: range)
                             }
                             fallthrough
-                        case    (.startHead,            .hashtag):
+                        case    (.startHead,            .hashtag?):
                             state = .expectBodyComponent(.identifier)
                         
-                        case    (.startHead,            .chevron):
+                        case    (.startHead,            .chevron?):
                             guard vector 
                             else 
                             {
@@ -874,33 +951,33 @@ extension UI.Style
                             
                             vector = false 
                         
-                        case    (.startHead,            .whitespace), 
-                                (.startHead,            .newline):
+                        case    (.startHead,            .whitespace?), 
+                                (.startHead,            .newline?):
                             break 
                         
                         
-                        case    (.startBodyComponent,   .whitespace), 
-                                (.startBodyComponent,   .newline):
+                        case    (.startBodyComponent,   .whitespace?), 
+                                (.startBodyComponent,   .newline?):
                             levels.append((vector, level))
                             vector = true 
                             level  = .any 
                             
                             state = .startHead(first: false)
                         
-                        case    (.startBodyComponent,   .chevron):
+                        case    (.startBodyComponent,   .chevron?):
                             throw Error.missing(.whitespace, before: .chevron, in: .selector, range: range)
                         
                         
-                        case    (.expectBodyComponent(.class),      .identifier(let identifier)):
+                        case    (.expectBodyComponent(.class),      .identifier(let identifier)?):
                             level.classes.update(with: identifier)
                             state = .startBodyComponent
                     
-                        case    (.expectBodyComponent(.identifier), .identifier(let identifier)):
+                        case    (.expectBodyComponent(.identifier), .identifier(let identifier)?):
                             level.identifier = identifier
                             state = .startBodyComponent
                         
                         // exit paths and failure conditions 
-                        case    (.startBodyComponent,               .braceLeft), 
+                        case    (.startBodyComponent,               .braceLeft?), 
                                 (.startBodyComponent,               nil):
                             levels.append((vector, level))
                             fallthrough
@@ -909,18 +986,18 @@ extension UI.Style
                         
                         case    (.startHead(first: true),          nil):
                             return nil 
-                        case    (.startHead(first: true),          .braceLeft):
+                        case    (.startHead(first: true),          .braceLeft?):
                             throw Error.other("\(Expression.selector.prosaicDescription) cannot be empty, use the `*` selector to match all elements", range: range)
                         
                         // `{` is the only character that can occur immediately after 
                         // a selector expression without whitespace 
-                        case    (.startHead(first: true),           .some(let lexeme)), 
-                                (.startBodyComponent,               .some(let lexeme)), 
-                                (.expectBodyComponent(_),           .some(let lexeme)):
+                        case    (.startHead(first: true),           let lexeme?), 
+                                (.startBodyComponent,               let lexeme?), 
+                                (.expectBodyComponent(_),           let lexeme?):
                             throw Error.unexpected(lexeme, in: .selector, range: range)
                         
                         case    (.expectBodyComponent(_),           nil):
-                            throw Error.end(.selector, range: range)
+                            throw Error.unexpected(nil,    in: .selector, range: range)
                         }
                         
                         self.advance()
@@ -933,16 +1010,8 @@ extension UI.Style
                     // ...
                     try self.consumeWhitespaceAndNewlines()
                     // {
-                    try self.expect(expression: .rules) 
-                    {
-                        switch $0 
-                        {
-                        case .braceLeft:
-                            return true 
-                        default:
-                            return false
-                        }
-                    }
+                    try self.expect(expression: .rules){ $0 == .braceLeft }
+                    
                     var properties:[Property: Any] = [:]
                     while true 
                     {
@@ -960,34 +1029,17 @@ extension UI.Style
                         
                         // foo
                         let range:Range<String.Index> = self.next.range
-                        let property:Property = try self.expect(expression: .rules)
+                        let name:String = try self.expect(expression: .rules, where: Lex.Lexeme.load(identifier:))
+                        guard let property:Property = Property.init(name) 
+                        else 
                         {
-                            switch $0 
-                            {
-                            case .identifier(let identifier):
-                                guard let property:Property = Property.init(identifier) 
-                                else 
-                                {
-                                    throw Error.undefined(.property, identifier, in: .rules, range: range)
-                                }
-                                return property
-                            default:
-                                return nil 
-                            }
+                            throw Error.undefined(.property, name, in: .rules, range: range)
                         }
+                        
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         // :
-                        try self.expect(expression: .rule) 
-                        {
-                            switch $0 
-                            {
-                            case .colon:
-                                return true 
-                            default:
-                                return false
-                            }
-                        }
+                        try self.expect(expression: .rule){ $0 == .colon }
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         
@@ -1008,10 +1060,8 @@ extension UI.Style
                             self.advance()
                             continue 
                         
-                        case let lexeme?:
+                        case let lexeme:
                             throw Error.unexpected(lexeme, in: .rule, range: self.next.range)
-                        case nil:
-                            throw Error.end(.rule, range: self.next.range)
                         }
                     }
                 }
@@ -1022,47 +1072,38 @@ extension UI.Style
                     switch property 
                     {
                     case .wrap:
-                        let value:Bool = try self.expect(expression: .boolean) 
-                        {
-                            switch $0 
-                            {
-                            case .bool(let value):
-                                return value 
-                            default:
-                                return nil 
-                            }
-                        }
+                        let value:Bool = try self.expect(expression: .value(property, .bool), 
+                            where: Lex.Lexeme.load(bool:)) 
                         return value 
                     
                     case .indent, .line_height:
-                        let value:Int = try self.expect(expression: .integer) 
-                        {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return value 
-                            default:
-                                return nil 
-                            }
-                        }
+                        let value:Int = try self.expect(expression: .value(property, .int), 
+                            where: Lex.Lexeme.load(int:)) 
                         return value 
                     
                     case .padding:
-                        let vector:[Int] = try self.tuple(4, expression: .integer) 
+                        let v:[Int] = try self.vector(1 ..< 5, expression: .value(property, .metrics(.int)), 
+                            innerExpression: .metrics(.int), 
+                            whereElement: Lex.Lexeme.load(int:)) 
+                                                
+                        let value:Metrics 
+                        switch v.count 
                         {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return value 
-                            default:
-                                return nil 
-                            }
+                        case 1:
+                            value = .init(v[0])
+                        case 2:
+                            value = .init(vertical: v[0], horizontal: v[1])
+                        case 3:
+                            value = .init(top: v[0], horizontal: v[1], bottom: v[2])
+                        case 4:
+                            value = .init(top: v[0], right: v[1], bottom: v[2], left: v[3])
+                        default:
+                            Log.unreachable()
                         }
-                        let value:Vector4<Int> = .init(vector[0], vector[1], vector[2], vector[3])
                         return value 
                     
                     case .color:
-                        return try self.color()
+                        return try self.color(property: property)
                     
                     case .trace:
                         let value:Vector3<Float>
@@ -1073,77 +1114,34 @@ extension UI.Style
                             self.advance()
                             value = .init(.nan, .nan, .nan)
                         default:
-                            let vector:[Float] = try self.tuple(3, expression: .float) 
-                            {
-                                switch $0 
-                                {
-                                case .int(let value):
-                                    return .init(value)
-                                case .float(let value):
-                                    return value 
-                                default:
-                                    return nil 
-                                }
-                            } 
+                            let vector:[Float] = try self.tuple(3, expression: .value(property, .tuple(3, .float)),
+                                innerExpression: .tuple(3, .float), 
+                                whereElement: Lex.Lexeme.load(float:)) 
                             value = .init(vector[0], vector[1], vector[2])
                         }
                         
                         return value 
                     
                     case .offset:
-                        let vector:[Float] = try self.tuple(2, expression: .float) 
-                        {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return .init(value)
-                            case .float(let value):
-                                return value 
-                            default:
-                                return nil 
-                            }
-                        }
+                        let vector:[Float] = try self.tuple(2, expression: .value(property, .tuple(2, .float)),
+                            innerExpression: .tuple(2, .float), 
+                            whereElement: Lex.Lexeme.load(float:))
                         let value:Vector2<Float> = .init(vector[0], vector[1])
                         return value 
                     
                     case .font:
                         // 'foo'
-                        let fontfile:String = try self.expect(expression: .font)
-                        {
-                            switch $0 
-                            {
-                            case .string(let string):
-                                return string 
-                            default:
-                                return nil 
-                            }
-                        }
+                        let fontfile:String = try self.expect(expression: .value(property, .string), 
+                            where: Lex.Lexeme.load(string:))
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         // @
-                        try self.expect(expression: .font) 
-                        {
-                            switch $0 
-                            {
-                            case .at:
-                                return true 
-                            default:
-                                return false 
-                            }
-                        }
+                        try self.expect(expression: .value(property, nil)){ $0 == .at }
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         // 16
-                        let size:Int = try self.expect(expression: .font) 
-                        {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return value 
-                            default:
-                                return nil 
-                            }
-                        }
+                        let size:Int = try self.expect(expression: .value(property, .int), 
+                            where: Lex.Lexeme.load(int:)) 
                         let fontSelection:FontSelection = .init(fontfile: fontfile, size: size)
                         return fontSelection
                     
@@ -1154,17 +1152,8 @@ extension UI.Style
                         {
                             // kern 
                             let range:Range<String.Index> = self.next.range
-                            let string:String = try self.expect(expression: .features) 
-                            {
-                                switch $0 
-                                {
-                                case .identifier(let identifier):
-                                    return identifier 
-                                default:
-                                    return nil 
-                                }
-                            }
-                            
+                            let string:String = try self.expect(expression: .value(property, .keyword(.feature)), 
+                                where: Lex.Lexeme.load(identifier:)) 
                             // ... 
                             // cannot have newline between font feature name and 
                             // opening `(`.
@@ -1187,28 +1176,15 @@ extension UI.Style
                                 // 1 ?
                                 case .int(let integer)?:
                                     value = integer 
-                                case let lexeme?:
-                                    throw Error.unexpected(lexeme, in: .feature, range: self.next.range)
-                                case nil:
-                                    throw Error.end(.feature, range: self.next.range)
+                                case let lexeme:
+                                    throw Error.unexpected(lexeme, in: .keyword(.feature), range: self.next.range)
                                 }
                                 self.advance()
                                 
                                 // ... 
                                 try self.consumeWhitespaceAndNewlines()
-                                
                                 // )
-                                try self.expect(expression: .features) 
-                                {
-                                    switch $0 
-                                    {
-                                    case .parenthesisRight:
-                                        return true 
-                                    default:
-                                        return false 
-                                    }
-                                }
-                                
+                                try self.expect(expression: .keyword(.feature)){ $0 == .parenthesisRight }
                                 // ... 
                                 try self.consumeWhitespace()
                                 
@@ -1219,7 +1195,7 @@ extension UI.Style
                             guard let feature:Feature = Feature.init(string: string, value: value) 
                             else 
                             {
-                                throw Error.undefined(.fontFeature, string, in: .features, range: range)
+                                throw Error.undefined(.feature, string, in: .value(property, nil), range: range)
                             }
                             
                             features.append(feature)
@@ -1239,63 +1215,15 @@ extension UI.Style
                         return features
                     
                     case .position:
-                        let range:Range<String.Index> = self.next.range
-                        let string:String = try self.expect(expression: .enumeration(.positioning)) 
-                        {
-                            switch $0 
-                            {
-                            case .identifier(let identifier):
-                                return identifier 
-                            default:
-                                return nil 
-                            }
-                        }
-                        
-                        let positioning:Positioning
-                        switch string 
-                        {
-                        case "relative":
-                            positioning = .relative 
-                        case "absolute":
-                            positioning = .absolute
-                        default:
-                            throw Error.undefined(.positioning, string, in: .rule, range: range)
-                        }
-                        return positioning
+                        return try self.enumeration(as: Positioning.self, expression: .value(property, nil))
                     
                     case .align:
-                        let range:Range<String.Index> = self.next.range
-                        let string:String = try self.expect(expression: .enumeration(.alignment)) 
-                        {
-                            switch $0 
-                            {
-                            case .identifier(let identifier):
-                                return identifier 
-                            default:
-                                return nil 
-                            }
-                        }
-                        
-                        let alignment:Alignment
-                        switch string 
-                        {
-                        case "begin":
-                            alignment = .begin 
-                        case "middle":
-                            alignment = .middle
-                        case "end":
-                            alignment = .end 
-                        case "justify":
-                            alignment = .justify
-                        default:
-                            throw Error.undefined(.alignment, string, in: .rule, range: range)
-                        }
-                        return alignment
+                        return try self.enumeration(as: Alignment.self, expression: .value(property, nil))
                     }
                 }
                 
                 private mutating 
-                func color() throws -> Vector4<Float> 
+                func color(property:Property) throws -> Vector4<Float> 
                 {
                     let value:Vector4<Float>
                     switch self.next.lexeme 
@@ -1304,16 +1232,10 @@ extension UI.Style
                     case .identifier("rgb")?:
                         self.advance()
                         try self.consumeWhitespaceAndNewlines()
-                        let vector:[Int] = try self.tuple(3, expression: .integer) 
-                        {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return .init(value)
-                            default:
-                                return nil 
-                            }
-                        }
+                        let vector:[Int] = try self.tuple(3, expression: .value(property, .tuple(3, .int)), 
+                            innerExpression: .tuple(3, .int), 
+                            whereElement: Lex.Lexeme.load(int:)) 
+                        
                         let factor:Float = .init(UInt8.max)
                         value = .init(
                             .init(vector[0]) / factor, 
@@ -1324,16 +1246,10 @@ extension UI.Style
                     case .identifier("rgba")?:
                         self.advance()
                         try self.consumeWhitespaceAndNewlines()
-                        let vector:[Int] = try self.tuple(4, expression: .integer) 
-                        {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return .init(value)
-                            default:
-                                return nil 
-                            }
-                        }
+                        let vector:[Int] = try self.tuple(4, expression: .value(property, .tuple(4, .int)), 
+                            innerExpression: .tuple(4, .int), 
+                            whereElement: Lex.Lexeme.load(int:)) 
+                        
                         let factor:Float = .init(UInt8.max)
                         value = .init(
                             .init(vector[0]) / factor, 
@@ -1342,41 +1258,37 @@ extension UI.Style
                             .init(vector[3]) / factor)
                     
                     case .identifier(let string)?:
-                        throw Error.undefined(.colortype, string, in: .color, range: self.next.range)
+                        throw Error.undefined(.colortype, string, in: .value(property, nil), range: self.next.range)
                     
                     default:
-                        let vector:[Float] = try self.tuple(4, expression: .float) 
+                        let v:[Float] = try self.vector(1 ..< 5, expression: .value(property, .rawcolor), 
+                            innerExpression: .rawcolor, 
+                            whereElement: Lex.Lexeme.load(float:)) 
+                                                
+                        switch v.count 
                         {
-                            switch $0 
-                            {
-                            case .int(let value):
-                                return .init(value)
-                            case .float(let value):
-                                return value 
-                            default:
-                                return nil 
-                            }
+                        case 1:
+                            value = .init(v[0], v[0], v[0], 1)
+                        case 2:
+                            value = .init(v[0], v[0], v[0], v[1])
+                        case 3:
+                            value = .init(v[0], v[1], v[2], 1)
+                        case 4:
+                            value = .init(v[0], v[1], v[2], v[3])
+                        default:
+                            Log.unreachable()
                         }
-                        value = .init(vector[0], vector[1], vector[2], vector[3])
                     }
                     return value 
                 }
                 
                 private mutating  
-                func tuple<Element>(_ count:Int, expression:Expression, 
+                func tuple<Element>(_ count:Int, expression:Expression, innerExpression:Expression, 
                     whereElement predicate:(Lex.Lexeme) throws -> Element?) throws -> [Element] 
                 {
                     // (
-                    try self.expect(expression: .tuple(count)) 
-                    {
-                        switch $0 
-                        {
-                        case .parenthesisLeft:
-                            return true 
-                        default:
-                            return false 
-                        }
-                    }
+                    try self.expect(expression: expression){ $0 == .parenthesisLeft }
+                    
                     let values:[Element] = try (0 ..< count).map 
                     {
                         index in 
@@ -1396,7 +1308,7 @@ extension UI.Style
                         if index != 0 
                         {
                             // ,
-                            try self.expect(expression: .tuple(count)) 
+                            try self.expect(expression: innerExpression) 
                             {
                                 switch $0 
                                 {
@@ -1410,38 +1322,73 @@ extension UI.Style
                             try self.consumeWhitespaceAndNewlines()
                         }
                         
-                        return try self.expect(expression: expression, where: predicate)
+                        return try self.expect(expression: innerExpression, where: predicate)
                     }
                     // ...
                     try self.consumeWhitespaceAndNewlines()
                     // )
-                    try self.expect(expression: .tuple(count)) 
-                    {
-                        switch $0 
-                        {
-                        case .parenthesisRight:
-                            return true 
-                        default:
-                            return false 
-                        }
-                    }
+                    try self.expect(expression: innerExpression){ $0 == .parenthesisRight }
                     
                     return values 
+                }
+                
+                private mutating 
+                func vector<Element>(_ constraints:Range<Int>, expression:Expression, innerExpression:Expression, 
+                    whereElement predicate:(Lex.Lexeme) throws -> Element?) throws -> [Element] 
+                {
+                    var elements:[Element] = []
+                    while true 
+                    {
+                        switch self.next.lexeme 
+                        {
+                        // \n ?
+                        case .newline, nil:
+                            guard elements.count >= constraints.lowerBound
+                            else 
+                            {
+                                throw Error.unexpected(self.next.lexeme, in: innerExpression, range: self.next.range)
+                            }
+                            return elements 
+                        
+                        case let lexeme?:
+                            guard elements.count < constraints.upperBound
+                            else 
+                            {
+                                throw Error.unexpected(lexeme, in: innerExpression, range: self.next.range)
+                            }
+                            break 
+                        }
+                        
+                        // E
+                        elements.append(try self.expect(expression: 
+                            elements.isEmpty ? expression : innerExpression, where: predicate))
+                        // ...
+                        try self.consumeWhitespace()
+                    }
+                }
+                
+                private mutating 
+                func enumeration<E>(as _:E.Type, expression:Expression) throws -> E where E:Enumeration 
+                {
+                    let range:Range<String.Index> = self.next.range
+                    let string:String = try self.expect(expression: expression, 
+                        where: Lex.Lexeme.load(identifier:))
+                                        
+                    guard let enumeration:E = E.init(string: string) 
+                    else 
+                    {
+                        throw Error.undefined(E.type, string, in: expression, range: range)
+                    }
+                    return enumeration
                 }
                 
                 private mutating  
                 func expect<R>(expression:Expression, 
                     where predicate:(Lex.Lexeme) throws -> R?) throws -> R
                 {
-                    let (range, dereference):(Range<String.Index>, Lex.Lexeme?) = self.next
-                    
-                    guard let lexeme:Lex.Lexeme = dereference 
-                    else 
-                    {
-                        throw Error.end(expression, range: range)
-                    }
-                    
-                    if let value:R = try predicate(lexeme)
+                    let (range, lexeme):(Range<String.Index>, Lex.Lexeme?) = self.next
+                    if  let lexeme:Lex.Lexeme = lexeme, 
+                        let value:R           = try predicate(lexeme)
                     {
                         self.advance()
                         return value
@@ -1479,30 +1426,12 @@ extension UI.Style
                 private mutating 
                 func consumeWhitespaceAndNewlines() throws
                 {
-                    try self.consume
-                    {
-                        switch $0 
-                        {
-                        case .whitespace, .newline:
-                            return true 
-                        default:
-                            return false
-                        }
-                    }
+                    try self.consume{ $0 == .whitespace || $0 == .newline }
                 }
                 private mutating 
                 func consumeWhitespace() throws
                 {
-                    try self.consume
-                    {
-                        switch $0 
-                        {
-                        case .whitespace:
-                            return true 
-                        default:
-                            return false
-                        }
-                    }
+                    try self.consume{ $0 == .whitespace }
                 }
             }
             
@@ -1515,12 +1444,26 @@ extension UI.Style
                     return 
                 }
                 
-                var styles:[(_Selector, [Property: Any])] = []
-                while let selector:_Selector = try buffer.selector()
+                var styles:[(Selector.Pattern, [Property: Any])] = []
+                while let selector:Selector.Pattern = try buffer.selector()
                 {
                     styles.append((selector, try buffer.rules()))
                 }
                 print(styles.map{ "\($0.0)\n\($0.1)" }.joined(separator: "\n\n"))
+            }
+            
+            static 
+            func selector(_ lexemes:[(Range<String.Index>, Lex.Lexeme)]) throws
+                -> Selector.Pattern 
+            {
+                guard   var buffer:Buffer = Buffer.init(lexemes), 
+                        let selector:Selector.Pattern = try buffer.selector()
+                else 
+                {
+                    throw Sheet.Error.source(name: "<anonymous>", error: nil)
+                }
+                
+                return selector 
             }
             
         }
@@ -1560,41 +1503,20 @@ extension UI.Style
             }
         }
         
-        struct _Selector:CustomStringConvertible
+        // useful for debugging, generates Selector and Selector.Pattern values 
+        // from string representation
+        static 
+        func parse(selectorPattern:String) throws -> Selector.Pattern
         {
-            struct Level:CustomStringConvertible
+            do 
             {
-                var element:Any.Type 
-                var classes:Set<String>
-                var identifier:String?
-                
-                static 
-                let any:Self = .init(element: Any.self, classes: [], identifier: nil)
-                
-                var description:String 
-                {
-                    let components:(element:String, classes:String, identifier:String)
-                    if let element:UI.Element.Type = self.element as? UI.Element.Type 
-                    {
-                        components.element = "<\(String(reflecting: element).split(separator: ".").dropFirst().joined(separator: "."))>"
-                    }
-                    else
-                    {
-                        components.element = self.classes.isEmpty && self.identifier == nil ? "*" : ""
-                    }
-                    
-                    components.classes = self.classes.map{ ".\($0)" }.joined(separator: "")
-                    components.identifier = self.identifier.map{ "#\($0)" } ?? ""
-                    return "\(components.element)\(components.classes)\(components.identifier)"
-                }
+                let lexemes:[(range:Range<String.Index>, lexeme:Lex.Lexeme)] = 
+                    try Lex.lex(selectorPattern)
+                return try Parse.selector(lexemes)
             }
-            
-            private(set)
-            var levels:[(vector:Bool, level:Level)]
-            
-            var description:String 
+            catch 
             {
-                self.levels.map{ "\($0.vector ? "" : "> ")\($0.level)" }.joined(separator: " ")
+                throw Error.syntax(name: "<anonymous>", source: selectorPattern, error: error)
             }
         }
     }
@@ -1618,13 +1540,13 @@ extension UI
         private 
         let stack:
         (
-            inline:[(selector:Selector, rules:Rules.Inline)], 
-            block: [(selector:Selector, rules:Rules.Block )]
+            inline:[(pattern:Selector.Pattern, rules:Rules.Inline)], 
+            block: [(pattern:Selector.Pattern, rules:Rules.Block )]
         ) = 
         (
             [
                 (
-                    .paragraph, 
+                    "text", 
                     .init(
                         color:      .init(repeating: .max), 
                         font:       .init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16), 
@@ -1632,19 +1554,19 @@ extension UI
                     )
                 ), 
                 (
-                    .paragraph | .emphasis, 
+                    "text.emphasis", 
                     .init(
                         font:       .init(fontfile: "assets/fonts/SourceSansPro-Italic.ttf", size: 16)
                     )
                 ), 
                 (
-                    .paragraph | .strong, 
+                    "text.strong", 
                     .init(
                         font:       .init(fontfile: "assets/fonts/SourceSansPro-Bold.ttf", size: 16)
                     )
                 ), 
                 (
-                    .paragraph | .emphasis | .strong, 
+                    "text.strong.emphasis", 
                     .init(
                         font:       .init(fontfile: "assets/fonts/SourceSansPro-BoldItalic.ttf", size: 16)
                     )
@@ -1652,7 +1574,7 @@ extension UI
             ], 
             [
                 (
-                    .paragraph, 
+                    "text", 
                     .init(
                         lineheight: 20
                     )
@@ -1664,7 +1586,7 @@ extension UI
         {
             // distinct fonts (differ by size) and distinct faces
             var fontSelections:Set<FontSelection>   = []
-            for (_, rules):(Selector, Rules.Inline) in self.stack.inline 
+            for (_, rules):(Selector.Pattern, Rules.Inline) in self.stack.inline 
             {
                 if let fontSelection:FontSelection = rules.font 
                 {
@@ -1692,41 +1614,41 @@ extension UI
         }
         
         mutating 
-        func resolve(inline:Selector) -> (UInt, Inline) 
+        func resolve(inline selector:Selector) -> (UInt, Inline) 
         {
-            if let entry:(UInt, Inline) = self.cache.inline[inline] 
+            if let entry:(UInt, Inline) = self.cache.inline[selector] 
             {
                 return entry 
             }
             
             var style:Inline = .init()
-            for (selector, rules):(Selector, Rules.Inline) in self.stack.inline 
-                where inline ~= selector 
+            for (pattern, rules):(Selector.Pattern, Rules.Inline) in self.stack.inline 
+                where pattern ~= selector
             {
                 style.update(with: rules)
             } 
             
             let entry:(UInt, Inline)  = (0, style)
-            self.cache.inline[inline] = entry
+            self.cache.inline[selector] = entry
             return entry
         }
         mutating
-        func resolve(block:Selector) -> (UInt, Block) 
+        func resolve(block selector:Selector) -> (UInt, Block) 
         {
-            if let entry:(UInt, Block) = self.cache.block[block] 
+            if let entry:(UInt, Block) = self.cache.block[selector] 
             {
                 return entry 
             }
             
             var style:Block = .init()
-            for (selector, rules):(Selector, Rules.Block) in self.stack.block 
-                where block ~= selector 
+            for (pattern, rules):(Selector.Pattern, Rules.Block) in self.stack.block 
+                where pattern ~= selector 
             {
                 style.update(with: rules)
             } 
             
             let entry:(UInt, Block) = (0, style)
-            self.cache.block[block] = entry
+            self.cache.block[selector] = entry
             
             return entry
         }

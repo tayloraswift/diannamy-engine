@@ -176,10 +176,10 @@ struct Coordinator
             // ui elements 
             let text:UI.Text = .init(
                 [
-                    .init("hello world!\n", selector: .strong | .emphasis), 
-                    .init("", selector: .none)
+                    .init("hello world!\n", selector: "text.strong.emphasis"), 
+                    .init("", selector: "text")
                 ], 
-                selector: .paragraph, 
+                selector: "text", 
                 style: .init(position2: .init(0, 50)))
             self.ui = text
             

@@ -220,7 +220,7 @@ class Context
 }
 
 func main()
-{
+{    
     guard glfwInit() == 1
     else
     {
@@ -271,7 +271,7 @@ func main()
     
     Renderer.Backend.initialize(loader: loader, options: 
         .debug, 
-        .clear(r: 0.3, g: 0, b: 1, a: 1), 
+        .clear(r: 0.4, g: 0, b: 1, a: 1), 
         .clearDepth(-1))
     let coordinator:Coordinator = .init(renderer: .init(options: .clear(color: true, depth: true)))
     let context:Context         = .init(coordinator, backpointer: window)

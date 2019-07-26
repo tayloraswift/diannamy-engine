@@ -1,56 +1,5 @@
 extension UI.Style 
 {
-    struct Selector:Hashable
-    {
-        private 
-        var value:UInt64 
-        
-        static 
-        func | (rhs:Self, lhs:Self) -> Self 
-        {
-            return .init(value: rhs.value | lhs.value)
-        }
-        
-        static 
-        func & (rhs:Self, lhs:Self) -> Self 
-        {
-            return .init(value: rhs.value & lhs.value)
-        }
-        
-        static 
-        func ^ (rhs:Self, lhs:Self) -> Self 
-        {
-            return .init(value: rhs.value ^ lhs.value)
-        }
-        
-        static 
-        func ~= (rhs:Self, lhs:Self) -> Bool 
-        {
-            return lhs.value & ~rhs.value == 0 
-        }
-        
-        static 
-        func == (rhs:Self, lhs:Self) -> Bool 
-        {
-            return rhs.value == lhs.value 
-        }
-        
-        // can only have 64 cases
-        %{
-        builtin = 'hover', 'focus', 'active', 'first', 'last'
-        classes = 'paragraph', 'emphasis', 'strong', 'label'
-        }%
-        
-        % for i, tag in enumerate(builtin + classes):
-        static 
-        let ${tag}:Self = .init(value: ${hex(1 << i)})
-        % end 
-        
-        static 
-        let none:Self = .init(value: 0)
-    }
-
-    
     struct FontSelection:Hashable, CustomStringConvertible
     {
         let fontfile:String, 
@@ -149,14 +98,90 @@ extension UI.Style
         }
     }
     
-    enum Positioning:Equatable
+    struct Metrics 
     {
-        case relative, absolute 
+        var top:Int, 
+            right:Int, 
+            bottom:Int, 
+            left:Int 
+        
+        static 
+        let zero:Self = .init(0)
+        
+        init(top:Int, right:Int, bottom:Int, left:Int) 
+        {
+            self.top    = top 
+            self.right  = right 
+            self.bottom = bottom 
+            self.left   = left
+        }
+        
+        init(top:Int, horizontal:Int, bottom:Int) 
+        {
+            self.init(top: top, right: horizontal, bottom: bottom, left: horizontal)
+        }
+        
+        init(vertical:Int, horizontal:Int) 
+        {
+            self.init(top: vertical, right: horizontal, bottom: vertical, left: horizontal)
+        }
+        
+        init(_ width:Int) 
+        {
+            self.init(top: width, right: width, bottom: width, left: width)
+        }
     }
     
-    enum Alignment 
+    enum Positioning:Sheet.Enumeration
+    {
+        case relative, absolute 
+        
+        static 
+        var type:Sheet.Parse.Expression.Keyword 
+        {
+            .positioning
+        }
+        
+        init?(string:String) 
+        {
+            switch string 
+            {
+            case "relative":
+                self = .relative 
+            case "absolute":
+                self = .absolute
+            default:
+                return nil 
+            }
+        }
+    }
+    
+    enum Alignment:Sheet.Enumeration
     {
         case begin, middle, end, justify
+        
+        static 
+        var type:Sheet.Parse.Expression.Keyword 
+        {
+            .alignment
+        }
+        
+        init?(string:String) 
+        {
+            switch string 
+            {
+            case "begin":
+                self = .begin 
+            case "middle":
+                self = .middle
+            case "end":
+                self = .end 
+            case "justify":
+                self = .justify
+            default:
+                return nil 
+            }
+        }
     }
     
     %{
@@ -180,22 +205,22 @@ extension UI.Style
     
     %{
     properties = (
-        ('color',           'Vector4<Float>',       '.init(1, 1, 1, 1)'), 
-        ('font',            'FontSelection',        '.init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16)'),
-        ('features',        '[Feature]',            '[.kern(true)]'), 
-        ('wrap',            'Bool',                 'true'), 
-        ('indent',          'Int',                  '0'), 
-        ('line_height',     'Int',                  '0'), 
-        ('offset',          'Vector2<Float>',       '.init(0, 0)'), 
-        ('trace',           'Vector3<Float>',       '.init(.nan, .nan, .nan)'), 
-        ('padding',         '(Int, Int, Int, Int)', '(0, 0, 0, 0)'), 
-        ('position',        'Positioning',          '.relative'),
-        ('align',           'Alignment',            '.begin')
+        ('color',           'text color',           'Vector4<Float>',   '.init(1, 1, 1, 1)'), 
+        ('trace',           '3D tracing center',    'Vector3<Float>',   '.init(.nan, .nan, .nan)'), 
+        ('offset',          '2D offset',            'Vector2<Float>',   '.init(0, 0)'), 
+        ('padding',         'padding metrics',      'Metrics',          '.zero'), 
+        ('indent',          'indentation',          'Int',              '0'), 
+        ('line_height',     'line-height',          'Int',              '0'), 
+        ('wrap',            'line-wrapping mode',   'Bool',             'true'), 
+        ('font',            'font selection',       'FontSelection',    '.init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16)'),
+        ('features',        'font feature list',    '[Feature]',        '[.kern(true)]'), 
+        ('position',        'positioning mode',     'Positioning',      '.relative'),
+        ('align',           'alignment mode',       'Alignment',        '.begin')
     )
     }%
     enum Property 
     {
-        % for property, type, default in properties:
+        % for property, prose, type, default in properties:
         case ${property}
         % end
         
@@ -203,12 +228,23 @@ extension UI.Style
         {
             switch string 
             {
-            % for property, type, default in properties:
+            % for property, prose, type, default in properties:
             case ${'"{0}"'.format(property)}:
                 self = .${property}
             % end
             default:
                 return nil 
+            }
+        }
+        
+        var prosaicDescription:String 
+        {
+            switch self 
+            {
+            % for property, prose, type, default in properties:
+            case .${property}:
+                return ${'"{0}"'.format(prose)}
+            % end
             }
         }
     }
@@ -217,7 +253,7 @@ extension UI.Style
         private 
         var properties:[Property: Any] = [:]
         
-        % for property, type, default in properties:
+        % for property, prose, type, default in properties:
         var ${property}:${type} 
         {
             get 

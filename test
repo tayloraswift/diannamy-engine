@@ -33,10 +33,9 @@ text #__foo__.p13 {}
     line_height : 20   
 indent:1_9_8_9
     
-    color   :(1, 
-                    0.6, 
-                    0x1p-2, 1
-)
+    color   :1         0.6 0x1p-2   1
+
+padding: 4 8 8 4
 font: 
     'assets/fonts/SourceSansPro-Regular.ttf'@     // 16 
     18
@@ -46,6 +45,7 @@ font:
         
         
         offset: (1.490435,-0x0p2)
+        color: 1.0 0.005 10e-2 
 }
 
 .foo{wrap:true}

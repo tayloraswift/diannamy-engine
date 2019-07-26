@@ -1,5 +1,14 @@
 protocol _UIElement 
 {
+    var classes:Set<String> 
+    {
+        get 
+    }
+    var identifier:String? 
+    {
+        get 
+    }
+    
     func contribute(text:inout [UI.Text.DrawElement], offset:Vector2<Float>)
     func contribute(geometry:inout [UI.Geometry.DrawElement], offset:Vector2<Float>)
     
@@ -23,6 +32,15 @@ protocol _UIElement
 }
 extension UI.Element 
 {
+    var classes:Set<String> 
+    {
+        [] 
+    }
+    var identifier:String? 
+    {
+        nil 
+    }
+    
     func contribute(textOffset offset:Vector2<Float>) -> [UI.Text.DrawElement]
     {
         var elements:[UI.Text.DrawElement] = [] 
@@ -437,7 +455,9 @@ extension UI
             for i:Int in self.runs.indices
             {
                 // check inline styles
-                let lookup:(sequence:UInt, style:Style.Inline) = styledefs.resolve(inline: self[i].selector | self.selector)
+                let lookup:(sequence:UInt, style:Style.Inline) =
+                // TODO: make this correct
+                    styledefs.resolve(inline: self[i].selector)
                 if (self.runs[i].sequence.map{ $0 != lookup.sequence }) ?? true
                 {
                     self.cache.invalidate()
