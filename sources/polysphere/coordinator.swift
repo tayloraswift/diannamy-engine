@@ -151,7 +151,22 @@ struct Coordinator
     {
         self.renderer       = renderer 
         self.controllers    = []
-        self._style         = .init(wrappedValue: .init())
+        
+        let stylesheet:[(selector:UI.Style.Selector, rules:UI.Style.Rules)]
+        do 
+        {
+            // try UI.Style.Sheet.parse(path: "test")
+            stylesheet = try UI.Style.Sheet.parse(path: "default")
+        }
+        catch 
+        {
+            Log.trace(error: error)
+            stylesheet = []
+        }
+        
+        print(stylesheet.map{ "\($0.0)\n\($0.1)" }.joined(separator: "\n\n"))
+        
+        self._style         = .init(wrappedValue: .init(stylesheet: stylesheet))
         
         do 
         {
@@ -176,11 +191,11 @@ struct Coordinator
             // ui elements 
             let text:UI.Text = .init(
                 [
-                    .init("hello world!\n", selector: "text.strong.emphasis"), 
-                    .init("", selector: "text")
+                    .init("hello world!\n", classes: ["strong", "emphasis"], identifier: "span1"), 
+                    .init("", identifier: "span2")
                 ], 
-                selector: "text", 
-                style: .init(position2: .init(0, 50)))
+                identifier: "textbox", 
+                style: .init([.offset: Vector2<Float>.init(0, 50)]))
             self.ui = text
             
             // geometry 
@@ -219,7 +234,7 @@ struct Coordinator
     private mutating 
     func draw() 
     {
-        self.ui.layout(styledefs: &self.style)
+        self.ui.layout(styledefs: &self.style, path: .init())
         
         // collect text 
         let text:[UI.Text.DrawElement] = self.ui.contribute(textOffset: .zero)

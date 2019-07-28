@@ -1,6 +1,41 @@
 extension UI.Style 
 {
-    struct Selector:Hashable, CustomStringConvertible
+    struct Path:Hashable, CustomStringConvertible 
+    {
+        fileprivate 
+        var levels:[Selector.Level] 
+        
+        init() 
+        {
+            self.levels = []
+        }
+        
+        private 
+        init(levels:[Selector.Level]) 
+        {
+            self.levels = levels
+        }
+        
+        mutating 
+        func append(_ element:UI.Element)  
+        {
+            let level:Selector.Level = .init(element: type(of: element), 
+                classes: element.classes, identifier: element.identifier)
+            self.levels.append(level)
+        }
+        func appended(_ element:UI.Element) -> Self 
+        {
+            var extended:Self = self 
+            extended.append(element)
+            return extended
+        }
+        
+        var description:String 
+        {
+            return self.levels.map(String.init(describing:)).joined(separator: " > ")
+        }
+    }
+    struct Selector:CustomStringConvertible
     {
         struct Level:Hashable, CustomStringConvertible
         {
@@ -70,64 +105,29 @@ extension UI.Style
             }
         }
         
-        struct Pattern:CustomStringConvertible
-        {
-            private(set)
-            var levels:[(vector:Bool, level:Level)]
-            
-            var description:String 
-            {
-                self.levels.map{ "\($0.vector ? "" : "> ")\($0.level)" }.joined(separator: " ")
-            }
-            
-            var concrete:Selector? 
-            {
-                guard (self.levels.dropFirst().allSatisfy{ !$0.vector })
-                else 
-                {
-                    return nil 
-                }
-                return .init(levels: self.levels.map{ $0.level })
-            }
-        }
+        private(set)
+        var levels:[(vector:Bool, level:Level)]
         
-        private 
-        var levels:[Level] 
-        
-        init() 
+        var description:String 
         {
-            self.levels = []
-        }
-        
-        private 
-        init(levels:[Level]) 
-        {
-            self.levels = levels
-        }
-        
-        mutating 
-        func append(_ element:UI.Element) 
-        {
-            let level:Level = .init(element: type(of: element), 
-                classes: element.classes, identifier: element.identifier)
-            self.levels.append(level)
+            self.levels.map{ "\($0.vector ? "" : "> ")\($0.level)" }.joined(separator: " ")
         }
         
         static 
-        func ~= (pattern:Pattern, selector:Self) -> Bool
+        func ~= (selector:Self, path:Path) -> Bool
         {
-            var depth:Int = selector.levels.startIndex 
+            var depth:Int = path.levels.startIndex 
             outer:
-            for (vector, pattern):(Bool, Level) in pattern.levels 
+            for (vector, level):(Bool, Level) in selector.levels 
             {
-                while depth < selector.levels.endIndex 
+                while depth < path.levels.endIndex 
                 {
                     defer 
                     {
                         depth += 1
                     }
                     
-                    if pattern ~= selector.levels[depth] 
+                    if level ~= path.levels[depth] 
                     {
                         continue outer 
                     }
@@ -142,11 +142,6 @@ extension UI.Style
             
             return true  
         }
-        
-        var description:String 
-        {
-            return self.levels.map(String.init(describing:)).joined(separator: " > ")
-        }
     }
 }
 
@@ -156,34 +151,12 @@ extension UI.Style.Selector:ExpressibleByStringLiteral
     {
         do 
         {
-            guard let selector:UI.Style.Selector = 
-                try UI.Style.Sheet.parse(selectorPattern: stringLiteral).concrete 
-            else 
-            {
-                Log.fatal("selector literal contains descendant combinators")
-            }
-            
-            self = selector 
+            self = try UI.Style.Sheet.parse(selector: stringLiteral) 
         }
         catch 
         {
             Log.trace(error: error)
             Log.fatal("failed to parse selector literal")
-        }
-    }
-}
-extension UI.Style.Selector.Pattern:ExpressibleByStringLiteral 
-{
-    init(stringLiteral:String) 
-    {
-        do 
-        {
-            self = try UI.Style.Sheet.parse(selectorPattern: stringLiteral) 
-        }
-        catch 
-        {
-            Log.trace(error: error)
-            Log.fatal("failed to parse selector pattern literal")
         }
     }
 }

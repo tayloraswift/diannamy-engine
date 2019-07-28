@@ -83,7 +83,7 @@ class Typeface
             let image:Array2D<UInt8>    = .init(buffer, pitch: pitch, size: size)
             
             let origin:Vector2<Int>     = .cast(.init(slot.pointee.bitmap_left, -slot.pointee.bitmap_top)), 
-                metric:Vector2<Int>     = .cast(.init(slot.pointee.advance.x,    slot.pointee.advance.y)) &>> 6
+                metric:Vector2<Int>     = .cast(.init(slot.pointee.advance.x,    slot.pointee.advance.y))
             
             return .init(image, origin: origin, metric: metric)
         }
@@ -148,7 +148,7 @@ class Typeface
             {
                 let (index, sort):(Int, Sort) = $0 
                 
-                let vertices:Rectangle<Int> = .init(sort.origin, sort.origin &+ sort.bitmap.size)
+                let vertices:Rectangle<Int> = .init(sort.origin &<< 6, (sort.origin &+ sort.bitmap.size) &<< 6)
                 return .init(vertices: vertices, footprint: sort.metric.x, sprite: index)
             }
             
@@ -375,7 +375,7 @@ enum HarfBuzz
                     p64:Vector2<Int> = cursor &+ o64
                 
                 cursor &+= a64
-                let glyph:Glyph = .init(position: p64 &>> 6, cluster: .init(info.cluster), index: .init(info.codepoint))
+                let glyph:Glyph = .init(position: p64, cluster: .init(info.cluster), index: .init(info.codepoint))
                 let element:Line.ShapingElement = .init(glyph: glyph, 
                                                     breakable: info.mask & HB_GLYPH_FLAG_UNSAFE_TO_BREAK.rawValue == 0)
                 result.append(element)
@@ -571,7 +571,7 @@ enum HarfBuzz
                         else 
                         {
                             shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
-                            continue flow 
+                            break
                         }
                     }
                     

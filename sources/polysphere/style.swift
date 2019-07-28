@@ -191,6 +191,7 @@ extension UI.Style
                 case newline
                 case whitespace 
                 
+                fileprivate 
                 enum Partial 
                 {
                     case identifier(String)
@@ -588,7 +589,7 @@ extension UI.Style
                 }
                 
                 static 
-                func load(identifier lexeme:Self) -> String? 
+                func load(identifier lexeme:Self, range _:Range<String.Index>) -> String? 
                 {
                     switch lexeme
                     {
@@ -599,7 +600,7 @@ extension UI.Style
                     }
                 }
                 static 
-                func load(bool lexeme:Self) -> Bool? 
+                func load(bool lexeme:Self, range _:Range<String.Index>) -> Bool? 
                 {
                     switch lexeme
                     {
@@ -610,7 +611,7 @@ extension UI.Style
                     }
                 }
                 static 
-                func load(int lexeme:Self) -> Int? 
+                func load(int lexeme:Self, range _:Range<String.Index>) -> Int? 
                 {
                     switch lexeme
                     {
@@ -621,7 +622,19 @@ extension UI.Style
                     }
                 }
                 static 
-                func load(float lexeme:Self) -> Float? 
+                func load<T>(int lexeme:Self, as:T.Type) -> (original:Int, cast:T?)?
+                    where T:BinaryInteger 
+                {
+                    switch lexeme
+                    {
+                    case .int(let value):
+                        return (value, T.init(exactly: value))
+                    default:
+                        return nil 
+                    }
+                }
+                static 
+                func load(float lexeme:Self, range _:Range<String.Index>) -> Float? 
                 {
                     switch lexeme
                     {
@@ -634,7 +647,7 @@ extension UI.Style
                     }
                 }
                 static 
-                func load(string lexeme:Self) -> String? 
+                func load(string lexeme:Self, range _:Range<String.Index>) -> String? 
                 {
                     switch lexeme
                     {
@@ -797,6 +810,7 @@ extension UI.Style
                 case duplicate(Lex.Lexeme, in:Expression, range:Range<String.Index>)
                 case unexpected(Lex.Lexeme?, in:Expression, range:Range<String.Index>)
                 case missing(Lex.Lexeme, before:Lex.Lexeme, in:Expression, range:Range<String.Index>)
+                case overflow(Int, as:Any.Type, in:Expression, range:Range<String.Index>)
                 case other(String, range:Range<String.Index>)
                 
                 func unpack() -> (String, Swift.Error?)
@@ -808,6 +822,7 @@ extension UI.Style
                     
                     case .duplicate(let lexeme,     in: let expression, range: _):
                         return ("duplicate \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                    
                     case .unexpected(let lexeme?,   in: let expression, range: _):
                         return ("unexpected \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
                     case .unexpected(nil,           in: let expression, range: _):
@@ -815,6 +830,10 @@ extension UI.Style
                     
                     case .missing(let expected, before: let lexeme, in: let expression, range: _):
                         return ("missing \(expected.prosaicDescription) before \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                    
+                    case .overflow(let original, as: let target, in: let expression, range: _):
+                        return ("integer literal \(original) overflows destination type '\(target)' in \(expression.prosaicDescription)", nil)
+                    
                     case .other(let message, range: _):
                         return (message, nil)
                     }
@@ -828,6 +847,7 @@ extension UI.Style
                             .duplicate(_, in: _,            range: let range), 
                             .unexpected(_, in: _,           range: let range), 
                             .missing(_, before: _, in: _,   range: let range), 
+                            .overflow(_, as: _, in: _,      range: let range), 
                             .other(_,                       range: let range):
                         return range
                     }
@@ -884,7 +904,7 @@ extension UI.Style
                 
                 // parsing functions 
                 mutating 
-                func selector() throws -> Selector.Pattern?
+                func selector() throws -> Selector?
                 {
 
                     enum State 
@@ -1010,7 +1030,7 @@ extension UI.Style
                     // ...
                     try self.consumeWhitespaceAndNewlines()
                     // {
-                    try self.expect(expression: .rules){ $0 == .braceLeft }
+                    try self.expect(.braceLeft, expression: .rules)
                     
                     var properties:[Property: Any] = [:]
                     while true 
@@ -1029,7 +1049,7 @@ extension UI.Style
                         
                         // foo
                         let range:Range<String.Index> = self.next.range
-                        let name:String = try self.expect(expression: .rules, where: Lex.Lexeme.load(identifier:))
+                        let name:String = try self.expect(expression: .rules, where: Lex.Lexeme.load(identifier:range:))
                         guard let property:Property = Property.init(name) 
                         else 
                         {
@@ -1039,7 +1059,7 @@ extension UI.Style
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         // :
-                        try self.expect(expression: .rule){ $0 == .colon }
+                        try self.expect(.colon, expression: .rule)
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         
@@ -1073,18 +1093,18 @@ extension UI.Style
                     {
                     case .wrap:
                         let value:Bool = try self.expect(expression: .value(property, .bool), 
-                            where: Lex.Lexeme.load(bool:)) 
+                            where: Lex.Lexeme.load(bool:range:)) 
                         return value 
                     
                     case .indent, .line_height:
                         let value:Int = try self.expect(expression: .value(property, .int), 
-                            where: Lex.Lexeme.load(int:)) 
+                            where: Lex.Lexeme.load(int:range:)) 
                         return value 
                     
                     case .padding:
                         let v:[Int] = try self.vector(1 ..< 5, expression: .value(property, .metrics(.int)), 
                             innerExpression: .metrics(.int), 
-                            whereElement: Lex.Lexeme.load(int:)) 
+                            whereElement: Lex.Lexeme.load(int:range:)) 
                                                 
                         let value:Metrics 
                         switch v.count 
@@ -1116,7 +1136,7 @@ extension UI.Style
                         default:
                             let vector:[Float] = try self.tuple(3, expression: .value(property, .tuple(3, .float)),
                                 innerExpression: .tuple(3, .float), 
-                                whereElement: Lex.Lexeme.load(float:)) 
+                                whereElement: Lex.Lexeme.load(float:range:)) 
                             value = .init(vector[0], vector[1], vector[2])
                         }
                         
@@ -1125,23 +1145,23 @@ extension UI.Style
                     case .offset:
                         let vector:[Float] = try self.tuple(2, expression: .value(property, .tuple(2, .float)),
                             innerExpression: .tuple(2, .float), 
-                            whereElement: Lex.Lexeme.load(float:))
+                            whereElement: Lex.Lexeme.load(float:range:))
                         let value:Vector2<Float> = .init(vector[0], vector[1])
                         return value 
                     
                     case .font:
                         // 'foo'
                         let fontfile:String = try self.expect(expression: .value(property, .string), 
-                            where: Lex.Lexeme.load(string:))
+                            where: Lex.Lexeme.load(string:range:))
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         // @
-                        try self.expect(expression: .value(property, nil)){ $0 == .at }
+                        try self.expect(.at, expression: .value(property, nil))
                         // ...
                         try self.consumeWhitespaceAndNewlines()
                         // 16
                         let size:Int = try self.expect(expression: .value(property, .int), 
-                            where: Lex.Lexeme.load(int:)) 
+                            where: Lex.Lexeme.load(int:range:)) 
                         let fontSelection:FontSelection = .init(fontfile: fontfile, size: size)
                         return fontSelection
                     
@@ -1153,7 +1173,7 @@ extension UI.Style
                             // kern 
                             let range:Range<String.Index> = self.next.range
                             let string:String = try self.expect(expression: .value(property, .keyword(.feature)), 
-                                where: Lex.Lexeme.load(identifier:)) 
+                                where: Lex.Lexeme.load(identifier:range:)) 
                             // ... 
                             // cannot have newline between font feature name and 
                             // opening `(`.
@@ -1184,7 +1204,7 @@ extension UI.Style
                                 // ... 
                                 try self.consumeWhitespaceAndNewlines()
                                 // )
-                                try self.expect(expression: .keyword(.feature)){ $0 == .parenthesisRight }
+                                try self.expect(.parenthesisRight, expression: .keyword(.feature))
                                 // ... 
                                 try self.consumeWhitespace()
                                 
@@ -1223,47 +1243,51 @@ extension UI.Style
                 }
                 
                 private mutating 
-                func color(property:Property) throws -> Vector4<Float> 
+                func color(property:Property) throws -> Vector4<UInt8> 
                 {
-                    let value:Vector4<Float>
+                    func narrowToUInt8(int lexeme:Lex.Lexeme, range:Range<String.Index>) 
+                        throws -> UInt8? 
+                    {
+                        switch Lex.Lexeme.load(int: lexeme, as: UInt8.self) 
+                        {
+                        case (_, let value?)?:
+                            return value 
+                        case (let original, nil)?:
+                            throw Error.overflow(original, as: UInt8.self, in: .value(property, nil), range: range)
+                        case nil:
+                            return nil 
+                        }
+                    }
+                    
+                    let value:Vector4<UInt8>
                     switch self.next.lexeme 
                     {
                     // rgb ?
                     case .identifier("rgb")?:
                         self.advance()
                         try self.consumeWhitespaceAndNewlines()
-                        let vector:[Int] = try self.tuple(3, expression: .value(property, .tuple(3, .int)), 
+                        let v:[UInt8] = try self.tuple(3, expression: .value(property, .tuple(3, .int)), 
                             innerExpression: .tuple(3, .int), 
-                            whereElement: Lex.Lexeme.load(int:)) 
-                        
-                        let factor:Float = .init(UInt8.max)
-                        value = .init(
-                            .init(vector[0]) / factor, 
-                            .init(vector[1]) / factor, 
-                            .init(vector[2]) / factor, 
-                            1)
+                            whereElement: narrowToUInt8(int:range:)) 
+                        value = .init(v[0], v[1], v[2], .max)
                     
+                    // rgba ?
                     case .identifier("rgba")?:
                         self.advance()
                         try self.consumeWhitespaceAndNewlines()
-                        let vector:[Int] = try self.tuple(4, expression: .value(property, .tuple(4, .int)), 
+                        let v:[UInt8] = try self.tuple(4, expression: .value(property, .tuple(4, .int)), 
                             innerExpression: .tuple(4, .int), 
-                            whereElement: Lex.Lexeme.load(int:)) 
-                        
-                        let factor:Float = .init(UInt8.max)
-                        value = .init(
-                            .init(vector[0]) / factor, 
-                            .init(vector[1]) / factor, 
-                            .init(vector[2]) / factor, 
-                            .init(vector[3]) / factor)
+                            whereElement: narrowToUInt8(int:range:))
+                        value = .init(v[0], v[1], v[2], v[3])
                     
                     case .identifier(let string)?:
                         throw Error.undefined(.colortype, string, in: .value(property, nil), range: self.next.range)
                     
                     default:
-                        let v:[Float] = try self.vector(1 ..< 5, expression: .value(property, .rawcolor), 
+                        throw Error.unexpected(self.next.lexeme, in: .value(property, .keyword(.colortype)), range: self.next.range)
+                        /* let v:[Float] = try self.vector(1 ..< 5, expression: .value(property, .rawcolor), 
                             innerExpression: .rawcolor, 
-                            whereElement: Lex.Lexeme.load(float:)) 
+                            whereElement: Lex.Lexeme.load(float:range:)) 
                                                 
                         switch v.count 
                         {
@@ -1277,17 +1301,17 @@ extension UI.Style
                             value = .init(v[0], v[1], v[2], v[3])
                         default:
                             Log.unreachable()
-                        }
+                        } */
                     }
                     return value 
                 }
                 
                 private mutating  
                 func tuple<Element>(_ count:Int, expression:Expression, innerExpression:Expression, 
-                    whereElement predicate:(Lex.Lexeme) throws -> Element?) throws -> [Element] 
+                    whereElement predicate:(Lex.Lexeme, Range<String.Index>) throws -> Element?) throws -> [Element] 
                 {
                     // (
-                    try self.expect(expression: expression){ $0 == .parenthesisLeft }
+                    try self.expect(.parenthesisLeft, expression: expression)
                     
                     let values:[Element] = try (0 ..< count).map 
                     {
@@ -1308,16 +1332,7 @@ extension UI.Style
                         if index != 0 
                         {
                             // ,
-                            try self.expect(expression: innerExpression) 
-                            {
-                                switch $0 
-                                {
-                                case .comma:
-                                    return true 
-                                default:
-                                    return false 
-                                }
-                            }
+                            try self.expect(.comma, expression: innerExpression) 
                             // ...
                             try self.consumeWhitespaceAndNewlines()
                         }
@@ -1327,14 +1342,14 @@ extension UI.Style
                     // ...
                     try self.consumeWhitespaceAndNewlines()
                     // )
-                    try self.expect(expression: innerExpression){ $0 == .parenthesisRight }
+                    try self.expect(.parenthesisRight, expression: innerExpression)
                     
                     return values 
                 }
                 
                 private mutating 
                 func vector<Element>(_ constraints:Range<Int>, expression:Expression, innerExpression:Expression, 
-                    whereElement predicate:(Lex.Lexeme) throws -> Element?) throws -> [Element] 
+                    whereElement predicate:(Lex.Lexeme, Range<String.Index>) throws -> Element?) throws -> [Element] 
                 {
                     var elements:[Element] = []
                     while true 
@@ -1372,7 +1387,7 @@ extension UI.Style
                 {
                     let range:Range<String.Index> = self.next.range
                     let string:String = try self.expect(expression: expression, 
-                        where: Lex.Lexeme.load(identifier:))
+                        where: Lex.Lexeme.load(identifier:range:))
                                         
                     guard let enumeration:E = E.init(string: string) 
                     else 
@@ -1384,11 +1399,11 @@ extension UI.Style
                 
                 private mutating  
                 func expect<R>(expression:Expression, 
-                    where predicate:(Lex.Lexeme) throws -> R?) throws -> R
+                    where predicate:(Lex.Lexeme, Range<String.Index>) throws -> R?) throws -> R
                 {
                     let (range, lexeme):(Range<String.Index>, Lex.Lexeme?) = self.next
                     if  let lexeme:Lex.Lexeme = lexeme, 
-                        let value:R           = try predicate(lexeme)
+                        let value:R           = try predicate(lexeme, range)
                     {
                         self.advance()
                         return value
@@ -1396,13 +1411,22 @@ extension UI.Style
                     
                     throw Error.unexpected(lexeme, in: expression, range: range)
                 }
-                private mutating  
+                /* private mutating  
                 func expect(expression:Expression, 
-                    where predicate:(Lex.Lexeme) throws -> Bool) throws 
+                    where predicate:(Lex.Lexeme, Range<String.Index>) throws -> Bool) throws 
                 {
                     let _:Void = try self.expect(expression: expression) 
                     {
-                        try predicate($0) ? () : nil 
+                        try predicate($0, $1) ? () : nil 
+                    }
+                } */
+                private mutating  
+                func expect(_ lexeme:Lex.Lexeme, expression:Expression) throws 
+                {
+                    let _:Void = try self.expect(expression: expression) 
+                    {
+                        next, _ in 
+                        next == lexeme ? () : nil 
                     }
                 }
                 
@@ -1437,27 +1461,29 @@ extension UI.Style
             
             static 
             func stylesheet(_ lexemes:[(Range<String.Index>, Lex.Lexeme)]) throws
+                -> [(selector:Selector, rules:Rules)]
             {
                 guard var buffer:Buffer = Buffer.init(lexemes)
                 else 
                 {
-                    return 
+                    return []
                 }
                 
-                var styles:[(Selector.Pattern, [Property: Any])] = []
-                while let selector:Selector.Pattern = try buffer.selector()
+                var stylesheet:[(selector:Selector, rules:Rules)] = []
+                while let selector:Selector = try buffer.selector()
                 {
-                    styles.append((selector, try buffer.rules()))
+                    stylesheet.append((selector, .init(try buffer.rules())))
                 }
-                print(styles.map{ "\($0.0)\n\($0.1)" }.joined(separator: "\n\n"))
+                
+                return stylesheet
             }
             
             static 
             func selector(_ lexemes:[(Range<String.Index>, Lex.Lexeme)]) throws
-                -> Selector.Pattern 
+                -> Selector 
             {
                 guard   var buffer:Buffer = Buffer.init(lexemes), 
-                        let selector:Selector.Pattern = try buffer.selector()
+                        let selector:Selector = try buffer.selector()
                 else 
                 {
                     throw Sheet.Error.source(name: "<anonymous>", error: nil)
@@ -1469,7 +1495,7 @@ extension UI.Style
         }
         
         static 
-        func parse(path:String) throws 
+        func parse(path:String) throws -> [(selector:Selector, rules:Rules)]
         {
             let source:String
             do 
@@ -1491,32 +1517,32 @@ extension UI.Style
                 throw Error.syntax(name: path, source: source, error: error)
             }
             
-            print(Lex.highlight(lexemes, in: source))
-            
+            // print(Lex.highlight(lexemes, in: source))
+            let stylesheet:[(selector:Selector, rules:Rules)]
             do 
             {
-                try Parse.stylesheet(lexemes)
+                stylesheet = try Parse.stylesheet(lexemes)
             }
             catch 
             {
                 throw Error.syntax(name: path, source: source, error: error)
             }
+            return stylesheet 
         }
         
-        // useful for debugging, generates Selector and Selector.Pattern values 
-        // from string representation
+        // useful for debugging, generates Selector values from string representation
         static 
-        func parse(selectorPattern:String) throws -> Selector.Pattern
+        func parse(selector string:String) throws -> Selector
         {
             do 
             {
                 let lexemes:[(range:Range<String.Index>, lexeme:Lex.Lexeme)] = 
-                    try Lex.lex(selectorPattern)
+                    try Lex.lex(string)
                 return try Parse.selector(lexemes)
             }
             catch 
             {
-                throw Error.syntax(name: "<anonymous>", source: selectorPattern, error: error)
+                throw Error.syntax(name: "<anonymous>", source: string, error: error)
             }
         }
     }
@@ -1531,67 +1557,17 @@ extension UI
         let atlas:Atlas 
         
         private 
-        var cache:
-        (
-            inline:[Selector: (sequence:UInt, style:Inline)],
-            block:[Selector: (sequence:UInt, style:Block)]
-        )
-            
+        var cache:[Path: (sequence:UInt, style:Rules)]
         private 
-        let stack:
-        (
-            inline:[(pattern:Selector.Pattern, rules:Rules.Inline)], 
-            block: [(pattern:Selector.Pattern, rules:Rules.Block )]
-        ) = 
-        (
-            [
-                (
-                    "text", 
-                    .init(
-                        color:      .init(repeating: .max), 
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16), 
-                        features:  [.kern(true), .onum(true), .liga(true), .calt(true)]
-                    )
-                ), 
-                (
-                    "text.emphasis", 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Italic.ttf", size: 16)
-                    )
-                ), 
-                (
-                    "text.strong", 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-Bold.ttf", size: 16)
-                    )
-                ), 
-                (
-                    "text.strong.emphasis", 
-                    .init(
-                        font:       .init(fontfile: "assets/fonts/SourceSansPro-BoldItalic.ttf", size: 16)
-                    )
-                ), 
-            ], 
-            [
-                (
-                    "text", 
-                    .init(
-                        lineheight: 20
-                    )
-                ), 
-            ]
-        )
+        let stylesheet:[(selector:Selector, rules:Rules)]
         
-        init() 
+        init(stylesheet:[(selector:Selector, rules:Rules)]) 
         {
             // distinct fonts (differ by size) and distinct faces
             var fontSelections:Set<FontSelection>   = []
-            for (_, rules):(Selector.Pattern, Rules.Inline) in self.stack.inline 
+            for (_, rules):(Selector, Rules) in stylesheet
             {
-                if let fontSelection:FontSelection = rules.font 
-                {
-                    fontSelections.update(with: fontSelection)
-                }
+                fontSelections.update(with: rules.font)
             }
             
             let selections:[FontSelection]  = .init(fontSelections)
@@ -1599,7 +1575,8 @@ extension UI
             (self.atlas, fonts)             = Typeface.assemble(selections)
             
             self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
-            self.cache = ([:], [:])
+            self.cache = [:]
+            self.stylesheet = stylesheet
         }
         
         func font(_ selection:FontSelection) -> Typeface.Font
@@ -1614,42 +1591,21 @@ extension UI
         }
         
         mutating 
-        func resolve(inline selector:Selector) -> (UInt, Inline) 
+        func resolve(_ path:Path) -> (UInt, Rules) 
         {
-            if let entry:(UInt, Inline) = self.cache.inline[selector] 
+            if let entry:(UInt, Rules) = self.cache[path] 
             {
                 return entry 
             }
             
-            var style:Inline = .init()
-            for (pattern, rules):(Selector.Pattern, Rules.Inline) in self.stack.inline 
-                where pattern ~= selector
+            let style:Rules = self.stylesheet.filter{ $0.selector ~= path }
+            .reduce(into: .init()) 
             {
-                style.update(with: rules)
-            } 
-            
-            let entry:(UInt, Inline)  = (0, style)
-            self.cache.inline[selector] = entry
-            return entry
-        }
-        mutating
-        func resolve(block selector:Selector) -> (UInt, Block) 
-        {
-            if let entry:(UInt, Block) = self.cache.block[selector] 
-            {
-                return entry 
+                $0.overlay(with: $1.rules)
             }
             
-            var style:Block = .init()
-            for (pattern, rules):(Selector.Pattern, Rules.Block) in self.stack.block 
-                where pattern ~= selector 
-            {
-                style.update(with: rules)
-            } 
-            
-            let entry:(UInt, Block) = (0, style)
-            self.cache.block[selector] = entry
-            
+            let entry:(UInt, Rules)  = (0, style)
+            self.cache[path] = entry
             return entry
         }
     }

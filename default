@@ -1,21 +1,20 @@
-text.paragraph 
+text 
 {
-    line_height : 20
+    line_height : 24
     
-    color       : rgb(255, 255, 255) 
-    font        : 'assets/fonts/SourceSansPro-Regular.ttf' @ 16 
-    features    : kern( true ), salt(1), onum, liga ( 0 ), calt
+    color       : rgb(255, 0, 255) 
+    font        : 'assets/fonts/SourceSansPro-Regular.ttf' @ 20
+    features    : kern, onum, liga, calt
 }
-text.paragraph > * > .emphasis 
+text > .emphasis 
 {
-
-    // font        : 'assets/fonts/SourceSansPro-Italic.ttf' @ 16
+    font        : 'assets/fonts/SourceSansPro-Italic.ttf' @ 20
 }
-text.paragraph > .strong
+text > .strong
 {
-    // font        : 'assets/fonts/SourceSansPro-Bold.ttf' @ 16
+    font        : 'assets/fonts/SourceSansPro-Bold.ttf' @ 20
 }
-text.paragraph > .emphasis.strong
+text > .emphasis.strong
 {
-    // font        : 'assets/fonts/SourceSansPro-BoldItalic.ttf' @ 16
+    font        : 'assets/fonts/SourceSansPro-BoldItalic.ttf' @ 20
 }

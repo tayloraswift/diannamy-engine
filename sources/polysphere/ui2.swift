@@ -1,5 +1,6 @@
 protocol _UIElement 
 {
+    typealias Block = _UIElementBlock
     var classes:Set<String> 
     {
         get 
@@ -8,7 +9,9 @@ protocol _UIElement
     {
         get 
     }
-    
+}
+protocol _UIElementBlock:UI.Element
+{
     func contribute(text:inout [UI.Text.DrawElement], offset:Vector2<Float>)
     func contribute(geometry:inout [UI.Geometry.DrawElement], offset:Vector2<Float>)
     
@@ -28,19 +31,10 @@ protocol _UIElement
     
     // the equivalent of draw()
     mutating 
-    func layout(styledefs:inout UI.Style) -> Vector2<Int>
+    func layout(styledefs:inout UI.Style, path:UI.Style.Path) -> Vector2<Int>
 }
-extension UI.Element 
+extension UI.Element.Block
 {
-    var classes:Set<String> 
-    {
-        [] 
-    }
-    var identifier:String? 
-    {
-        nil 
-    }
-    
     func contribute(textOffset offset:Vector2<Float>) -> [UI.Text.DrawElement]
     {
         var elements:[UI.Text.DrawElement] = [] 
@@ -75,7 +69,7 @@ extension UI.Element
         return false 
     }
     
-    func layout(styledefs _:inout UI.Style) -> Vector2<Int> 
+    func layout(styledefs _:inout UI.Style, path _:UI.Style.Path) -> Vector2<Int> 
     {
         return .zero 
     }
@@ -120,8 +114,8 @@ extension UI
             private(set)
             var points:[Point]
             let triangles:[Triangle]
-            var position2:Vector2<Float>, 
-                position3:Vector3<Float> 
+            var s0:Vector2<Float>, 
+                r0:Vector3<Float> 
             
             var startIndex:Int 
             {
@@ -136,9 +130,9 @@ extension UI
             {
                 let p:Point = self.points[index]
                 return .init(
-                    s: (p.s.x, p.s.y), 
-                    r: (self.position3.x, self.position3.y, self.position3.z), 
-                    c: (p.color.x, p.color.y, p.color.z, p.color.w))
+                    s: (self.s0 + p.s).tuple, 
+                    r: self.r0.tuple, 
+                    c: p.color.tuple)
             }
             
             mutating 
@@ -154,16 +148,16 @@ extension UI
             {
                 return 
                     .init(
-                        points:    self.points, 
-                        triangles: self.triangles, 
-                        position2: self.position2 + offset, 
-                        position3: self.position3
+                        points:     self.points, 
+                        triangles:  self.triangles, 
+                        s0:         self.s0 + offset, 
+                        r0:         self.r0
                     )
             }
         }
     }
     
-    struct Text:Element
+    struct Text:Element.Block
     {
         struct DrawElement:RandomAccessCollection
         {
@@ -198,8 +192,8 @@ extension UI
             // 3D tracing is disabled using a (.nan, .nan, .nan) triple
             private(set)
             var glyphs:[Glyph]
-            var position2:Vector2<Float>, 
-                position3:Vector3<Float> 
+            var s0:Vector2<Float>, 
+                r0:Vector3<Float> 
             
             var startIndex:Int 
             {
@@ -210,21 +204,21 @@ extension UI
                 return self.glyphs.endIndex 
             }
             
-            init(glyphs:[Glyph], position2:Vector2<Float>, position3:Vector3<Float>) 
+            init(glyphs:[Glyph], s0:Vector2<Float>, r0:Vector3<Float>) 
             {
                 self.glyphs    = glyphs 
-                self.position2 = position2 
-                self.position3 = position3
+                self.s0 = s0 
+                self.r0 = r0
             }
             
             private 
             func vertex(s:Vector2<Float>, t:Vector2<Float>, color:Vector4<UInt8>) -> Vertex 
             {
                 return .init(
-                    s: (s.x, s.y), 
-                    t: (t.x, t.y), 
-                    r: (self.position3.x, self.position3.y, self.position3.z), 
-                    c: (color.x, color.y, color.z, color.w))
+                    s: s.tuple, 
+                    t: t.tuple, 
+                    r: self.r0.tuple, 
+                    c: color.tuple)
             }
             
             subscript(index:Int) -> (Vertex, Vertex) 
@@ -232,8 +226,8 @@ extension UI
                 let g:Glyph = self.glyphs[index]
                 return 
                     (
-                        self.vertex(s: g.s.a + self.position2, t: g.t.a, color: g.color), 
-                        self.vertex(s: g.s.b + self.position2, t: g.t.b, color: g.color)
+                        self.vertex(s: g.s.a + self.s0, t: g.t.a, color: g.color), 
+                        self.vertex(s: g.s.b + self.s0, t: g.t.b, color: g.color)
                     )
             }
             
@@ -250,24 +244,27 @@ extension UI
             {
                 return 
                     .init(
-                        glyphs:    self.glyphs, 
-                        position2: self.position2 + offset, 
-                        position3: self.position3
+                        glyphs: self.glyphs, 
+                        s0:     self.s0 + offset, 
+                        r0:     self.r0
                     )
             }
         }
         
-        struct Run 
+        struct Run:Element
         {
-            let selector:Style.Selector 
+            let classes:Set<String>, 
+                identifier:String?
             
             var text:String, 
-                style:Style.Rules.Inline 
+                style:Style.Rules 
             
-            init(_ text:String, selector:Style.Selector, style:Style.Rules.Inline = .init()) 
+            init(_ text:String, classes:Set<String> = [], identifier:String? = nil, 
+                style:Style.Rules = .init()) 
             {
                 self.text       = text 
-                self.selector   = selector 
+                self.classes    = classes 
+                self.identifier = identifier 
                 self.style      = style 
             }
         }
@@ -306,12 +303,12 @@ extension UI
             }
         }
         
-        private 
-        let selector:Style.Selector 
+        let classes:Set<String>, 
+            identifier:String?
         
         private 
         var runs:[(run:Run, sequence:UInt?)], 
-            _style:Style.Rules.Block
+            _style:Style.Rules
             
         private 
         var cache:Cache, 
@@ -335,10 +332,12 @@ extension UI
             "UI.Text{\(self.runs.map{ $0.run.text }.joined(separator: ""))}"
         }
         
-        init(_ runs:[Run], selector:Style.Selector, style:Style.Rules.Block = .init()) 
+        init(_ runs:[Run], classes:Set<String> = [], identifier:String? = nil, 
+            style:Style.Rules = .init()) 
         {
             self.runs       = runs.map{ ($0, nil) }
-            self.selector   = selector 
+            self.classes    = classes 
+            self.identifier = identifier 
             self._style     = style 
             
             self.cache      = .invalid 
@@ -360,22 +359,22 @@ extension UI
         }
         
         // invalidation: deep
-        var style:Style.Rules.Block
+        var style:Style.Rules
         {
             get         { return self._style }
             set(style)  { self._style = style           ; self.cache.invalidate() }
         }
         
         // invalidation: shallow
-        var position2:Vector2<Int>? 
+        var offset:Vector2<Float>? 
         {
-            get         { return self._style.position2 }
-            set(p2)     { self._style.position2 = p2    ; self.cache.semiinvalidate() }
+            get         { return self._style.offset }
+            set(p2)     { self._style.set(offset: p2)   ; self.cache.semiinvalidate() }
         }
-        var position3:Vector3<Float>? 
+        var trace:Vector3<Float>? 
         {
-            get         { return self._style.position3 }
-            set(p3)     { self._style.position3 = p3    ; self.cache.semiinvalidate() }
+            get         { return self._style.trace }
+            set(p3)     { self._style.set(trace: p3)    ; self.cache.semiinvalidate() }
         }
         
         
@@ -387,7 +386,7 @@ extension UI
         mutating 
         func color(_ index:Int, _ color:Vector4<UInt8>?)
         {
-            self.runs[index].run.style.color = color
+            self.runs[index].run.style.set(color: color)
             self.cache.semiinvalidate()
         }
         
@@ -438,33 +437,33 @@ extension UI
         }
         
         mutating 
-        func layout(styledefs:inout Style) -> Vector2<Int>
+        func layout(styledefs:inout Style, path:Style.Path) -> Vector2<Int>
         {
+            let path:Style.Path = path.appended(self)
             // check block styles 
-            let lookup:(sequence:UInt, style:Style.Block) = styledefs.resolve(block: self.selector)
+            let lookup:(sequence:UInt, style:Style.Rules) = styledefs.resolve(path)
             if (self.sequence.map{ $0 != lookup.sequence }) ?? true 
             {
                 self.cache.invalidate()
                 self.sequence = lookup.sequence
             }
             
-            let style:Style.Block     = lookup.style.updated(with: self._style)
-            var styles:[Style.Inline] = []
+            let style:Style.Rules    = lookup.style.overlaid(with: self._style)
+            var styles:[Style.Rules] = []
                 styles.reserveCapacity(self.runs.count)
             // compute styling for inline runs 
             for i:Int in self.runs.indices
             {
                 // check inline styles
-                let lookup:(sequence:UInt, style:Style.Inline) =
-                // TODO: make this correct
-                    styledefs.resolve(inline: self[i].selector)
+                let lookup:(sequence:UInt, style:Style.Rules) = 
+                    styledefs.resolve(path.appended(self[i]))
                 if (self.runs[i].sequence.map{ $0 != lookup.sequence }) ?? true
                 {
                     self.cache.invalidate()
                     self.runs[i].sequence = lookup.sequence
                 }
                 
-                styles.append(lookup.style.updated(with: self[i].style))
+                styles.append(lookup.style.overlaid(with: self[i].style))
             }
             
             switch self.cache 
@@ -473,9 +472,9 @@ extension UI
                 return cache.size 
             
             case .semivalid(var cache):
-                cache.draw.position2 = .cast(style.position2)
-                cache.draw.position3 = style.position3 
-                for (runstyle, range):(Style.Inline, Range<Int>) in zip(styles, cache.ranges) 
+                cache.draw.s0 = style.offset
+                cache.draw.r0 = style.trace 
+                for (runstyle, range):(Style.Rules, Range<Int>) in zip(styles, cache.ranges) 
                 {
                     cache.draw.color(range, runstyle.color)
                 }
@@ -494,7 +493,7 @@ extension UI
         }
         
         private static  
-        func reshape(_ runs:(texts:[String], styles:[Style.Inline]), style:Style.Block, 
+        func reshape(_ runs:(texts:[String], styles:[Style.Rules]), style:Style.Rules, 
             allotment:Vector2<Int>, styledefs:inout Style)
             -> Cache.Content
         {
@@ -516,12 +515,12 @@ extension UI
             {
                 // no concept of 2D grid layout, new lines just reset the x coordinate to 0 (or indent)
                 let (glyphs, indices):([HarfBuzz.Glyph], (runs:[Range<Int>], lines:[Range<Int>])) = 
-                    HarfBuzz.paragraph(zip(runs.texts, parameters), indent: style.indent, width: allotment.x)
+                    HarfBuzz.paragraph(zip(runs.texts, parameters), indent: style.indent, width: allotment.x << 6)
                 ranges = indices.runs 
                 stc.reserveCapacity(glyphs.count)
                 // line number, should start at 0
                 var l:Int = indices.lines.startIndex
-                for ((runstyle, parameters), range):((Style.Inline, HarfBuzz.ShapingParameters), Range<Int>) in 
+                for ((runstyle, parameters), range):((Style.Rules, HarfBuzz.ShapingParameters), Range<Int>) in 
                     zip(zip(runs.styles, parameters), indices.runs) 
                 {
                     for (i, g):(Int, HarfBuzz.Glyph) in zip(range, glyphs[range])
@@ -531,19 +530,18 @@ extension UI
                             l += 1
                         }
                         
-                        let sort:Typeface.Font.SortInfo = parameters.font.sorts[g.index], 
-                            position:Vector2<Int>       = g.position &+ .init(0, l * style.lineheight)
+                        let sort:Typeface.Font.SortInfo = parameters.font.sorts[g.index]
+                        // convert 64-point fractional units to ints to floats 
+                        let p:Vector2<Int> = g.position &+ .init(0, l * style.line_height) &<< 6, 
+                            a:Vector2<Int> = sort.vertices.a &+ p, 
+                            b:Vector2<Int> = sort.vertices.b &+ p
                         
-                        let s:Rectangle<Float> = .init(
-                            .cast(sort.vertices.a &+ position), 
-                            .cast(sort.vertices.b &+ position)
-                        )
-                        
+                        let s:Rectangle<Float> = .init(.cast(a &>> 6), .cast(b &>> 6))
                         stc.append(.init(s: s, t: styledefs.atlas[sort.sprite], color: runstyle.color))
                     }
                 }
                 
-                size = .init(allotment.x, indices.lines.count * style.lineheight)
+                size = .init(allotment.x, indices.lines.count * style.line_height)
             }
             else 
             {
@@ -552,25 +550,25 @@ extension UI
                 (glyphs, ranges, width) = HarfBuzz.line(zip(runs.texts, parameters))
                 stc.reserveCapacity(glyphs.count)
                 
-                for ((runstyle, parameters), range):((Style.Inline, HarfBuzz.ShapingParameters), Range<Int>) in 
+                for ((runstyle, parameters), range):((Style.Rules, HarfBuzz.ShapingParameters), Range<Int>) in 
                     zip(zip(runs.styles, parameters), ranges) 
                 {
                     for g:HarfBuzz.Glyph in glyphs[range]
                     {
                         let sort:Typeface.Font.SortInfo = parameters.font.sorts[g.index]
                         let s:Rectangle<Float> = .init(
-                            .cast(sort.vertices.a &+ g.position), 
-                            .cast(sort.vertices.b &+ g.position)
+                            .cast((sort.vertices.a &+ g.position) &>> 6), 
+                            .cast((sort.vertices.b &+ g.position) &>> 6)
                         )
                         
                         stc.append(.init(s: s, t: styledefs.atlas[sort.sprite], color: runstyle.color))
                     }
                 }
                 
-                size = .init(width, style.lineheight)
+                size = .init(width, style.line_height)
             }
             
-            let draw:DrawElement = .init(glyphs: stc, position2: .cast(style.position2), position3: style.position3)
+            let draw:DrawElement = .init(glyphs: stc, s0: style.offset, r0: style.trace)
             
             return .init(draw: draw, ranges: ranges, size: size)
         }

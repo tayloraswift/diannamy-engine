@@ -279,16 +279,6 @@ func main()
     {
         (context:Context) in
         
-        do 
-        {
-            try UI.Style.Sheet.parse(path: "test")
-            try UI.Style.Sheet.parse(path: "default")
-        }
-        catch 
-        {
-            Log.trace(error: error)
-        }
-        
         context.connect()
         context.loop()
     }

@@ -17,5 +17,5 @@ out vec4 color;
 
 void main()
 {
-    color = vec4(display.viewport, 1, vertex.color.a * texture(fontatlas, vertex.texture).r);
+    color = vec4(vertex.color.rgb, vertex.color.a * texture(fontatlas, vertex.texture).r);
 }

@@ -11,7 +11,7 @@ extension UI.Style
         }
     }
     
-    enum Feature:Equatable
+    enum Feature:Equatable, CustomStringConvertible
     {
         %{
         features = (
@@ -94,6 +94,17 @@ extension UI.Style
             
             default:
                 return nil 
+            }
+        }
+        
+        var description:String 
+        {
+            switch self
+            {
+            % for name, T in features:
+            case .${name}(let value):
+                return ${'"{0}(\\(value))"'.format(name)}
+            % end
             }
         }
     }
@@ -185,34 +196,15 @@ extension UI.Style
     }
     
     %{
-    inline_properties = (
-        ('color',           'Vector4<UInt8>',   '.init(repeating: .max)'), 
-        ('font',            'FontSelection',    '.init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16)'),
-        ('features',        '[Feature]',        '[.kern(true)]')
-    )
-    
-    block_properties = (
-        ('wrap',            'Bool',                 'true'), 
-        ('indent',          'Int',                  '0'), 
-        ('lineheight',      'Int',                  '0'), 
-        ('position2',       'Vector2<Int>',         '.init(0, 0)'), 
-        ('position3',       'Vector3<Float>',       '.init(.nan, .nan, .nan)'), 
-        ('padding',         '(Int, Int, Int, Int)', '(0, 0, 0, 0)'), 
-        ('positioning',     'Positioning',          '.relative'),
-        ('align',           'Alignment',            '.begin')
-    )
-    }%
-    
-    %{
     properties = (
-        ('color',           'text color',           'Vector4<Float>',   '.init(1, 1, 1, 1)'), 
+        ('color',           'text color',           'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
         ('trace',           '3D tracing center',    'Vector3<Float>',   '.init(.nan, .nan, .nan)'), 
         ('offset',          '2D offset',            'Vector2<Float>',   '.init(0, 0)'), 
         ('padding',         'padding metrics',      'Metrics',          '.zero'), 
         ('indent',          'indentation',          'Int',              '0'), 
         ('line_height',     'line-height',          'Int',              '0'), 
         ('wrap',            'line-wrapping mode',   'Bool',             'true'), 
-        ('font',            'font selection',       'FontSelection',    '.init(fontfile: "assets/fonts/SourceSansPro-Regular.ttf", size: 16)'),
+        ('font',            'font selection',       'FontSelection',    '.init(fontfile: "assets/fonts/default", size: 16)'),
         ('features',        'font feature list',    '[Feature]',        '[.kern(true)]'), 
         ('position',        'positioning mode',     'Positioning',      '.relative'),
         ('align',           'alignment mode',       'Alignment',        '.begin')
@@ -248,7 +240,7 @@ extension UI.Style
             }
         }
     }
-    struct _Rules 
+    struct Rules:CustomStringConvertible
     {
         private 
         var properties:[Property: Any] = [:]
@@ -265,7 +257,41 @@ extension UI.Style
                 self.properties[.${property}] = ${property}
             }
         }
+        mutating 
+        func set(${property}:${type}?)
+        {
+            self.properties[.${property}] = ${property}
+        }
         % end
+        
+        init() 
+        {
+            self.properties = [:]
+        }
+        
+        init(_ properties:[Property: Any]) 
+        {
+            // check types 
+            var checked:[Property: Any] = properties
+            for (property, value):(Property, Any) in properties 
+            {
+                switch property 
+                {
+                % for property, prose, type, default in properties:
+                case .${property}:
+                    guard value is ${type} 
+                    else 
+                    {
+                        Log.error("value of incorrect type '\(type(of: value))' evaded validation checks for initialization of property '\(property)' (expected \(${type}.self))")
+                        checked[.${property}] = nil 
+                        break 
+                    }
+                % end
+                }
+            }
+            
+            self.properties = properties
+        }
         
         mutating 
         func overlay(with other:Self) 
@@ -278,74 +304,16 @@ extension UI.Style
         }
         func overlaid(with other:Self) -> Self
         {
-            return .init(properties: self.properties.merging(other.properties)
+            return .init(self.properties.merging(other.properties)
             { 
                 (_, new) in 
                 new 
             })
         }
-    }
-    
-    enum Rules 
-    {
-        % for T, properties in ('Inline', inline_properties), ('Block', block_properties):
-        struct ${T}:CustomStringConvertible
-        {
-            % for property, property_type, default in properties:
-            var ${property}:${property_type}?
-            % end 
-            
-            init(${', '.join('{0}:{1}? = nil'.format(property, property_type) for property, property_type, default in properties)})
-            {
-                % for property, property_type, default in properties:
-                self.${property} = ${property}
-                % end 
-            }
-            
-            var description:String 
-            {
-                let rules:[String?] = 
-                [
-                % for property, property_type, default in properties:
-                    self.${property}.map{ ${'"    self.{0}: \($0)"'.format(property)} }, 
-                % end 
-                ]
-                
-                return "{\n\(rules.compactMap{ $0 }.joined(separator: "\n"))\n}"
-            }
-        }
-        % end 
-    }
-    
-    % for T, properties in ('Inline', inline_properties), ('Block', block_properties):
-    struct ${T}:CustomStringConvertible
-    {
-        % for property, property_type, default in properties:
-        var ${property}:${property_type} = ${default}
-        % end 
-        
-        mutating 
-        func update(with rules:Rules.${T}) 
-        {
-            % for property, property_type, default in properties:
-            if let ${property}:${property_type} = rules.${property} 
-            {
-                self.${property} = ${property}
-            }
-            % end 
-        }
-         
-        func updated(with rules:Rules.${T}) -> Self
-        {
-            var new:Self = self 
-            new.update(with: rules)
-            return new
-        }
         
         var description:String 
         {
-            return ${'"{{\\n{0}\\n}}"'.format('\\n'.join('    {0}: \(self.{0})'.format(property) for property, property_type, default in properties))}
+            "{\n\(self.properties.map{ "    \($0.0): \($0.1)" }.joined(separator: "\n"))\n}"
         }
     }
-    % end 
 }
