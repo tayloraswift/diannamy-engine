@@ -9,6 +9,12 @@ protocol _UIStyleSheetEnumeration:Hashable
     init?(string:String)
 }
 
+extension UI 
+{
+    enum Style 
+    {
+    }
+}
 extension UI.Style 
 {
     enum Sheet 
@@ -717,7 +723,7 @@ extension UI.Style
             {
                 enum Keyword 
                 {
-                    case element, property, feature, positioning, alignment, colortype
+                    case element, property, feature, positioning, alignment, justification, axis, colortype
                     
                     var prosaicDescription:String 
                     {
@@ -733,6 +739,10 @@ extension UI.Style
                             return "positioning mode"
                         case .alignment:
                             return "alignment mode"
+                        case .justification:
+                            return "justification mode"
+                        case .axis:
+                            return "axis"
                         case .colortype:
                             return "color type"
                         }
@@ -752,6 +762,9 @@ extension UI.Style
                 
                 indirect 
                 case tuple(Int, Self)
+                
+                indirect 
+                case vector2(Self), vector3(Self)
                 
                 indirect 
                 case metrics(Self)
@@ -786,6 +799,11 @@ extension UI.Style
                     
                     case .tuple(let count, let type):
                         return "\(type.prosaicDescription) \(count)-tuple"
+                    
+                    case .vector2(let type):
+                        return "2D \(type.prosaicDescription) vector"
+                    case .vector3(let type):
+                        return "3D \(type.prosaicDescription) vector"
                     
                     case .metrics(let type):
                         return "\(type.prosaicDescription) metrics expression"
@@ -938,8 +956,14 @@ extension UI.Style
                         
                         switch (state, lexeme) 
                         {
-                        case    (.startHead,            .identifier("text")?):
-                            level.element = UI.Text.self 
+                        case    (.startHead,            .identifier("p")?):
+                            level.element = UI.Element.P.self 
+                            state = .startBodyComponent
+                        case    (.startHead,            .identifier("div")?):
+                            level.element = UI.Element.Div.self 
+                            state = .startBodyComponent
+                        case    (.startHead,            .identifier("span")?):
+                            level.element = UI.Element.Span.self 
                             state = .startBodyComponent
                         
                         case    (.startHead,            .identifier(let identifier)?):
@@ -1091,18 +1115,40 @@ extension UI.Style
                 {
                     switch property 
                     {
-                    case .wrap:
+                    case .wrap, .margin_collapse, .border_collapse:
                         let value:Bool = try self.expect(expression: .value(property, .bool), 
                             where: Lex.Lexeme.load(bool:range:)) 
                         return value 
                     
-                    case .indent, .line_height:
+                    case .indent, .line_height, .border_radius:
                         let value:Int = try self.expect(expression: .value(property, .int), 
                             where: Lex.Lexeme.load(int:range:)) 
                         return value 
                     
-                    case .padding:
-                        let v:[Int] = try self.vector(1 ..< 5, expression: .value(property, .metrics(.int)), 
+                    case .grow, .stretch, .letter_spacing:
+                        let value:Float = try self.expect(expression: .value(property, .float), 
+                            where: Lex.Lexeme.load(float:range:)) 
+                        return value 
+                    
+                    case .offset:
+                        let v:[Float] = try self.vector(1 ... 2, expression: .value(property, .vector2(.float)), 
+                            innerExpression: .vector2(.float), 
+                            whereElement: Lex.Lexeme.load(float:range:)) 
+                                                
+                        let value:Vector2<Float>
+                        switch v.count 
+                        {
+                        case 1:
+                            value = .init(v[0], v[0])
+                        case 2:
+                            value = .init(v[1], v[0])
+                        default:
+                            Log.unreachable()
+                        }
+                        return value 
+                    
+                    case .padding, .border, .margin:
+                        let v:[Int] = try self.vector(1 ... 4, expression: .value(property, .metrics(.int)), 
                             innerExpression: .metrics(.int), 
                             whereElement: Lex.Lexeme.load(int:range:)) 
                                                 
@@ -1122,7 +1168,7 @@ extension UI.Style
                         }
                         return value 
                     
-                    case .color:
+                    case .color, .background_color, .border_color:
                         return try self.color(property: property)
                     
                     case .trace:
@@ -1134,19 +1180,19 @@ extension UI.Style
                             self.advance()
                             value = .init(.nan, .nan, .nan)
                         default:
-                            let vector:[Float] = try self.tuple(3, expression: .value(property, .tuple(3, .float)),
-                                innerExpression: .tuple(3, .float), 
+                            let v:[Float] = try self.vector(3 ... 3, expression: .value(property, .vector3(.float)), 
+                                innerExpression: .vector3(.float), 
                                 whereElement: Lex.Lexeme.load(float:range:)) 
-                            value = .init(vector[0], vector[1], vector[2])
+                                                    
+                            switch v.count 
+                            {
+                            case 3:
+                                value = .init(v[0], v[1], v[2])
+                            default:
+                                Log.unreachable()
+                            }
                         }
                         
-                        return value 
-                    
-                    case .offset:
-                        let vector:[Float] = try self.tuple(2, expression: .value(property, .tuple(2, .float)),
-                            innerExpression: .tuple(2, .float), 
-                            whereElement: Lex.Lexeme.load(float:range:))
-                        let value:Vector2<Float> = .init(vector[0], vector[1])
                         return value 
                     
                     case .font:
@@ -1236,9 +1282,12 @@ extension UI.Style
                     
                     case .position:
                         return try self.enumeration(as: Positioning.self, expression: .value(property, nil))
-                    
-                    case .align:
+                    case .justify:
+                        return try self.enumeration(as: Justification.self, expression: .value(property, nil))
+                    case .align, .align_self:
                         return try self.enumeration(as: Alignment.self, expression: .value(property, nil))
+                    case .axis:
+                        return try self.enumeration(as: Axis.self, expression: .value(property, nil))
                     }
                 }
                 
@@ -1348,7 +1397,7 @@ extension UI.Style
                 }
                 
                 private mutating 
-                func vector<Element>(_ constraints:Range<Int>, expression:Expression, innerExpression:Expression, 
+                func vector<Element>(_ constraints:ClosedRange<Int>, expression:Expression, innerExpression:Expression, 
                     whereElement predicate:(Lex.Lexeme, Range<String.Index>) throws -> Element?) throws -> [Element] 
                 {
                     var elements:[Element] = []
@@ -1366,7 +1415,7 @@ extension UI.Style
                             return elements 
                         
                         case let lexeme?:
-                            guard elements.count < constraints.upperBound
+                            guard elements.count <= constraints.upperBound
                             else 
                             {
                                 throw Error.unexpected(lexeme, in: innerExpression, range: self.next.range)
@@ -1548,16 +1597,46 @@ extension UI.Style
     }
 }
 
-extension UI 
+extension UI.Style
 {
-    struct Style 
+    struct Styles
     {
-        private 
-        let fonts:[FontSelection: Typeface.Font]
-        let atlas:Atlas 
+        struct FontLibrary 
+        {
+            private 
+            let fonts:[FontSelection: Typeface.Font]
+            let atlas:Atlas 
+            
+            init(_ selections:[FontSelection]) 
+            {
+                let fonts:[Typeface.Font]
+                (self.atlas, fonts) = Typeface.assemble(selections)
+                print(selections)
+                self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
+            }
+            
+            subscript(selection:FontSelection) -> Typeface.Font 
+            {
+                guard let font:Typeface.Font = self.fonts[selection]
+                else 
+                {
+                    guard let font:Typeface.Font = self.fonts.first?.value
+                    else 
+                    {
+                        Log.fatal("no fallback fonts")
+                    }
+                    
+                    Log.error("font lookup \(selection) failed")
+                    return font 
+                }
+                return font
+            }
+        }
+        
+        let fonts:FontLibrary
         
         private 
-        var cache:[Path: (sequence:UInt, style:Rules)]
+        var cache:[Path: Rules]
         private 
         let stylesheet:[(selector:Selector, rules:Rules)]
         
@@ -1570,30 +1649,15 @@ extension UI
                 fontSelections.update(with: rules.font)
             }
             
-            let selections:[FontSelection]  = .init(fontSelections)
-            let fonts:[Typeface.Font]
-            (self.atlas, fonts)             = Typeface.assemble(selections)
-            
-            self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
+            self.fonts = .init(.init(fontSelections))
             self.cache = [:]
             self.stylesheet = stylesheet
         }
         
-        func font(_ selection:FontSelection) -> Typeface.Font
-        {
-            guard let font:Typeface.Font = self.fonts[selection] 
-            else 
-            {
-                Log.fatal("unrendered font selection \(selection) requested")
-            }
-            
-            return font
-        }
-        
         mutating 
-        func resolve(_ path:Path) -> (UInt, Rules) 
+        func resolve(_ path:Path) -> Rules 
         {
-            if let entry:(UInt, Rules) = self.cache[path] 
+            if let entry:Rules = self.cache[path] 
             {
                 return entry 
             }
@@ -1604,7 +1668,7 @@ extension UI
                 $0.overlay(with: $1.rules)
             }
             
-            let entry:(UInt, Rules)  = (0, style)
+            let entry:Rules  = style
             self.cache[path] = entry
             return entry
         }

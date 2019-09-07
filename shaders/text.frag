@@ -3,7 +3,7 @@
 in Vertex
 {
     noperspective vec2 texture;
-    vec4 color;
+    noperspective vec4 color;
 } vertex;
 
 layout(std140) uniform Display 

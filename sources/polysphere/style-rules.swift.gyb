@@ -109,7 +109,7 @@ extension UI.Style
         }
     }
     
-    struct Metrics 
+    struct Metrics:Equatable
     {
         var top:Int, 
             right:Int, 
@@ -167,9 +167,40 @@ extension UI.Style
         }
     }
     
+    enum Justification:Sheet.Enumeration
+    {
+        case start, center, end, space_between, space_around, space_evenly
+        
+        static 
+        var type:Sheet.Parse.Expression.Keyword 
+        {
+            .justification
+        }
+        
+        init?(string:String) 
+        {
+            switch string 
+            {
+            case "start":
+                self = .start 
+            case "center":
+                self = .center
+            case "end":
+                self = .end 
+            case "space_between":
+                self = .space_between 
+            case "space_around":
+                self = .space_around
+            case "space_evenly":
+                self = .space_evenly 
+            default:
+                return nil 
+            }
+        }
+    }
     enum Alignment:Sheet.Enumeration
     {
-        case begin, middle, end, justify
+        case start, center, end, auto
         
         static 
         var type:Sheet.Parse.Expression.Keyword 
@@ -181,16 +212,101 @@ extension UI.Style
         {
             switch string 
             {
-            case "begin":
-                self = .begin 
-            case "middle":
-                self = .middle
+            case "start":
+                self = .start 
+            case "center":
+                self = .center
             case "end":
                 self = .end 
-            case "justify":
-                self = .justify
+            case "auto":
+                self = .auto 
             default:
                 return nil 
+            }
+        }
+    }
+    
+    enum Axis:Sheet.Enumeration
+    {
+        case horizontal, vertical 
+        
+        static 
+        var type:Sheet.Parse.Expression.Keyword 
+        {
+            .axis 
+        }
+        
+        init?(string:String) 
+        {
+            switch string 
+            {
+            case "horizontal":
+                self = .horizontal 
+            case "vertical":
+                self = .vertical
+            default:
+                return nil 
+            }
+        }
+        
+        var main:Self 
+        {
+            self 
+        }
+        var cross:Self 
+        {
+            switch self 
+            {
+            case .horizontal:
+                return .vertical
+            case .vertical:
+                return .horizontal
+            }
+        }
+        
+        func unpack(_ metrics:Metrics) 
+            -> ((main:Int, cross:Int), (main:Int, cross:Int))
+        {
+            switch self 
+            {
+            case .horizontal:
+                return ((metrics.left, metrics.top), (metrics.right, metrics.bottom))
+            case .vertical:
+                return ((metrics.top, metrics.left), (metrics.bottom, metrics.right))
+            }
+        }
+        
+        func unpack<T>(_ vector:Vector2<T>) -> (main:T, cross:T)
+            where T:SIMDScalar 
+        {
+            switch self 
+            {
+            case .horizontal:
+                return (vector.x, vector.y)
+            case .vertical:
+                return (vector.y, vector.x)
+            }
+        }
+        
+        func pack<T>(_ axes:(main:T, cross:T)) -> Vector2<T> where T:SIMDScalar 
+        {
+            switch self 
+            {
+            case .horizontal:
+                return .init(axes.main, axes.cross)
+            case .vertical:
+                return .init(axes.cross, axes.main)
+            }
+        }
+        
+        func repack<T>(_ axes:(main:T, cross:T), as axis:Self) -> (main:T, cross:T) where T:SIMDScalar 
+        {
+            switch (self, axis) 
+            {
+            case (.horizontal, .vertical), (.vertical, .horizontal):
+                return (axes.cross, axes.main)
+            case (.horizontal, .horizontal), (.vertical, .vertical):
+                return axes
             }
         }
     }
@@ -198,16 +314,34 @@ extension UI.Style
     %{
     properties = (
         ('color',           'text color',           'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
+        ('background_color','background color',     'Vector4<UInt8>',   '.init(0, 0, 0, 0)'), 
+        ('border_color',    'border color',         'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
         ('trace',           '3D tracing center',    'Vector3<Float>',   '.init(.nan, .nan, .nan)'), 
         ('offset',          '2D offset',            'Vector2<Float>',   '.init(0, 0)'), 
+        
         ('padding',         'padding metrics',      'Metrics',          '.zero'), 
+        ('border',          'border metrics',       'Metrics',          '.zero'), 
+        ('margin',          'margin metrics',       'Metrics',          '.zero'), 
+        ('border_radius',   'line-height',          'Int',              '0'), 
+        
+        ('wrap',            'line-wrapping mode',   'Bool',             'true'), 
         ('indent',          'indentation',          'Int',              '0'), 
         ('line_height',     'line-height',          'Int',              '0'), 
-        ('wrap',            'line-wrapping mode',   'Bool',             'true'), 
+        
         ('font',            'font selection',       'FontSelection',    '.init(fontfile: "assets/fonts/default", size: 16)'),
         ('features',        'font feature list',    '[Feature]',        '[.kern(true)]'), 
+        ('letter_spacing',  'letter spacing',       'Float',            '0'), 
+        
+        ('margin_collapse', 'margin collapse mode', 'Bool',             'true'),
+        ('border_collapse', 'border collapse mode', 'Bool',             'false'),
+        ('grow',            'flex growth weight',   'Float',            '1'),
+        ('stretch',         'flex stretch weight',  'Float',            '1'),
+        
         ('position',        'positioning mode',     'Positioning',      '.relative'),
-        ('align',           'alignment mode',       'Alignment',        '.begin')
+        ('justify',         'justification mode',   'Justification',    '.start'), 
+        ('align',           'alignment mode',       'Alignment',        '.start'), 
+        ('align_self',      'per-element alignment mode',       'Alignment',        '.auto'), 
+        ('axis',            'content major axis',   'Axis',             '.vertical')
     )
     }%
     enum Property 

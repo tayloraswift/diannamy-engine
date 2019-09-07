@@ -1,6 +1,7 @@
 protocol _UIElement 
 {
     typealias Block = _UIElementBlock
+    typealias SuperBlock = _UIElementSuperBlock
     var classes:Set<String> 
     {
         get 
@@ -10,8 +11,22 @@ protocol _UIElement
         get 
     }
 }
-protocol _UIElementBlock:UI.Element
+protocol _UIElementBlock:UI.Element, RandomAccessCollection where Element:UI.Element.Block
 {
+    var cache:Layout 
+    {
+        get 
+        set 
+    }
+    var style:UI.Style.Rules 
+    {
+        get 
+    }
+    var recomputeStyle:Bool 
+    {
+        get 
+    }
+    
     func contribute(text:inout [UI.Text.DrawElement], offset:Vector2<Float>)
     func contribute(geometry:inout [UI.Geometry.DrawElement], offset:Vector2<Float>)
     
@@ -29,12 +44,35 @@ protocol _UIElementBlock:UI.Element
     mutating 
     func process(delta:Int, allotment:Vector2<Int>) -> Bool 
     
-    // the equivalent of draw()
     mutating 
-    func layout(styledefs:inout UI.Style, path:UI.Style.Path) -> Vector2<Int>
+    func layoutBefore(definitions:inout UI.Styles, path:UI.Style.Path) 
+    // returns the minimum size of leaf content, if any 
+    mutating 
+    func layoutLeaf() -> Vector2<Int>?
+    // returns the actual size of leaf content, after hard layout has been computed
+    mutating 
+    func layoutLeafContent() -> Vector2<Int>
+    
+    mutating 
+    func observe(style new:UI.Style.Rules)
+    mutating 
+    func observe(canvas new:Vector2<Int>)
 }
 extension UI.Element.Block
 {
+    var startIndex:Int 
+    {
+        0
+    }
+    var endIndex:Int 
+    {
+        0
+    }
+    subscript(index:Int) -> Never 
+    {
+        Log.unreachable()
+    }
+    
     func contribute(textOffset offset:Vector2<Float>) -> [UI.Text.DrawElement]
     {
         var elements:[UI.Text.DrawElement] = [] 
@@ -69,9 +107,667 @@ extension UI.Element.Block
         return false 
     }
     
-    func layout(styledefs _:inout UI.Style, path _:UI.Style.Path) -> Vector2<Int> 
+    func layoutBefore(definitions _:inout UI.Styles, path _:UI.Style.Path)  
     {
-        return .zero 
+    }
+    func layoutLeaf() -> Vector2<Int>? 
+    {
+        return nil 
+    }
+    func layoutLeafContent() -> Vector2<Int>
+    {
+        return .zero
+    }
+    func observe(style _:UI.Style.Rules) 
+    {
+    }
+    func observe(canvas _:Vector2<Int>)
+    {
+    }
+}
+/* extension UI.Element.Block 
+{
+    enum Claim 
+    {
+        case fixed(width:Int)
+        case claim(minWidth:Int, claims:Int)
+    }
+    
+    /* struct Space:Equatable
+    {
+        //  |<- white.outer ->|<- gray ->|<- white.inner ->|<------ black ------>|<- gray ->|<- white.outer ->| 
+        var white:(inner:Style.Metrics, outer:Style.Metrics), // space the margin can intrude on 
+            gray:Style.Metrics, // space the border can intrude on 
+            black:Vector2<Int> // space the padding and content are limited to
+        
+        mutating 
+        func space(white:Style.Metrics)
+        {
+            func space(metricComponent metric:KeyPath<Metrics, Int>, areaComponent area:KeyPath<Vector2<Int>, Int>) 
+            {
+                if self.gray[keyPath: metric] > 0 
+                {
+                    self.black[keyPath: area]        -= 
+                        max(0,        white[keyPath: metric]                                      - self.white.inner[keyPath: metric])
+                    self.white.inner[keyPath: metric] = 
+                        max(          white[keyPath: metric],                                       self.white.inner[keyPath: metric])
+                }
+                else 
+                {
+                    self.black[keyPath: area]        -= 
+                        max(0, max(0, white[keyPath: metric] - self.white.outer[keyPath: metric]) - self.white.inner[keyPath: metric])
+                    self.white.inner[keyPath: metric] = 
+                        max(   max(0, white[keyPath: metric] - self.white.outer[keyPath: metric]),  self.white.inner[keyPath: metric])
+                }
+            }
+            
+            space(metricComponent: \.top,    areaComponent: \.y)
+            space(metricComponent: \.right,  areaComponent: \.x)
+            space(metricComponent: \.bottom, areaComponent: \.y)
+            space(metricComponent: \.left,   areaComponent: \.x)
+        }
+        
+        mutating 
+        func space(gray:Style.Metrics)
+        {
+            func space(metricComponent metric:KeyPath<Metrics, Int>, areaComponent area:KeyPath<Vector2<Int>, Int>) 
+            {
+                if self.white.inner[keyPath: metric] > 0 
+                {
+                    self.black[keyPath: area]        -= gray[keyPath: metric] 
+                    self.gray[keyPath: metric]        = gray[keyPath: metric]
+                    self.white.outer[keyPath: metric] = self.white.inner[keyPath: metric]
+                    self.white.inner[keyPath: metric] = 0 
+                }
+                else 
+                {
+                    self.black[keyPath: area]        -= max(0, gray[keyPath: metric]  - self.gray[keyPath: metric])
+                    self.gray[keyPath: metric]        = max(   gray[keyPath: metric],  self.gray[keyPath: metric])
+                }
+            }
+            
+            space(metricComponent: \.top,    areaComponent: \.y)
+            space(metricComponent: \.right,  areaComponent: \.x)
+            space(metricComponent: \.bottom, areaComponent: \.y)
+            space(metricComponent: \.left,   areaComponent: \.x)
+        }
+        
+        mutating 
+        func fillTop(black:Int, gray:Int, white:Int) 
+        {
+            self.fill(metricComponent: \.top, areaComponent: \.y, black: black, gray: gray, white: white)
+        }
+        mutating 
+        func fillRight(black:Int, gray:Int, white:Int) 
+        {
+            self.fill(metricComponent: \.right, areaComponent: \.x, black: black, gray: gray, white: white)
+        }
+        mutating 
+        func fillBottom(black:Int, gray:Int, white:Int) 
+        {
+            self.fill(metricComponent: \.bottom, areaComponent: \.y, black: black, gray: gray, white: white)
+        }
+        mutating 
+        func fillLeft(black:Int, gray:Int, white:Int) 
+        {
+            self.fill(metricComponent: \.left, areaComponent: \.x, black: black, gray: gray, white: white)
+        }
+        private mutating 
+        func fill(metricComponent metric:KeyPath<Metrics, Int>, areaComponent area:KeyPath<Vector2<Int>, Int>, black:Int, gray:Int, white:Int) 
+        {
+            self.black[keyPath: area]          -= black + white + gray
+            self.white.inner[keyPath: metric]   = white 
+            self.gray[keyPath: metric]          = gray  
+            self.white.outer[keyPath: metric]   = 0 
+        }
+    }
+    struct BoxModel 
+    {
+        enum Cache 
+        {
+            struct Content 
+            {
+            }
+        }
+        let sequence:UInt
+    } */
+    
+    func block(styledefs:inout UI.Style, parentPath:UI.Style.Path) 
+    {
+        let path:Style.Path = parentPath.appended(self)
+        // check block styles 
+        let (sequence, style):(UInt, Style.Rules) = styledefs.resolve(path)
+        if (self.sequence.map{ $0 != sequence }) ?? true 
+        {
+            self.cache.invalidate()
+            self.sequence = sequence
+        }
+        
+        let size:Vector2<Int> =  self.layout(style: style, path: path)
+    }
+    
+    struct Cache 
+    {
+        enum Status 
+        {
+            enum Style 
+            {
+                enum Box 
+                {
+                    enum Content 
+                    {
+                        case invalid 
+                        case valid
+                    }
+                    
+                    case invalid
+                    case valid(content:Content)
+                }
+                
+                case invalid
+                case valid(sequence:UInt, box:Box)
+            }
+        }
+        
+        var style:UI.Style.Rules,
+            claim:Claim, 
+            status:Status
+    }
+    
+    mutating 
+    func style(definitions:inout UI.Styles, ancestry:UI.Style.Path) 
+    {
+        let path:Style.Path                             = ancestry.appended(self)
+        let lookup:(sequence:UInt, rules:Style.Rules)   = definitions.resolve(path)
+        switch self.cache.status  
+        {
+        case .valid(sequence: let sequence, box: _):
+            if lookup.sequence != sequence 
+            {
+                fallthrough
+            }
+        
+        default:
+            self.cache.computed = lookup.style.overlaid(with: self.style)
+            self.cache.status   = .valid(sequence: lookup.sequence, box: .invalid)
+        }
+        
+        for child:Int in 0 ..< self.count 
+        {
+            self[child].style(definitions: &definitions, ancestry: path)
+        }
+    }
+    
+    func claim() -> (x:Claim, y:Claim)
+    {
+        switch self.cache.status 
+        {
+        case .valid(sequence: _, box: .valid(content: _)):
+            break 
+        
+        default:
+            break
+        }
+        
+        
+        switch self.cache.computed.axis
+        {
+        case .horizontal:
+            var claims:[Claim] = [self.claimNode().x]
+            var before:Collapse = .black 
+            
+            break 
+        case .vertical:
+            break
+        }
+        
+        var claims:[(x:Claim, y:Claim)] = [self.claimNode()]
+        for child:Int in 0 ..< self.count 
+        {
+            if let block:UI.Element.Block = self[child] as? UI.Element.Block 
+            {
+                claims.append(block.claim())
+            }
+        }
+    }
+    
+    func fill(style:UI.Style, path:UI.Style.Path, space:Space, claims:Int, claimed:inout Int) -> Rectangle<Int>?
+    {
+        
+    }
+
+    enum Periphery 
+    {
+        case white(Int), gray(Int), flush
+        
+        mutating 
+        func collapse(_ next:Self) -> Int 
+        {
+            switch (self, next) 
+            {
+            case    (_, .begin(.white(0))), 
+                    (_, .begin(.gray (0))), 
+                    (_, .end  (.white(0))), 
+                    (_, .end  (.gray (0))):
+                return 0 
+            
+            case    (.begin(.white(let width)), .begin(.white(let margin))), 
+                    (.end  (.white(let width)), .begin(.white(let margin))):
+                self = .begin(.white(max(margin,  width)))
+                return max(0,            margin - width)
+            
+            case    (.end  (.white(let width)), .end  (.white(let margin))):
+                self = .end  (.white(max(margin,  width)))
+                return max(0,            margin - width)
+            
+            case    (.begin(.gray (let width)), .begin(.gray (let border))), 
+                    (.end(  .gray (let width)), .begin(.gray (let border))):
+                self = .begin(.gray (max(border,  width)))
+                return max(0,            border - width)
+            
+            case    (.end(  .gray (let width)), .end(  .gray (let border))):
+                self = .end(  .gray (max(border, width)))
+                return max(0,            border - width)
+            
+            case    (_, .begin(.white(let width))), 
+                    (_, .begin(.gray (let width))), 
+                    (_, .end  (.white(let width))), 
+                    (_, .end  (.gray (let width))):
+                self = next 
+                return width
+            
+            case    (_, .flush):
+                self = .flush 
+                return 0
+            }
+        }
+        
+        mutating 
+        func flush(_ width:Int) -> Int 
+        {
+            self = .flush 
+            return width
+        }
+    }
+    
+    func constrain(
+        begin:(periphery:Periphery, keyPath:KeyPath<Metrics, Int>), 
+        end:(periphery:Periphery, keyPath:KeyPath<Metrics, Int>), 
+        parallel:KeyPath<Vector2<Int>, Int>) 
+        -> (constraints:[(index:Int?, offset:Int, min:Int, claims:Int)], reserved:Int)
+    {
+        var constraints:[(index:Int?, offset:Int, min:Int, claims:Int)] = []
+        
+        var reserved:Int        = 0
+        var periphery:Periphery = begin.periphery
+        
+        reserved += periphery.collapse(.white(self.computed.margin[keyPath: begin.keyPath]))
+        reserved += periphery.collapse(.gray (self.computed.border[keyPath: begin.keyPath]))
+        
+        let (min, claim):(Vector2<Int>, Vector2<Int>) = self.claim() 
+        constraints.append((nil, reserved, min[keyPath: axis], claim[keyPath: axis]))
+        
+        if min[keyPath: axis] > 0 || claims[keyPath: axis] > 0 
+        {
+            reserved += periphery.flush(min[keyPath: axis])
+        }
+        
+        for child:Int in 0 ..< self.count where self[child] is UI.Element.Block
+        {
+            reserved += periphery.collapse(.white(self[child].computed.margin.left))
+            reserved += periphery.collapse(.gray (self[child].computed.border.left))
+            
+            let (min, claim):(Vector2<Int>, Vector2<Int>) = self[child].claim() 
+            constraints.append((child, reserved, min[keyPath: axis], claim[keyPath: axis]))
+            reserved += periphery.flush(min[keyPath: axis])
+            
+            reserved += periphery.collapse(.gray (self[child].computed.border.right))
+            reserved += periphery.collapse(.white(self[child].computed.margin.right))
+        }
+        
+        reserved += periphery.collapse(.gray (self.computed.border.right))
+        reserved += periphery.collapse(.white(self.computed.margin.right))
+        
+        reserved += periphery.collapse(right)
+        
+        return (constraints, reverved)
+    }
+    
+    func fit(in rectangle:Rectangle<Int>, 
+        top:Periphery, right:Periphery, bottom:Periphery, left:Periphery) 
+        -> Vector2<Int>
+    {
+        switch self.cache.computed.axis
+        {
+        case .horizontal:
+            var claims:[(Claim)] = []
+            // figure out how much space we need to reserve for borders/margins
+            
+            
+            var totalClaims:Int = 0
+            for claim:Claim in claims 
+            {
+                switch claim 
+                {
+                case .fixed(width: let width):
+                    reserved    += width 
+                case .claim(minWidth: let minWidth, claims: let claims):
+                    reserved    += minWidth 
+                    totalClaims += claims 
+                }
+            }
+            
+            let flex:Int = max(0, rectangle.size.x - reserved)
+            
+        case .vertical:
+            break
+        }
+    }
+} */
+extension UI.Element.Block 
+{
+    enum Layout 
+    {
+        struct Constraints
+        {
+            let min:Vector2<Int>
+            let grow:Int
+            
+            // child stats
+            let offsets:[Vector2<Int>]
+        }
+        
+        typealias Soft    = (style:UI.Style.Rules, constraints:Constraints)
+        typealias Hard    = Vector2<Int> // canvas size
+        typealias Content = Vector2<Int> // occupied size (can be larger than canvas)
+        
+        var soft:Soft 
+        var hard:Hard
+        var content:Content
+        
+        init() 
+        {
+            self.soft    = (.init(), .init(min: .zero, grow: 0, offsets: []))
+            self.hard    = .zero 
+            self.content = .zero
+        }
+    }
+    
+    private 
+    enum Periphery 
+    {
+        case white(Int), gray(Int), flush
+        
+        init(style:UI.Style.Rules, metric:KeyPath<Metrics, Int>) 
+        {
+            let gray:Int = self.computed.border[keyPath: metric]
+            if gray == 0 
+            {
+                let white:Int = self.computed.margin[keyPath: metric]
+                if white == 0 
+                {
+                    self = .flush 
+                }
+                else 
+                {
+                    self = .white(white)
+                }
+            }
+            else 
+            {
+                self = .gray(gray) 
+            }
+        }
+        
+        mutating 
+        func collapse(_ next:Self) -> Int 
+        {
+            switch (self, next) 
+            {
+            case    (_, .begin(.white(0))), 
+                    (_, .begin(.gray (0))), 
+                    (_, .end  (.white(0))), 
+                    (_, .end  (.gray (0))):
+                return 0 
+            
+            case    (.begin(.white(let width)), .begin(.white(let margin))), 
+                    (.end  (.white(let width)), .begin(.white(let margin))):
+                self = .begin(.white(max(margin,  width)))
+                return max(0,            margin - width)
+            
+            case    (.end  (.white(let width)), .end  (.white(let margin))):
+                self = .end  (.white(max(margin,  width)))
+                return max(0,            margin - width)
+            
+            case    (.begin(.gray (let width)), .begin(.gray (let border))), 
+                    (.end(  .gray (let width)), .begin(.gray (let border))):
+                self = .begin(.gray (max(border,  width)))
+                return max(0,            border - width)
+            
+            case    (.end(  .gray (let width)), .end(  .gray (let border))):
+                self = .end(  .gray (max(border, width)))
+                return max(0,            border - width)
+            
+            case    (_, .begin(.white(let width))), 
+                    (_, .begin(.gray (let width))), 
+                    (_, .end  (.white(let width))), 
+                    (_, .end  (.gray (let width))):
+                self = next 
+                return width
+            
+            case    (_, .flush):
+                self = .flush 
+                return 0
+            }
+        }
+        
+        mutating 
+        func flush(_ width:Int) -> Int 
+        {
+            if width > 0 
+            {
+                self = .flush 
+            }
+            return width
+        }
+    }
+    
+    mutating 
+    func invalidate(recursive flag:KeyPath<Cache.Status, Bool>) 
+    {
+        self.cache.recompute[keyPath: flag] = true 
+        for c:Int in 0 ..< self.count 
+        {
+            self[c].invalidate(recursive: flag)
+        }
+    }
+    
+    mutating 
+    func invalidate(propogate flag:KeyPath<Cache.Status, Bool>) 
+    {
+        for child:UI.Element.Block in self  
+        {
+            if child.cache.recompute[keyPath: flag] 
+            {
+                self.cache.recompute[keyPath: flag] = true 
+                return 
+            }
+        }
+    }
+    
+    mutating 
+    func layoutSoft(definitions:inout UI.Styles, ancestry:UI.Style.Path) -> Bool 
+    {
+        var recompute:Bool = false
+        let path:Style.Path   = ancestry.appended(self)
+        self.layoutBefore(definitions: &definitions, path: path)
+        if self.recomputeStyle 
+        {
+            let style:Style.Rules = definitions.resolve(path).overlaid(with: self.style) 
+            
+            if  style.margin  != self.cache.soft.style.margin   ||
+                style.border  != self.cache.soft.style.border   ||
+                style.padding != self.cache.soft.style.padding  ||
+                style.axis    != self.cache.soft.style.axis     ||
+                style.grow    != self.cache.soft.style.grow 
+            {
+                recompute = true  
+            }
+            
+            // custom observers 
+            self.observe(style: style)
+            
+            self.cache.soft.style = style 
+        }
+        
+        // update soft layouts for children 
+        for c:Int in self.indices
+        {
+            // check if any of the children’s soft layouts changed, and propogate 
+            // the flag back to the parent (self)
+            recompute = self[c].layoutSoft(definitions: &definitions, ancestry: path) || recompute
+        }
+        
+        guard recompute
+        else 
+        {
+            return false 
+        }
+        
+        // compute own soft layout 
+        let axis:Axis = self.cache.soft.style.axis
+        var main:(begin:Periphery, end:Periphery)  = 
+        (
+            .init(style: self.cache.soft.style, metric: axis.main.metric.0), 
+            .init(style: self.cache.soft.style, metric: axis.main.metric.1)
+        )
+        let cross:(begin:Periphery, end:Periphery) = 
+        (
+            .init(style: self.cache.soft.style, metric: axis.cross.metric.0), 
+            .init(style: self.cache.soft.style, metric: axis.cross.metric.1)
+        )
+        
+        var offset:(main:Int, cross:Int) = .zero, 
+            offsets:[Vector2<Int>]       = []
+        var minCross:Int                 = 0
+        
+        offset.main  += main.begin.flush(self.cache.soft.style.padding[keyPath: axis.main.metric.0])
+        
+        if let leaf:Vector2<Int> = self.layoutLeaf() 
+        {
+            offset.main  += main.begin.flush(leaf[keyPath: axis.main.component])
+            
+            var localCross:Periphery = cross.begin
+            offset.cross += localCross.flush(leaf[keyPath: axis.cross.component])
+            offset.cross += localCross.collapse(cross.end)
+            minCross      = max(minCross, offset.cross)
+        }
+        
+        for soft:Layout.Soft in self.map{ $0.cache.soft }
+        {
+            // leading edge 
+            offset.main  += main.begin.collapse(.white(soft.style.margin[keyPath: axis.main.metric.0]))
+            offset.main  += main.begin.collapse( .gray(soft.style.border[keyPath: axis.main.metric.0]))
+            
+            var localCross:Periphery = cross.begin
+            offset.cross  = localCross.collapse(.white(soft.style.margin[keyPath: axis.cross.metric.0]))
+            offset.cross += localCross.collapse( .gray(soft.style.border[keyPath: axis.cross.metric.0]))
+            
+            // kernel 
+            let vector:Vector2<Int> = directReturn(.zero) 
+            {
+                $0[keyPath: axis.main.component]  = offset.main
+                $0[keyPath: axis.cross.component] = offset.cross
+            }
+            offsets.append(vector)
+            
+            offset.main  += soft.constraints.min[keyPath: axis.main.component]
+            offset.cross += soft.constraints.min[keyPath: axis.cross.component]
+            
+            // trailing edge
+            offset.main  += main.begin.collapse( .gray(soft.style.border[keyPath: axis.main.metric.1]))
+            offset.main  += main.begin.collapse(.white(soft.style.margin[keyPath: axis.main.metric.1]))
+            
+            offset.cross += localCross.collapse( .gray(soft.style.border[keyPath: axis.cross.metric.1]))
+            offset.cross  = localCross.collapse(.white(soft.style.margin[keyPath: axis.cross.metric.1]))
+            
+            // outer trailing cross-edge
+            offset.cross += localCross.collapse(cross.end)
+            minCross = max(minCross, offset.cross)
+        } 
+        
+        // outer trailing main-edge 
+        offset.main  += main.begin.flush(self.cache.soft.style.padding[keyPath: axis.main.metric.1])
+        offset.main  += main.begin.collapse(main.end)
+        
+        let min:Vector2<Int> = directReturn(.zero) 
+        {
+            $0[keyPath: axis.main.component]  = offset.main
+            $0[keyPath: axis.cross.component] = minCross
+        }
+        
+        self.cache.soft.constraints = .init(min: min, grow: style.grow, offsets: offsets)
+        return true 
+    }
+    
+    mutating 
+    func layoutHard(in canvas:Vector2<Int>) 
+    {
+        guard canvas != self.cache.hard
+        else 
+        {
+            return 
+        }
+        
+        self.observe(canvas: canvas)
+        self.cache.hard = canvas
+        
+        let axis:Axis = self.cache.soft.style.axis, 
+            constraints:Constraints = self.cache.soft.constraints
+        
+        let available:Vector2<Double> = .init(
+            max(0, canvas.x - constraints.min.x), 
+            max(0, canvas.y - constraints.min.y))
+        // add up total claims 
+        let claims:Double  = max(1, .init(self.reduce(0){ $0 + $1.cache.soft.constraints.grow }))
+        var claimed:Double = 0
+        // update hard layouts for children 
+        for (c, offset):(Int, Vector2<Int>) in zip(self.indices, self.cache.soft.offsets)
+        {
+            let childConstraints:Constraints = self[c].cache.soft.constraints
+            let include:Double = claimed + .init(childConstraints.grow)
+            defer 
+            {
+                claimed = include 
+            }
+            let flex:(Vector2<Double>, Vector2<Double>) = 
+            (
+                claimed / claims * available, 
+                include / claims * available
+            )
+            
+            let a:Vector2<Int> = .cast(.cast(offset) + flex.0), 
+                b:Vector2<Int> = .cast(.cast(offset) + .cast(childConstraints.min) + flex.1)
+            
+            self[c].layoutHard(in: a &- b)
+        }
+    }
+    
+    mutating 
+    func layoutContent() 
+    {
+        var content:Vector2<Int> = .zero
+        if let leaf:Vector2<Int> = self.layoutLeafContent() 
+        {
+            content &+= leaf
+        }
+        for c:Int in self.indices 
+        {
+            self[c].layoutContent()
+            content &+= self[c].cache.content &- self[c].cache.soft.constraints.min 
+        }
+        
+        self.cache.content = content &+ self.cache.soft.constraints.min
     }
 }
 
@@ -306,25 +1002,13 @@ extension UI
         let classes:Set<String>, 
             identifier:String?
         
-        private 
-        var runs:[(run:Run, sequence:UInt?)], 
-            _style:Style.Rules
-            
-        private 
-        var cache:Cache, 
-            sequence:UInt?
+        var cache:Element.Block.Layout
         
         private 
-        var allotment:Vector2<Int>
-        {
-            willSet(allotment)
-            {
-                if allotment != self.allotment  
-                {
-                    self.cache.invalidate()
-                }
-            }
-        }
+        var runs:[Run]
+        var style:Style.Rules            
+        private 
+        var _cache:Cache
         
         private 
         var description:String 
@@ -338,58 +1022,11 @@ extension UI
             self.runs       = runs.map{ ($0, nil) }
             self.classes    = classes 
             self.identifier = identifier 
-            self._style     = style 
+            self.style      = style 
             
-            self.cache      = .invalid 
-            self.sequence   = nil
-            self.allotment  = .zero
+            self._cache     = .invalid 
+            self.cache      = .init()
         }
-        
-        // setting the style as a whole (through the .style property) will 
-        // trigger a deep invalidation, guaranteeing a reshape to occur. 
-        // style changes that do not require a reshape, such as changing 
-        // text run colors, or changing the offset positioning of the element, 
-        // should be done through individual property setters (.top, .left, etc)
-        
-        // invalidation: deep
-        subscript(index:Int) -> Run 
-        {
-            get         { return self.runs[index].run }
-            set(run)    { self.runs[index].run = run    ; self.cache.invalidate() }
-        }
-        
-        // invalidation: deep
-        var style:Style.Rules
-        {
-            get         { return self._style }
-            set(style)  { self._style = style           ; self.cache.invalidate() }
-        }
-        
-        // invalidation: shallow
-        var offset:Vector2<Float>? 
-        {
-            get         { return self._style.offset }
-            set(p2)     { self._style.set(offset: p2)   ; self.cache.semiinvalidate() }
-        }
-        var trace:Vector3<Float>? 
-        {
-            get         { return self._style.trace }
-            set(p3)     { self._style.set(trace: p3)    ; self.cache.semiinvalidate() }
-        }
-        
-        
-        // invalidation: shallow 
-        func color(_ index:Int) -> Vector4<UInt8>?
-        {
-            return self.runs[index].run.style.color
-        }
-        mutating 
-        func color(_ index:Int, _ color:Vector4<UInt8>?)
-        {
-            self.runs[index].run.style.set(color: color)
-            self.cache.semiinvalidate()
-        }
-        
         
         // UIElement conformance 
         func contribute(text:inout [Self.DrawElement], offset:Vector2<Float>) 
@@ -403,6 +1040,30 @@ extension UI
                 Log.warning("text element \(self.description) was drawn with semivalid cache")
             case .invalid:
                 Log.error("text element \(self.description) could not be drawn (invalid cache)")
+            }
+        }
+        func contribute(geometry:inout [Geometry.DrawElement], offset:Vector2<Float>) 
+        {
+            
+            switch self.cache 
+            {
+            case .invalid:
+                Log.error("text element \(self.description) could not be drawn (invalid cache)")
+            case .semivalid(let cache):
+                Log.warning("text element \(self.description) was drawn with semivalid cache")
+                fallthrough 
+            case .valid(let cache):
+                let draw:Geometry.DrawElement = .init(points: 
+                    [
+                        .init(s: .init(0, 0),                   color: .init(0, 0, 0, .max)), 
+                        .init(s: .init(.init(cache.size.x), 0), color: .init(255, 0, 255, .max)), 
+                        .init(s: .cast(cache.size),             color: .init(255, 0, 255, .max)), 
+                        .init(s: .init(0, .init(cache.size.y)), color: .init(0, 0, 0, .max)), 
+                    ], 
+                    triangles: [(0, 3, 2), (0, 2, 1)],
+                    s0: .init(10, 50), 
+                    r0: .init(.nan, .nan, .nan))
+                geometry.append(draw.offsetted(by: offset))
             }
         }
         
@@ -434,6 +1095,26 @@ extension UI
             {
                 return true 
             }
+        }
+        
+        
+        func layoutBefore(definitions:inout UI.Styles, path:UI.Style.Path)  
+        {
+        }
+        func layoutLeaf() -> Vector2<Int>? 
+        {
+            return nil 
+        }
+        func layoutLeafContent() -> Vector2<Int>
+        {
+            return .zero
+        }
+        func observe(style _:UI.Style.Rules) 
+        {
+            self.cache.invalidate()
+        }
+        func observe(canvas _:Vector2<Int>)
+        {
         }
         
         mutating 
@@ -532,7 +1213,7 @@ extension UI
                         
                         let sort:Typeface.Font.SortInfo = parameters.font.sorts[g.index]
                         // convert 64-point fractional units to ints to floats 
-                        let p:Vector2<Int> = g.position &+ .init(0, l * style.line_height) &<< 6, 
+                        let p:Vector2<Int> = g.position &+ .init(0, (l + 1) * style.line_height) &<< 6, 
                             a:Vector2<Int> = sort.vertices.a &+ p, 
                             b:Vector2<Int> = sort.vertices.b &+ p
                         

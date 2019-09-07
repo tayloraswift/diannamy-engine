@@ -95,36 +95,26 @@ class Typeface
     static 
     func assemble(_ selections:[UI.Style.FontSelection]) -> (Atlas, [Font])
     {
-        var faces:[String: Typeface]    = [:], 
-            fallback:Typeface?          = nil 
+        var fallback:Typeface?          = nil 
         var unassembled:[([Sort], HarfBuzz.Font)] = []
         for selection:UI.Style.FontSelection in selections
         {
             let face:Typeface 
-            if let result:Typeface = faces[selection.fontfile] 
+            if let result:Typeface = Typeface.init(selection.fontfile) ?? fallback
             {
                 face = result 
             }
             else 
             {
-                if let result:Typeface = Typeface.init(selection.fontfile) ?? fallback
-                {
-                    face = result 
-                }
+                fallback = Typeface.init("assets/fonts/fallback") 
+                
+                guard let fallback:Typeface = fallback 
                 else 
                 {
-                    fallback = Typeface.init("assets/fonts/fallback") 
-                    
-                    guard let fallback:Typeface = fallback 
-                    else 
-                    {
-                        Log.fatal("failed to load fallback font")
-                    }
-                    
-                    face = fallback 
+                    Log.fatal("failed to load fallback font")
                 }
                 
-                faces[selection.fontfile] = face 
+                face = fallback 
             }
             
             unassembled.append(face.render(size: selection.size))
@@ -294,47 +284,25 @@ enum HarfBuzz
 {
     struct ShapingParameters 
     {
-        let font:Typeface.Font, 
-            features:[(UInt32, UInt32)]
-    }
-    
-    struct Glyph 
-    {
-        let position:Vector2<Int>, 
-            cluster:Int, 
-            index:Int
+        let font:Typeface.Font
+        fileprivate 
+        let features:[hb_feature_t], 
+            letterspacing:Int, // 64pt units
+            margin:(Int, Int)
         
-        func relative(to origin:Vector2<Int>) -> Self 
+        init(font:Typeface.Font, features:[UI.Style.Feature], letterspacing:Float, margin:(Int, Int)) 
         {
-            return .init(position: self.position &- origin, cluster: self.cluster, index: self.index)
-        }
-    }
-    
-    fileprivate
-    struct Font 
-    {
-        private  
-        let object:OpaquePointer 
-        
-        static 
-        func create(fromFreetype ftface:FreeType.Face) -> Font 
-        {
-            let font:OpaquePointer = hb_ft_font_create_referenced(ftface.object) 
-            return .init(object: font)
-        }
-        
-        func retain() 
-        {
-            hb_font_reference(self.object)
-        }
-        
-        func release() 
-        {
-            hb_font_destroy(self.object)
+            self.font           = font 
+            self.features       = features.map
+            { 
+                .init(tag: $0.tag, value: .init($0.value), start: 0, end: .max) 
+            }
+            self.letterspacing  = .init((letterspacing * 64).rounded())
+            self.margin         = (margin.0 << 6, margin.1 << 6)
         }
         
         fileprivate 
-        func shape(_ text:ArraySlice<Character>, features:[hb_feature_t]) -> Line 
+        func shape(_ text:ArraySlice<Character>) -> Line 
         {
             let buffer:OpaquePointer = hb_buffer_create() 
             defer 
@@ -356,7 +324,7 @@ enum HarfBuzz
             hb_buffer_set_script(buffer, HB_SCRIPT_LATIN)
             hb_buffer_set_language(buffer, hb_language_from_string("en-US", -1))
             
-            hb_shape(self.object, buffer, features, .init(features.count))
+            hb_shape(self.font.hbfont.object, buffer, self.features, .init(self.features.count))
             
             let count:Int = .init(hb_buffer_get_length(buffer))
             let infos:UnsafeBufferPointer<hb_glyph_info_t> = 
@@ -374,7 +342,8 @@ enum HarfBuzz
                     a64:Vector2<Int> = .cast(.init(delta.x_advance, delta.y_advance)), 
                     p64:Vector2<Int> = cursor &+ o64
                 
-                cursor &+= a64
+                cursor  &+= a64
+                cursor.x += self.letterspacing
                 let glyph:Glyph = .init(position: p64, cluster: .init(info.cluster), index: .init(info.codepoint))
                 let element:Line.ShapingElement = .init(glyph: glyph, 
                                                     breakable: info.mask & HB_GLYPH_FLAG_UNSAFE_TO_BREAK.rawValue == 0)
@@ -385,7 +354,7 @@ enum HarfBuzz
         }
         
         fileprivate 
-        func subshape(_ text:ArraySlice<Character>, features:[hb_feature_t], from cached:Line) -> Line
+        func subshape(_ text:ArraySlice<Character>, from cached:Line) -> Line
         {
             let a:Int = cached.bisect{ $0.cluster >= text.startIndex }, 
                 b:Int = cached.bisect{ $0.cluster >= text.endIndex }
@@ -395,11 +364,47 @@ enum HarfBuzz
             else 
             {
                 // we have to reshape 
-                return self.shape(text, features: features)
+                return self.shape(text)
             }
             
             return cached.slice(a ..< b)
         }
+    }
+    
+    struct Glyph 
+    {
+        let position:Vector2<Int>, 
+            cluster:Int, 
+            index:Int
+        
+        func relative(to origin:Vector2<Int>) -> Self 
+        {
+            return .init(position: self.position &- origin, cluster: self.cluster, index: self.index)
+        }
+    }
+    
+    fileprivate
+    struct Font 
+    {
+        let object:OpaquePointer 
+        
+        static 
+        func create(fromFreetype ftface:FreeType.Face) -> Font 
+        {
+            let font:OpaquePointer = hb_ft_font_create_referenced(ftface.object) 
+            return .init(object: font)
+        }
+        
+        func retain() 
+        {
+            hb_font_reference(self.object)
+        }
+        
+        func release() 
+        {
+            hb_font_destroy(self.object)
+        }
+
     }
     
     fileprivate 
@@ -494,17 +499,13 @@ enum HarfBuzz
             il:Int = glyphs.count
         for (text, parameters):(String, ShapingParameters) in runs 
         {
+            x += parameters.margin.0
             let font:Typeface.Font = parameters.font
             func extent(of line:HarfBuzz.Line) -> Int 
             {
                 return line.last.map{ $0.position.x + font.sorts[$0.index].footprint } ?? 0
             }
             
-            let features:[hb_feature_t] = parameters.features.map
-            { 
-                (slug, value) in 
-                .init(tag: slug, value: value, start: 0, end: .max) 
-            } 
             let characters:[Character]  = .init(text)
             
             var newline:Bool = false 
@@ -512,7 +513,7 @@ enum HarfBuzz
                 characters.split(separator: "\n", omittingEmptySubsequences: false)
             {
                 var unshaped:ArraySlice<Character>  = superline, 
-                    shaped:HarfBuzz.Line            = font.hbfont.shape(unshaped, features: features)
+                    shaped:HarfBuzz.Line            = parameters.shape(unshaped)
                 
                 if newline
                 {
@@ -551,7 +552,7 @@ enum HarfBuzz
                     for b:Int in (unshaped.startIndex ..< nextCluster).reversed() where unshaped[b] == " "
                     {
                         let candidate:HarfBuzz.Line = 
-                            font.hbfont.subshape(unshaped[..<b], features: features, from: shaped)
+                            parameters.subshape(unshaped[..<b], from: shaped)
                         // check if the candidate fits 
                         let dx:Int = extent(of: candidate)
                         guard x + dx <= width 
@@ -570,7 +571,7 @@ enum HarfBuzz
                         }
                         else 
                         {
-                            shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
+                            shaped = parameters.subshape(unshaped, from: shaped)
                             break
                         }
                     }
@@ -591,7 +592,7 @@ enum HarfBuzz
                     for c:Int in (unshaped.startIndex ..< nextCluster).reversed().dropLast()
                     {
                         let candidate:HarfBuzz.Line = 
-                            font.hbfont.subshape(unshaped[..<c], features: features, from: shaped)
+                            parameters.subshape(unshaped[..<c], from: shaped)
                         let dx:Int = extent(of: candidate)
                         guard x + dx <= width 
                         else 
@@ -609,14 +610,14 @@ enum HarfBuzz
                         }
                         else 
                         {
-                            shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
+                            shaped = parameters.subshape(unshaped, from: shaped)
                             continue flow 
                         }
                     }
                     
                     // last resort, just place one character on the line 
                     let single:HarfBuzz.Line = 
-                        font.hbfont.subshape(unshaped.prefix(1), features: features, from: shaped)
+                        parameters.subshape(unshaped.prefix(1), from: shaped)
                     glyphs.append(contentsOf: single.offset(x: x))
                     x += extent(of: single)
                     
@@ -627,13 +628,15 @@ enum HarfBuzz
                     }
                     else 
                     {
-                        shaped = font.hbfont.subshape(unshaped, features: features, from: shaped)
+                        shaped = parameters.subshape(unshaped, from: shaped)
                     }
                 }
             }
             
             indices.runs.append(ir ..< glyphs.count)
             ir = glyphs.count 
+            
+            x += parameters.margin.1
         }
         
         indices.lines.append(il ..< glyphs.count)
@@ -653,25 +656,24 @@ enum HarfBuzz
             ir:Int = glyphs.count 
         for (text, parameters):(String, ShapingParameters) in runs 
         {
+            x += parameters.margin.0
+            
             let font:Typeface.Font = parameters.font 
             func extent(of line:HarfBuzz.Line) -> Int 
             {
                 return line.last.map{ $0.position.x + font.sorts[$0.index].footprint } ?? 0
             }
             
-            let features:[hb_feature_t] = parameters.features.map
-            { 
-                (slug, value) in 
-                .init(tag: slug, value: value, start: 0, end: .max) 
-            } 
             let characters:[Character]  = .init(text)
             
-            let shaped:HarfBuzz.Line = font.hbfont.shape(characters[...], features: features)
+            let shaped:HarfBuzz.Line = parameters.shape(characters[...])
             glyphs.append(contentsOf: shaped.offset(x: x))
             x += extent(of: shaped)
             
             indices.append(ir ..< glyphs.count)
             ir = glyphs.count 
+            
+            x += parameters.margin.1
         }
         
         return (glyphs, indices, x)

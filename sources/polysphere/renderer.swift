@@ -44,6 +44,38 @@ protocol _GPUVertexStructured
         get 
     }
 }
+protocol _GPUVertexElement
+{
+    static 
+    var code:Int32 
+    {
+        get 
+    }
+}
+extension UInt8:GPU.Vertex.Element 
+{
+    static 
+    var code:OpenGL.Enum 
+    {
+        OpenGL.UNSIGNED_BYTE
+    }
+}
+extension UInt16:GPU.Vertex.Element 
+{
+    static 
+    var code:OpenGL.Enum 
+    {
+        OpenGL.UNSIGNED_SHORT
+    }
+}
+extension UInt32:GPU.Vertex.Element 
+{
+    static 
+    var code:OpenGL.Enum 
+    {
+        OpenGL.UNSIGNED_INT 
+    }
+}
 
 protocol _GPUAnyBuffer:AnyObject
 {
@@ -129,10 +161,44 @@ protocol _GPUAnyTextureD3:GPU.AnyTexture
 
 enum GPU 
 {
+    enum Primitive 
+    {
+        case points 
+        case lines 
+        case triangles
+        
+        fileprivate 
+        var code:OpenGL.Enum 
+        {
+            switch self 
+            {
+            case .points:
+                return OpenGL.POINTS 
+            case .lines:
+                return OpenGL.LINES 
+            case .triangles:
+                return OpenGL.TRIANGLES
+            }
+        }
+        
+        var stride:Int 
+        {
+            switch self 
+            {
+            case .points:
+                return 1
+            case .lines:
+                return 2
+            case .triangles:
+                return 3
+            }
+        }
+    }
+    
     enum Vertex 
     {
         typealias Structured = _GPUVertexStructured
-        typealias Element = FixedWidthInteger & UnsignedInteger
+        typealias Element = _GPUVertexElement
 
         enum Attribute<Vertex> where Vertex:Structured
         {
@@ -486,10 +552,18 @@ enum GPU
                     OpenGL.glBindBuffer(Buffer.Target.IndexArray.code, 0)
                 }
                 
-                func draw(_ range:Range<Int>)
+                func draw(_ range:Range<Int>, as primitive:Primitive)
                 {
                     OpenGL.glBindVertexArray(self.vertexarray)
-                    OpenGL.glDrawArrays(OpenGL.LINES, .init(range.lowerBound), .init(range.count))
+                    OpenGL.glDrawArrays(primitive.code, .init(range.lowerBound), .init(range.count))
+                    OpenGL.glBindVertexArray(0)
+                }
+                
+                func draw(elements range:Range<Int>, as primitive:Primitive)
+                {
+                    OpenGL.glBindVertexArray(self.vertexarray)
+                    OpenGL.glDrawElements(primitive.code, .init(range.count), Index.code, 
+                        UnsafeRawPointer.init(bitPattern: range.lowerBound * MemoryLayout<Index>.stride))
                     OpenGL.glBindVertexArray(0)
                 }
             }
@@ -511,9 +585,22 @@ enum GPU
                 self.core.destroy()
             }
             
-            func draw(_ range:Range<Int>) 
+            func draw(_ range:Range<Int>, as primitive:Primitive)
             {
-                self.core.draw(range)
+                if range.count % primitive.stride != 0 
+                {
+                    Log.error("vertex count \(range.count) is not divisible by \(primitive.stride), as required by draw mode '\(primitive)'")
+                }
+                self.core.draw(range, as: primitive)
+            }
+            
+            func draw(elements range:Range<Int>, as primitive:Primitive)
+            {
+                if range.count % primitive.stride != 0 
+                {
+                    Log.error("indices count \(range.count) is not divisible by \(primitive.stride), as required by draw mode '\(primitive)'")
+                }
+                self.core.draw(elements: range, as: primitive)
             }
         }
     }
@@ -681,7 +768,7 @@ enum GPU
         typealias Uniform<Element>      = Buffer<Target.Uniform,    Element>
         typealias Array<Element>        = Buffer<Target.Array,      Element>
         typealias IndexArray<Element>   = Buffer<Target.IndexArray, Element> 
-            where Element:FixedWidthInteger & UnsignedInteger
+            where Element:Vertex.Element
         
         final 
         class Buffer<Target, Element>:AnyBuffer where Target:AnyTarget
@@ -2350,12 +2437,7 @@ class Renderer
             case indexed 
         }
         
-        enum Primitive 
-        {
-            case points 
-            case lines 
-            case triangles
-        }
+        
         
         let shader:Shader 
         let geometry:Geometry 

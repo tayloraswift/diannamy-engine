@@ -7,3 +7,6 @@ crash.log
 fontatlas-debug.png
 mapeditor.dsd
 __gyb__
+*.ttf
+*.otf
+*.woff2

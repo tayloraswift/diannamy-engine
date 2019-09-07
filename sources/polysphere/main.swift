@@ -193,6 +193,7 @@ class Context
                 glfwSwapBuffers(self.backpointer)
             }
             
+            //print(1 / (t1 - t0))
             t0 = t1
         }
     }

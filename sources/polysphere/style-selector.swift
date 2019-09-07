@@ -140,6 +140,21 @@ extension UI.Style
                 return false 
             }
             
+            guard depth == path.levels.endIndex
+            else 
+            {
+                if  selector.levels.last?.vector ?? false, 
+                    let level:Level = selector.levels.last?.level, 
+                    let leaf:Level  = path.levels.last, 
+                    level ~= leaf 
+                {
+                    return true 
+                }
+                else 
+                {
+                    return false 
+                }
+            }
             return true  
         }
     }
