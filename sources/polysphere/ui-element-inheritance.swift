@@ -184,8 +184,8 @@ extension UI
             willSet(new)
             {
                 if  new.color               != self.computedStyle.color             ||
-                    new.background_color    != self.computedStyle.background_color  ||
-                    new.border_color        != self.computedStyle.border_color      ||
+                    new.backgroundColor    != self.computedStyle.backgroundColor  ||
+                    new.borderColor        != self.computedStyle.borderColor      ||
                     new.trace               != self.computedStyle.trace             ||
                     new.offset              != self.computedStyle.offset 
                 {
@@ -392,8 +392,8 @@ extension UI.Element
             
             let r:Vector3<Float>         = self.computedStyle.trace
             
-            let bg:Vector4<UInt8>        = self.computedStyle.background_color, 
-                bd:Vector4<UInt8>        = self.computedStyle.border_color
+            let bg:Vector4<UInt8>        = self.computedStyle.backgroundColor, 
+                bd:Vector4<UInt8>        = self.computedStyle.borderColor
             let padding:UI.Style.Metrics = self.computedStyle.padding
             let border:UI.Style.Metrics  = self.computedStyle.border
             
@@ -419,7 +419,7 @@ extension UI.Element
             b.1 = .cast(.init( padding.right + border.right,   padding.bottom + border.bottom) &+ self.size) 
             
             let area:Vector2<Float> = b.1 - a.0
-            let radius:Float        = min((min(area.x, area.y) / 2).rounded(.down), .init(self.computedStyle.border_radius))
+            let radius:Float        = min((min(area.x, area.y) / 2).rounded(.down), .init(self.computedStyle.borderRadius))
             
             let d:(top:Float, right:Float, bottom:Float, left:Float) = 
             (
@@ -891,14 +891,14 @@ extension UI.Element
                     space.main = free.main 
                 case .center:
                     space.main = free.main / 2
-                case .space_between:
+                case .spaceBetween:
                     space.main = .init(Double.init(free.main) * Double.init(i) / Double.init(self.children.count - 1))
-                case .space_around:
+                case .spaceAround:
                     space.main = .init(Double.init(free.main) * Double.init(i * 2 + 1) / Double.init(2 * self.children.count))
-                case .space_evenly:
+                case .spaceEvenly:
                     space.main = .init(Double.init(free.main) * Double.init(i * 2 + 2) / Double.init(2 * self.children.count + 2))
                 }
-                switch (block.computedStyle.align_self, self.computedStyle.align) 
+                switch (block.computedStyle.alignSelf, self.computedStyle.align) 
                 {
                 case (.start, _),   (.auto, .start):
                     space.cross = 0 
@@ -1007,7 +1007,7 @@ extension UI.Element
             {
                 if  new.wrap        != self.computedStyle.wrap      ||
                     new.indent      != self.computedStyle.indent    ||
-                    new.line_height != self.computedStyle.line_height
+                    new.lineHeight != self.computedStyle.lineHeight
                 {
                     self.spans.first?.recomputeLayout = .physical
                 }
@@ -1054,14 +1054,14 @@ extension UI.Element
                     .init(
                         font: fonts[$0.computedStyle.font], 
                         features: $0.computedStyle.features, 
-                        letterspacing: $0.computedStyle.letter_spacing, 
+                        letterspacing: $0.computedStyle.letterSpacing, 
                         margin: (margin.left, margin.right)
                     )
                 return parameters
             }
             
             let cx:Int = self.computedStyle.indent
-            let dy:Int = self.computedStyle.line_height
+            let dy:Int = self.computedStyle.lineHeight
             if self.computedStyle.wrap
             {
                 // no concept of 2D grid layout, new lines just reset the x coordinate to 0 (or indent)

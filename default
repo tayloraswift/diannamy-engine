@@ -7,7 +7,7 @@ p > span
 
 > *
 {
-    background_color: rgb(255, 50, 70)
+    background-color: rgb(255, 50, 70)
     align: center
 }
 #container
@@ -16,7 +16,7 @@ p > span
     margin: 10
     align: center
     justify: center
-    background_color: rgb(255,255,255)
+    background-color: rgb(255,255,255)
 }
 #container > *
 {
@@ -26,12 +26,12 @@ p > span
 }
 #top 
 {
-    //background_color: rgba(255, 255, 0, 50)
+    //background-color: rgba(255, 255, 0, 50)
 }
 #top > * 
 {
     axis: horizontal
-    justify: space_between
+    justify: space-between
 }
 #top p
 {
@@ -40,70 +40,70 @@ p > span
 
 #banner 
 {
-    //background_color: rgba(0, 255, 255, 50)
+    //background-color: rgba(0, 255, 255, 50)
 }
 #banner p 
 {
-    line_height: 56
+    line-height: 56
 }
 #logo 
 {
-    // background_color: rgba(0, 255, 0, 50)
+    // background-color: rgba(0, 255, 0, 50)
     margin: 0 40
 }
 #logo > span
 {
     color: rgb(0, 0, 0)
     font: 'Engravers Old English Normal.ttf' @ 60
-    letter_spacing: -2
+    letter-spacing: -2
 }
 #banner .status 
 {
-    // background_color: rgba(255, 0, 0, 50)
+    // background-color: rgba(255, 0, 0, 50)
 }
 #banner #time 
 {
-    // background_color: rgba(0, 0, 255, 50)
+    // background-color: rgba(0, 0, 255, 50)
 }
 
 #masthead 
 {
-    border_color: rgb(0, 0, 0)
+    border-color: rgb(0, 0, 0)
     border: 0 0 2 0
     margin: 12 24
     justify: center
 }
 #masthead p 
 {
-    line_height: 32
+    line-height: 32
     margin: 12 16
 }
 
 
-#page_body 
+#page-body 
 {
     axis: horizontal
-    //background_color: rgba(255, 0, 100, 50)
+    //background-color: rgba(255, 0, 100, 50)
 }
-#page_body p
+#page-body p
 {
-    line_height: 19
+    line-height: 19
 }
-#page_body p > span 
+#page-body p > span 
 {
     font: 'nyt-imperial.ttf' @ 14
     color: rgb(85, 85, 85)
 }
 
-#page_body > * 
+#page-body > * 
 {
     margin: 0 30
 }
-#page_body #main_panel 
+#page-body #main-panel 
 {
     grow: 2
 }
-#page_body #side_panel 
+#page-body #side-panel 
 {
     grow: 1
 }
@@ -121,17 +121,17 @@ p > span
 
 
 
-#main_panel p 
+#main-panel p 
 {
     margin: -2 0 8 0
 }
 
 // side panel 
-#opinion_header  
+#opinion-header  
 {
     padding: 0 0 5 0
 }
-#opinion_header > span 
+#opinion-header > span 
 {
     font: 'nyt-cheltenham-medium.ttf' @ 18
     color: rgb(18, 18, 18)
@@ -146,7 +146,7 @@ p > span
     color: rgb(161, 157, 157)
 }
 
-#side_panel p 
+#side-panel p 
 {
     margin: -2 0 8 0
 }
@@ -155,42 +155,42 @@ p > span
 // headline
 .topic
 {
-    line_height: 16
+    line-height: 16
 }
 .topic > span
 {
     font: 'SanFranciscoText-Bold.otf' @ 12
-    letter_spacing: 0.4
+    letter-spacing: 0.4
     color: rgb(18, 18, 18)
 }
 
 .headline 
 {
-    line_height: 19
+    line-height: 19
     margin: -3 0 5 0
 }
 .headline > span
 {
     font: 'nyt-cheltenham-bold.ttf' @ 16
-    letter_spacing: 0.1
+    letter-spacing: 0.1
     color: rgb(18, 18, 18)
 }
 
-.headline.headline_major
+.headline.headline-major
 {
-    line_height: 26
+    line-height: 26
     margin: -3 0 10 0
 }
-.headline.headline_major > span
+.headline.headline-major > span
 {
     font: 'nyt-cheltenham-bold.ttf' @ 20
-    letter_spacing: 0.2
+    letter-spacing: 0.2
 }
 
-.image_placeholder 
+.image-placeholder 
 {
     padding: 100 0
-    background_color: rgb(200, 200, 200)
+    background-color: rgb(200, 200, 200)
 }
 // captions 
 .illustration 
@@ -199,23 +199,23 @@ p > span
 }
 .illustration .caption 
 {
-    line_height: 14
+    line-height: 14
 }
 .illustration .caption > span
 {
     font: 'nyt-cheltenham-small.ttf' @ 11
     color: rgb(153, 153, 153)
-    letter_spacing: 0.2
+    letter-spacing: 0.2
 }
-.illustration .credit_line 
+.illustration .credit-line 
 {
-    line_height: 12
+    line-height: 12
 }
-.illustration .credit_line > span
+.illustration .credit-line > span
 {
     font: 'nyt-cheltenham-small.ttf' @ 10
     color: rgb(204, 204, 204)
-    letter_spacing: 0.2
+    letter-spacing: 0.2
 }
 
 

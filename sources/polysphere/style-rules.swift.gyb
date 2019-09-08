@@ -169,7 +169,7 @@ extension UI.Style
     
     enum Justification:Sheet.Enumeration
     {
-        case start, center, end, space_between, space_around, space_evenly
+        case start, center, end, spaceBetween, spaceAround, spaceEvenly
         
         static 
         var type:Sheet.Parse.Expression.Keyword 
@@ -187,12 +187,12 @@ extension UI.Style
                 self = .center
             case "end":
                 self = .end 
-            case "space_between":
-                self = .space_between 
-            case "space_around":
-                self = .space_around
-            case "space_evenly":
-                self = .space_evenly 
+            case "space-between":
+                self = .spaceBetween 
+            case "space-around":
+                self = .spaceAround
+            case "space-evenly":
+                self = .spaceEvenly 
             default:
                 return nil 
             }
@@ -312,35 +312,38 @@ extension UI.Style
     }
     
     %{
+    def css_name(swift_name):
+        return ''.join(c if c.islower() else '-{0}'.format(c.lower()) for c in swift_name)
+    
     properties = (
         ('color',           'text color',           'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
-        ('background_color','background color',     'Vector4<UInt8>',   '.init(0, 0, 0, 0)'), 
-        ('border_color',    'border color',         'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
+        ('backgroundColor', 'background color',     'Vector4<UInt8>',   '.init(0, 0, 0, 0)'), 
+        ('borderColor',     'border color',         'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
         ('trace',           '3D tracing center',    'Vector3<Float>',   '.init(.nan, .nan, .nan)'), 
         ('offset',          '2D offset',            'Vector2<Float>',   '.init(0, 0)'), 
         
         ('padding',         'padding metrics',      'Metrics',          '.zero'), 
         ('border',          'border metrics',       'Metrics',          '.zero'), 
         ('margin',          'margin metrics',       'Metrics',          '.zero'), 
-        ('border_radius',   'line-height',          'Int',              '0'), 
+        ('borderRadius',    'line-height',          'Int',              '0'), 
         
         ('wrap',            'line-wrapping mode',   'Bool',             'true'), 
         ('indent',          'indentation',          'Int',              '0'), 
-        ('line_height',     'line-height',          'Int',              '0'), 
+        ('lineHeight',      'line-height',          'Int',              '0'), 
         
         ('font',            'font selection',       'FontSelection',    '.init(fontfile: "assets/fonts/default", size: 16)'),
         ('features',        'font feature list',    '[Feature]',        '[.kern(true)]'), 
-        ('letter_spacing',  'letter spacing',       'Float',            '0'), 
+        ('letterSpacing',   'letter spacing',       'Float',            '0'), 
         
-        ('margin_collapse', 'margin collapse mode', 'Bool',             'true'),
-        ('border_collapse', 'border collapse mode', 'Bool',             'false'),
+        ('marginCollapse',  'margin collapse mode', 'Bool',             'true'),
+        ('borderCollapse',  'border collapse mode', 'Bool',             'false'),
         ('grow',            'flex growth weight',   'Float',            '1'),
         ('stretch',         'flex stretch weight',  'Float',            '1'),
         
         ('position',        'positioning mode',     'Positioning',      '.relative'),
         ('justify',         'justification mode',   'Justification',    '.start'), 
         ('align',           'alignment mode',       'Alignment',        '.start'), 
-        ('align_self',      'per-element alignment mode',       'Alignment',        '.auto'), 
+        ('alignSelf',       'per-element alignment mode',       'Alignment',        '.auto'), 
         ('axis',            'content major axis',   'Axis',             '.vertical')
     )
     }%
@@ -355,7 +358,7 @@ extension UI.Style
             switch string 
             {
             % for property, prose, type, default in properties:
-            case ${'"{0}"'.format(property)}:
+            case ${'"{0}"'.format(css_name(property))}:
                 self = .${property}
             % end
             default:

@@ -212,7 +212,7 @@ extension UI.Style
                     private static 
                     func begin(_ character:Character, at index:String.Index) throws -> Self 
                     {
-                        if character.isLetter || character == "_"
+                        if character.isLetter 
                         {
                             return .identifier(.init(character))
                         }
@@ -251,10 +251,17 @@ extension UI.Style
                         switch self 
                         {
                         case .identifier(var identifier):
-                            if character.isLetter || character.isNumber || character == "_"
+                            if character.isLetter || character.isNumber || character == "-"
                             {
                                 identifier.append(character)
                                 self = .identifier(identifier)
+                                return nil 
+                            }
+                        
+                        case .minus:
+                            if character.isLetter || character == "-"
+                            {
+                                self = .identifier("-\(character)")
                                 return nil 
                             }
                         
@@ -380,7 +387,7 @@ extension UI.Style
                                 return nil 
                             }
                         
-                        case .minus, .slash, .punctuation(_):
+                        case .slash, .punctuation(_):
                             break atom 
                         
                         case .whitespace:
@@ -1115,17 +1122,17 @@ extension UI.Style
                 {
                     switch property 
                     {
-                    case .wrap, .margin_collapse, .border_collapse:
+                    case .wrap, .marginCollapse, .borderCollapse:
                         let value:Bool = try self.expect(expression: .value(property, .bool), 
                             where: Lex.Lexeme.load(bool:range:)) 
                         return value 
                     
-                    case .indent, .line_height, .border_radius:
+                    case .indent, .lineHeight, .borderRadius:
                         let value:Int = try self.expect(expression: .value(property, .int), 
                             where: Lex.Lexeme.load(int:range:)) 
                         return value 
                     
-                    case .grow, .stretch, .letter_spacing:
+                    case .grow, .stretch, .letterSpacing:
                         let value:Float = try self.expect(expression: .value(property, .float), 
                             where: Lex.Lexeme.load(float:range:)) 
                         return value 
@@ -1168,7 +1175,7 @@ extension UI.Style
                         }
                         return value 
                     
-                    case .color, .background_color, .border_color:
+                    case .color, .backgroundColor, .borderColor:
                         return try self.color(property: property)
                     
                     case .trace:
@@ -1284,7 +1291,7 @@ extension UI.Style
                         return try self.enumeration(as: Positioning.self, expression: .value(property, nil))
                     case .justify:
                         return try self.enumeration(as: Justification.self, expression: .value(property, nil))
-                    case .align, .align_self:
+                    case .align, .alignSelf:
                         return try self.enumeration(as: Alignment.self, expression: .value(property, nil))
                     case .axis:
                         return try self.enumeration(as: Axis.self, expression: .value(property, nil))
@@ -1611,7 +1618,8 @@ extension UI.Style
             {
                 let fonts:[Typeface.Font]
                 (self.atlas, fonts) = Typeface.assemble(selections)
-                print(selections)
+                print("rendered \(selections.count) fonts:")
+                print(selections.enumerated().map{ "    [\($0.0)]: \($0.1)" }.joined(separator: "\n"))
                 self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
             }
             

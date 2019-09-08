@@ -275,7 +275,7 @@ struct Coordinator
                                     [
                                         .init("After Two Mass Shootings, Will Republicans Take a New Stance on Guns?")
                                     ], 
-                                    classes: ["headline", "headline_major"])
+                                    classes: ["headline", "headline-major"])
                                 let p1:UI.Element.P = .init(
                                     [
                                         .init("President Trump explored whether to expand background checks for guns, and Senator Mitch McConnell signaled he would be open to considering the idea.")
@@ -306,7 +306,7 @@ struct Coordinator
                                     let illustration:UI.Element.Div
                                     do 
                                     {
-                                        let picture:UI.Element.Div = .init([], classes: ["image_placeholder"])
+                                        let picture:UI.Element.Div = .init([], classes: ["image-placeholder"])
                                         let caption:UI.Element.P = .init(
                                             [
                                                 .init("A vigil for victims of the mass shootings in El Paso and Dayton was held outside the National Rifle Association’s headquarters in Fairfax, Va., on Monday.")
@@ -316,7 +316,7 @@ struct Coordinator
                                             [
                                                 .init("Anna Moneymaker/The New York Times")
                                             ], 
-                                            classes: ["credit_line"])
+                                            classes: ["credit-line"])
                                         
                                         illustration = .init([picture, caption, creditline], classes: ["illustration"], style: .init([.grow: 2 as Float]))
                                     }
@@ -366,7 +366,7 @@ struct Coordinator
                         }
                         
                         
-                        main = .init([story1], identifier: "main_panel")
+                        main = .init([story1], identifier: "main-panel")
                     }
                     
                     let side:UI.Element.Div 
@@ -376,7 +376,7 @@ struct Coordinator
                             [
                                 .init("Opinion >")
                             ], 
-                            identifier: "opinion_header")
+                            identifier: "opinion-header")
                         let author:UI.Element.P = .init(
                             [
                                 .init("Sahil Chinoy")
@@ -398,10 +398,10 @@ struct Coordinator
                             ], 
                             classes: ["statusbar"])
                         
-                        side = .init([section, author, title, summary, statusbar], identifier: "side_panel")
+                        side = .init([section, author, title, summary, statusbar], identifier: "side-panel")
                     }
                     
-                    body = .init([main, side], identifier: "page_body")
+                    body = .init([main, side], identifier: "page-body")
                 }
                 
                 
