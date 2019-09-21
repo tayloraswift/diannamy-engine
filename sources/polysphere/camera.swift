@@ -1,4 +1,4 @@
-struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematical & SIMDScalar
+struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar
 {
     struct Matrices 
     {

@@ -117,65 +117,12 @@ struct UI
             }
         }
         
-        enum Pass:Comparable 
-        {
-            // events will be captured by elements explicitly waiting on a confirmation. 
-            // usually, there should not be more than one such element at a time, 
-            // often, zero.
-            case confirmation 
-            
-            // events will be captured by local elements (within an active “panel”)
-            case local
-            // events will be captured by anything else (allowing context switches)
-            case global 
-            
-            static 
-            func < (lhs:Self, rhs:Self) -> Bool 
-            {
-                switch (lhs, rhs) 
-                {
-                    case    (.confirmation, .local), 
-                            (.confirmation, .global):
-                        return true 
-                    case    (.local, .global):
-                        return true
-                    default:
-                        return false 
-                }
-            }
-        }
-        
-        enum Confirmation 
-        {
-            case primary(Direction.D1)
-            case secondary(Direction.D1)
-            case key(Key, Key.Modifiers)
-            
-            static 
-            func ~= (confirmation:Self, event:Event) -> Bool 
-            {
-                switch (confirmation, event) 
-                {
-                case    (.primary(  let transition1), .primary(  let transition2, _)), 
-                        (.secondary(let transition1), .secondary(let transition2, _)):
-                    return transition1 == transition2 
-                
-                case    (.key(let key1, let modifiers1), .key(let key2, let modifiers2)):
-                    return key1 == key2 && modifiers1 == modifiers2
-                default:
-                    return false
-                }
-            }
-        }
-        
         // buttons 
-        case double(Direction.D1, Vector2<Float>)
-        case primary(Direction.D1, Vector2<Float>)
-        case secondary(Direction.D1, Vector2<Float>)
+        case primary(Direction.D1, Vector2<Float>, doubled:Bool)
+        case secondary(Direction.D1, Vector2<Float>, doubled:Bool)
         
         // cursor 
-        case enter(Vector2<Float>) // formerly known as "move"
-        case leave 
+        case cursor(Vector2<Float>)
         
         case scroll(Direction.D2, Vector2<Float>) 
         
@@ -183,10 +130,27 @@ struct UI
         case key(Key, Key.Modifiers)
         case character(Character)
         
-        // instructs elements to provide clipboard responses
         case cut 
         case copy 
         case paste(String)
+        
+        case leave
+        
+        struct Response  
+        {
+            var cursor:Cursor       = .arrow
+            var clipboard:String?   = nil 
+        }
+    }
+    
+    enum Cursor:Hashable
+    {
+        case arrow 
+        case beam
+        case crosshair
+        case hand 
+        case resizeHorizontal
+        case resizeVertical
     }
 
     /* struct BitVector 

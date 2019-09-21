@@ -11,14 +11,45 @@ class Context
     
     // need this to detect double clicks
     private 
-    var lastPrimary:Double 
+    var last:(primary:Double, secondary:Double)
+    
+    private static 
+    let cursors:[UI.Cursor: OpaquePointer] = 
+    [
+        .arrow:             glfwCreateStandardCursor(GLFW_ARROW_CURSOR),
+        .beam:              glfwCreateStandardCursor(GLFW_IBEAM_CURSOR),
+        .crosshair:         glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR),
+        .hand:              glfwCreateStandardCursor(GLFW_HAND_CURSOR),
+        .resizeHorizontal:  glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR),
+        .resizeVertical:    glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR),
+    ]
     
     init(_ coordinator:Coordinator, backpointer:OpaquePointer)
     {
         self.coordinator = coordinator
         self.backpointer = backpointer
         
-        self.lastPrimary = glfwGetTime()
+        let t:Double = glfwGetTime()
+        self.last = (t, t)
+    }
+    
+    // clipboard and cursor callbacks 
+    func event(_ event:UI.Event) 
+    {
+        let response:UI.Event.Response = self.coordinator.event(event) 
+        switch event 
+        {
+        case .primary, .secondary, .cursor, .scroll:
+            glfwSetCursor(self.backpointer, Self.cursors[response.cursor])
+        
+        default:
+            break
+        }
+        
+        if let string:String = response.clipboard 
+        {
+            glfwSetClipboardString(self.backpointer, string)
+        }
     }
     
     func connect() 
@@ -47,7 +78,7 @@ class Context
             }
             
             let context:Context = .reconstitute(from: context)
-            context.coordinator.event(.character(.init(codepoint)))
+            context.event(.character(.init(codepoint)))
         }
         
         glfwSetKeyCallback(self.backpointer)
@@ -84,7 +115,7 @@ class Context
                 event = .key(key, modifiers)
             }
             
-            context.coordinator.event(event)
+            context.event(event)
         }
         
         glfwSetCursorPosCallback(self.backpointer)
@@ -94,7 +125,7 @@ class Context
             let context:Context = .reconstitute(from: context)
             let position:Vector2<Float> = 
                 .init(.init(x), .init(context.coordinator.window.y) - .init(y))
-            context.coordinator.event(.enter(position))
+            context.event(.cursor(position))
         }
 
         glfwSetMouseButtonCallback(self.backpointer)
@@ -115,27 +146,23 @@ class Context
                 return 
             }
             
+            let threshold:Double = 0.3, 
+                timestamp:Double = glfwGetTime()
             let event:UI.Event
             switch code 
             {
             case    GLFW_MOUSE_BUTTON_LEFT:
-                let threshold:Double = 0.3, 
-                    timestamp:Double = glfwGetTime()
-                if d1 == .down, timestamp - context.lastPrimary < threshold
-                {
-                    event = .double(d1, position)
-                }
-                else 
-                {
-                    event = .primary(d1, position)
-                }
-                context.lastPrimary = timestamp
+                let doubled:Bool        = d1 == .down && timestamp - context.last.primary < threshold
+                context.last.primary    = timestamp
+                event                   = .primary(d1, position, doubled: doubled)
                 
             case    GLFW_MOUSE_BUTTON_MIDDLE:
                 return 
             
             case    GLFW_MOUSE_BUTTON_RIGHT:
-                event = .secondary(d1, position)
+                let doubled:Bool        = d1 == .down && timestamp - context.last.secondary < threshold
+                context.last.secondary  = timestamp
+                event                   = .secondary(d1, position, doubled: doubled)
             
             case    GLFW_MOUSE_BUTTON_4, 
                     GLFW_MOUSE_BUTTON_5, 
@@ -148,7 +175,7 @@ class Context
                 return 
             }
             
-            context.coordinator.event(event)
+            context.event(event)
         }
         
         glfwSetScrollCallback(self.backpointer)
@@ -171,7 +198,7 @@ class Context
                 d2 = .down 
             }
             
-            context.coordinator.event(.scroll(d2, position))
+            context.event(.scroll(d2, position))
         }
     }
 
@@ -184,8 +211,7 @@ class Context
         var t0:Double = glfwGetTime()
         while glfwWindowShouldClose(self.backpointer) == 0
         {
-            glfwPollEvents()
-            
+            glfwWaitEventsTimeout(1.0 / 60.0)
             let t1:Double = glfwGetTime()
             
             if self.coordinator.process(delta: .init(t1 * 1000) - .init(t0 * 1000)) 
@@ -251,7 +277,7 @@ func main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE)
     glfwWindowHint(GLFW_RESIZABLE, 1)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1)
-    glfwWindowHint(GLFW_SAMPLES, 4)
+    // glfwWindowHint(GLFW_SAMPLES, 4)
     
     guard let window:OpaquePointer = 
         glfwCreateWindow(1200, 600, "<anonymous>", nil, nil)
@@ -274,7 +300,7 @@ func main()
         .debug, 
         .clear(r: 0.4, g: 0, b: 1, a: 1), 
         .clearDepth(-1))
-    let coordinator:Coordinator = .init(renderer: .init(options: .clear(color: true, depth: true)))
+    let coordinator:Coordinator = .init()
     let context:Context         = .init(coordinator, backpointer: window)
     withExtendedLifetime(context)
     {

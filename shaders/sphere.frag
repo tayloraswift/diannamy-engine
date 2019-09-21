@@ -12,7 +12,8 @@ layout(std140) uniform Camera
     vec3 position;  // F[3]
 } camera;
 
-uniform vec4 sphere;
+uniform vec3 origin;
+uniform float scale;
 
 uniform sampler2D globetex;
 
@@ -21,21 +22,41 @@ out vec4 color;
 
 const float pi = 3.1415926538;
 
-void main()
+vec4 pixel(vec2 fragment) 
 {
-    vec3 ray = normalize(camera.F * vec3(gl_FragCoord.xy, 1));
-    vec3  c  = sphere.xyz - camera.position;
+    vec3 ray = normalize(camera.F * vec3(fragment, 1));
+    vec3  c  = origin - camera.position;
     float l  = dot(c, ray);
     
-    float discriminant = sphere.w * sphere.w + l * l - dot(c, c);
+    float discriminant = scale * scale + l * l - dot(c, c);
     if (discriminant < 0)
     {
-        discard;
+        return vec4(0);
     }
     
-    vec3 normal = normalize(camera.position + ray * (l - sqrt(discriminant)) - sphere.xyz);
+    vec3 normal = normalize(camera.position + ray * (l - sqrt(discriminant)) - origin);
     
     vec2 equirectangular = vec2(atan(normal.y, normal.x) * INV_2PI, acos(normal.z) * INV_PI);
     vec3 albedo = texture(globetex, equirectangular).rgb;
-    color = vec4(albedo * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1)))) + 0.05), 1);
+    return vec4(albedo * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1)))) + 0.05), 1);
+}
+void main()
+{
+    vec2 fragments[5];
+    fragments[0] = vec2(-0.25, -0.25);
+    fragments[1] = vec2( 0.25, -0.25);
+    fragments[2] = vec2(-0.25,  0.25);
+    fragments[3] = vec2( 0.25,  0.25);
+    fragments[4] = vec2( 0,     0);
+    
+    color = vec4(0, 0, 0, 0);
+    for (uint i = 0u; i < 5u; ++i) 
+    {
+        color += pixel(gl_FragCoord.xy + fragments[i]);
+    }
+    if (color.a > 0) 
+    {
+        color.rgb = color.rgb / color.a;
+        color.a  /= 5;
+    }
 }

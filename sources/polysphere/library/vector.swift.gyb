@@ -1,9 +1,3 @@
-import func Glibc.sin
-import func Glibc.cos
-import func Glibc.tan
-import func Glibc.asin
-import func Glibc.acos
-import func Glibc.atan
 import func Glibc.atan2
 
 infix operator <> :MultiplicationPrecedence // dot product
@@ -15,7 +9,6 @@ infix operator ~~ :ComparisonPrecedence     // distance test
 infix operator !~ :ComparisonPrecedence     // distance test 
 
 %{
-    mathematical_functions_unary    = 'sin', 'cos', 'tan', 'asin', 'acos', 'atan'
     C                               = 'x', 'y', 'z', 'w'
 }%
 
@@ -55,66 +48,8 @@ extension FloatingPoint
     } 
 }
 
-protocol Mathematical
-{
-    associatedtype Math:MathImplementations where Math.Value == Self
-}
-protocol MathImplementations 
-{
-    associatedtype Value
-    
-    % for function in mathematical_functions_unary:
-    static func ${function}(_:Value) -> Value
-    % end 
-    static func atan2(y:Value, x:Value) -> Value
-}
-
-% for float_type in 'Float', 'Double':
-extension ${float_type}:Mathematical
-{
-    enum Math:MathImplementations
-    {
-        % for function in mathematical_functions_unary:
-        @inline(__always)
-        static 
-        func ${function}(_ x:${float_type}) -> ${float_type} 
-        {
-            return Glibc.${function}(x)
-        }
-        % end
-        
-        @inline(__always)
-        static
-        func atan2(y:${float_type}, x:${float_type}) -> ${float_type}
-        {
-            return Glibc.atan2(y, x)
-        }
-    }
-}
-% end 
 
 % for N in 2, 3, 4:
-extension SIMD${N}:Mathematical where Scalar:Mathematical
-{
-    enum Math:MathImplementations
-    {
-        % for function in mathematical_functions_unary:
-        @inline(__always)
-        static 
-        func ${function}(_ v:SIMD${N}<Scalar>) -> SIMD${N}<Scalar> 
-        {
-            return .init(${ ', '.join('Scalar.Math.{0}(v.{1})'.format(function, c) for c in C[:N]) })
-        }
-        % end 
-        
-        @inline(__always)
-        static
-        func atan2(y:SIMD${N}<Scalar>, x:SIMD${N}<Scalar>) -> SIMD${N}<Scalar>
-        {
-            return .init(${ ', '.join('Scalar.Math.{0}(y: y.{1}, x: x.{1})'.format('atan2', c) for c in C[:N]) })
-        }
-    }
-}
 
 struct Vector${N}<Scalar>:Hashable, Codable, CustomStringConvertible where Scalar:SIMDScalar 
 {
@@ -440,27 +375,6 @@ func         abs<Scalar>(_ v:Vector${N}<Scalar>) -> Vector${N}<Scalar> where Sca
     return .init(v.storage.replacing(with:     -v.storage, where: v.storage .< 0))
 }
 
-extension Vector${N}:Mathematical where Scalar:Mathematical 
-{
-    enum Math:MathImplementations 
-    {
-        % for function in mathematical_functions_unary:
-        @inline(__always)
-        static 
-        func ${function}(_ v:Vector${N}<Scalar>) -> Vector${N}<Scalar>  
-        {
-            return .init(SIMD${N}<Scalar>.Math.${function}(v.storage))
-        }
-        % end 
-        
-        @inline(__always)
-        static
-        func atan2(y:Vector${N}<Scalar>, x:Vector${N}<Scalar>) -> Vector${N}<Scalar>
-        {
-            return .init(SIMD${N}<Scalar>.Math.atan2(y: y.storage, x: x.storage))
-        }
-    }
-}
 % end 
 
 extension Vector2 where Scalar:FixedWidthInteger 
@@ -498,34 +412,50 @@ extension Vector3 where Scalar:FloatingPoint
     }
 }
 
-extension Spherical2 where Scalar:FloatingPoint
+extension Spherical2 where Scalar == Float
 {
     init(cartesian:Vector3<Scalar>)
     {
-        let colatitude:Scalar = Scalar.Math.acos(cartesian.z / cartesian.length)
-        let longitude:Scalar  = Scalar.Math.atan2(y: cartesian.y, x: cartesian.x)
+        let colatitude:Scalar = Scalar.acos(cartesian.z / cartesian.length)
+        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
         self.init(colatitude, longitude)
     }
     
     init(normalized cartesian:Vector3<Scalar>)
     {
-        let colatitude:Scalar = Scalar.Math.acos(cartesian.z)
-        let longitude:Scalar  = Scalar.Math.atan2(y: cartesian.y, x: cartesian.x)
+        let colatitude:Scalar = Scalar.acos(cartesian.z)
+        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
         self.init(colatitude, longitude)
     }
 }
-extension Vector3 where Scalar:FloatingPoint & Mathematical 
+extension Spherical2 where Scalar == Double
+{
+    init(cartesian:Vector3<Scalar>)
+    {
+        let colatitude:Scalar = Scalar.acos(cartesian.z / cartesian.length)
+        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
+        self.init(colatitude, longitude)
+    }
+    
+    init(normalized cartesian:Vector3<Scalar>)
+    {
+        let colatitude:Scalar = Scalar.acos(cartesian.z)
+        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
+        self.init(colatitude, longitude)
+    }
+}
+extension Vector3 where Scalar:FloatingPoint & ElementaryFunctions 
 {
     init(spherical:Spherical2<Scalar>)
     {
         let ll:Vector2<Scalar>  = .init(spherical.storage)
-        let sin:Vector2<Scalar> = Vector2.Math.sin(ll), 
-            cos:Vector2<Scalar> = Vector2.Math.cos(ll)
+        let sin:Vector2<Scalar> = .init(.sin(ll.storage)), 
+            cos:Vector2<Scalar> = .init(.cos(ll.storage))
         self = .extend(.init(cos.y, sin.y) * sin.x, cos.x)
     }
 }
 
-struct Spherical2<Scalar> where Scalar:SIMDScalar & Mathematical
+struct Spherical2<Scalar> where Scalar:SIMDScalar & FloatingPoint & ElementaryFunctions
 {
     var storage:SIMD2<Scalar>
     
@@ -567,9 +497,8 @@ struct Spherical2<Scalar> where Scalar:SIMDScalar & Mathematical
     {
         return .init(try transform(self.colatitude), try transform(self.longitude))
     }
-}
-extension Spherical2 where Scalar:FloatingPoint
-{
+    
+    
     static 
     var zero:Spherical2<Scalar> 
     {
@@ -659,7 +588,7 @@ extension Spherical2 where Scalar:FloatingPoint
 }
 
 % for N in 2, 3, 4:
-struct Matrix${N}<T> where T:SIMDScalar 
+struct Matrix${N}<T>:Equatable where T:SIMDScalar 
 {
     private 
     var columns:(${ ', '.join(('Vector{0}<T>'.format(N),) * N) })
@@ -712,6 +641,12 @@ struct Matrix${N}<T> where T:SIMDScalar
     init(${ ', '.join('_ v{0}:Vector{1}<T>'.format(i, N) for i in range(N)) })
     {
         self.columns = (${ ', '.join('v{0}'.format(i) for i in range(N)) })
+    }
+    
+    static 
+    func == (lhs:Self, rhs:Self) -> Bool 
+    {
+        return ${ ' && '.join('lhs.columns.{0} == rhs.columns.{0}'.format(c) for c in range(N)) }
     }
 }
 

@@ -36,6 +36,16 @@ extension UnsafeRawBufferPointer:ContiguousCollection
     }
 }
 
+protocol _GPUVertexAnyArray:AnyObject
+{
+    var count:(vertex:Int, index:Int)
+    {
+        get
+    }
+    
+    func draw(_ range:Range<Int>, as primitive:GPU.Primitive)
+    func draw(indices range:Range<Int>, as primitive:GPU.Primitive)
+}
 protocol _GPUVertexStructured 
 {
     static 
@@ -199,6 +209,7 @@ enum GPU
     {
         typealias Structured = _GPUVertexStructured
         typealias Element = _GPUVertexElement
+        typealias AnyArray = _GPUVertexAnyArray
 
         enum Attribute<Vertex> where Vertex:Structured
         {
@@ -442,27 +453,27 @@ enum GPU
         }
         
         final 
-        class Array<Vertex, Index>
+        class Array<Vertex, Index>:AnyArray
             where Vertex:Structured, Index:Element
         {
             fileprivate 
             struct Core 
             {
-                let vertexarray:OpenGL.UInt 
+                let vertexArray:OpenGL.UInt 
                 
                 static 
                 func create() -> Self 
                 {
-                    let vertexarray:OpenGL.UInt = directReturn(default: 0) 
+                    let vertexArray:OpenGL.UInt = directReturn(default: 0) 
                     {
                         OpenGL.glGenVertexArrays(1, $0)
                     }
-                    return .init(vertexarray: vertexarray)
+                    return .init(vertexArray: vertexArray)
                 }
                 
                 func destroy() 
                 {
-                    withUnsafePointer(to: self.vertexarray)
+                    withUnsafePointer(to: self.vertexArray)
                     {
                         OpenGL.glDeleteVertexArrays(1, $0)
                     }
@@ -470,7 +481,7 @@ enum GPU
                 
                 func attach(vertices:Buffer.Array<Vertex>, indices:Buffer.IndexArray<Index>)
                 {
-                    OpenGL.glBindVertexArray(self.vertexarray)
+                    OpenGL.glBindVertexArray(self.vertexArray)
                     OpenGL.glBindBuffer(Buffer.Target.Array.code, vertices.core.buffer)
                     
                     // set vertex attributes 
@@ -554,14 +565,14 @@ enum GPU
                 
                 func draw(_ range:Range<Int>, as primitive:Primitive)
                 {
-                    OpenGL.glBindVertexArray(self.vertexarray)
+                    OpenGL.glBindVertexArray(self.vertexArray)
                     OpenGL.glDrawArrays(primitive.code, .init(range.lowerBound), .init(range.count))
                     OpenGL.glBindVertexArray(0)
                 }
                 
                 func draw(elements range:Range<Int>, as primitive:Primitive)
                 {
-                    OpenGL.glBindVertexArray(self.vertexarray)
+                    OpenGL.glBindVertexArray(self.vertexArray)
                     OpenGL.glDrawElements(primitive.code, .init(range.count), Index.code, 
                         UnsafeRawPointer.init(bitPattern: range.lowerBound * MemoryLayout<Index>.stride))
                     OpenGL.glBindVertexArray(0)
@@ -572,12 +583,18 @@ enum GPU
             let core:Core 
             var buffers:(vertex:Buffer.Array<Vertex>, index:Buffer.IndexArray<Index>)
             
+            var count:(vertex:Int, index:Int) 
+            {
+                (self.buffers.vertex.count, self.buffers.index.count)
+            }
+            
             init(vertices:Buffer.Array<Vertex>, indices:Buffer.IndexArray<Index>) 
             {
                 self.core    = .create()
-                self.core.attach(vertices: vertices, indices: indices)
-                
                 self.buffers = (vertex: vertices, index: indices)
+                
+                // self.bind()
+                self.core.attach(vertices: vertices, indices: indices)
             }
             
             deinit
@@ -587,6 +604,7 @@ enum GPU
             
             func draw(_ range:Range<Int>, as primitive:Primitive)
             {
+                // self.bind()
                 if range.count % primitive.stride != 0 
                 {
                     Log.error("vertex count \(range.count) is not divisible by \(primitive.stride), as required by draw mode '\(primitive)'")
@@ -594,8 +612,9 @@ enum GPU
                 self.core.draw(range, as: primitive)
             }
             
-            func draw(elements range:Range<Int>, as primitive:Primitive)
+            func draw(indices range:Range<Int>, as primitive:Primitive)
             {
+                // self.bind()
                 if range.count % primitive.stride != 0 
                 {
                     Log.error("indices count \(range.count) is not divisible by \(primitive.stride), as required by draw mode '\(primitive)'")
@@ -1057,9 +1076,6 @@ enum GPU
     final 
     class Program 
     {
-        private static 
-        var bound:Weak<Program> = .init(nil)
-        
         enum Error:RecursiveError 
         {
             static 
@@ -1187,7 +1203,7 @@ enum GPU
             }
         }
         
-        enum Constant
+        enum Constant:Equatable
         {
             case float32    (Float)
             case float32x2  (Vector2<Float>)
@@ -1274,6 +1290,59 @@ enum GPU
                 
                 case    .block      (let value as Any, range: let range):
                     return "\(String.init(describing: type(of: value)))[\(range.count)]"
+                }
+            }
+            
+            // has to be manual 
+            static 
+            func == (lhs:Self, rhs:Self) -> Bool 
+            {
+                switch (lhs, rhs) 
+                {
+                case (.float32    (let v1), .float32    (let v2)):
+                    return v1 == v2
+                case (.float32x2  (let v1), .float32x2  (let v2)):
+                    return v1 == v2
+                case (.float32x3  (let v1), .float32x3  (let v2)):
+                    return v1 == v2
+                case (.float32x4  (let v1), .float32x4  (let v2)):
+                    return v1 == v2
+                
+                case (.int32      (let v1), .int32      (let v2)):
+                    return v1 == v2
+                case (.int32x2    (let v1), .int32x2    (let v2)):
+                    return v1 == v2
+                case (.int32x3    (let v1), .int32x3    (let v2)):
+                    return v1 == v2
+                case (.int32x4    (let v1), .int32x4    (let v2)):
+                    return v1 == v2
+                
+                case (.uint32     (let v1), .uint32     (let v2)):
+                    return v1 == v2
+                case (.uint32x2   (let v1), .uint32x2   (let v2)):
+                    return v1 == v2
+                case (.uint32x3   (let v1), .uint32x3   (let v2)):
+                    return v1 == v2
+                case (.uint32x4   (let v1), .uint32x4   (let v2)):
+                    return v1 == v2
+                
+                case (.matrix2    (let v1), .matrix2    (let v2)):
+                    return v1 == v2
+                case (.matrix3    (let v1), .matrix3    (let v2)):
+                    return v1 == v2
+                case (.matrix4    (let v1), .matrix4    (let v2)):
+                    return v1 == v2
+                
+                case (.texture2   (let t1), .texture2   (let t2)):
+                    return t1 === t2
+                case (.texture3   (let t1), .texture3   (let t2)):
+                    return t1 === t2
+                
+                case (.block      (let b1, range: let r1), .block      (let b2, range: let r2)):
+                    return b1 === b2 && r1 == r2
+                
+                default:
+                    return false
                 }
             }
         }
@@ -1782,9 +1851,10 @@ enum GPU
             self.core.destroy()
         }
         
-        func _bind() 
+        private 
+        func bind() 
         {
-            if let old:Program = Self.bound.object
+            if let old:Program = Manager.Program.bound
             {
                 guard old !== self 
                 else 
@@ -1794,11 +1864,12 @@ enum GPU
             }
             
             OpenGL.glUseProgram(self.core.program)
+            Manager.Program.bound = self
         }
         
-        func _push(constants:[String: Constant]) 
+        func push(constants:[String: Constant]) 
         {
-            self._bind()
+            self.bind()
             self.core.push(constants: constants)
         }
     }
@@ -2121,6 +2192,19 @@ extension GPU
     typealias StateManager = _StateManager
     enum Manager 
     {
+        /*
+        enum VertexArray 
+        {
+            static 
+            var bound:GPU.Vertex.AnyArray? = nil
+        }
+        */
+        enum Program 
+        {
+            static 
+            var bound:GPU.Program? = nil
+        }
+        
         enum Texture:StateManager
         {
             typealias Instance = AnyTexture
@@ -2363,105 +2447,134 @@ extension GPU
 final 
 class Renderer 
 {
-    // per-command options
-    /* enum Option 
-    {
-        enum BlendMode 
-        {
-            case mix, add 
-        }
-        
-        enum DepthTest
-        {
-            case never, 
-                 less, 
-                 equal, 
-                 lessEqual, 
-                 greater, 
-                 notEqual, 
-                 greaterEqual, 
-                 always
-        }
-        
-        case blend(mode:BlendMode)
-        case depth(test:DepthTest)
-        case cull
-        case multisample
-    } */
+    var viewport:Rectangle<Int> = .zero 
     
-    // per-layer options 
-    enum Option 
+    init() 
     {
-        case clear(color:Bool, depth:Bool)
     }
     
-    private 
-    var options:[Option], 
-        viewport:Rectangle<Int> = .zero 
-    
-    init(options:Option...)
-    {
-        self.options = options 
-    }
-    
-    func options(_ options:Option...) 
-    {
-        self.options = options
-    }
-    
-    func viewport(_ viewport:Rectangle<Int>) 
-    {
-        self.viewport = viewport 
-    }
-    
-    func draw()
+    func execute(_ commands:[Command]) 
     {
         let a:Vector2<Int32> = .cast(self.viewport.a),
             s:Vector2<Int32> = .cast(self.viewport.size)
         OpenGL.glViewport(a.x, a.y, s.x, s.y)
+        // should really do some sorting
+        var state:
+        (
+            program:GPU.Program?, 
+            arguments:[String: GPU.Program.Constant], 
+            
+            blendMode:Command.BlendMode,
+            depthTest:Command.DepthTest, 
+            cull:Bool 
+        )
         
-        for option:Option in self.options 
+        OpenGL.glEnable(OpenGL.BLEND)
+        OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
+        OpenGL.glBlendEquation(OpenGL.FUNC_ADD)
+        
+        state.program   = nil 
+        state.arguments = [:] 
+        state.blendMode = .mix 
+        state.depthTest = .off 
+        state.cull      = false 
+        for command:Command in commands 
         {
-            switch option 
+            switch command 
             {
             case .clear(color: let color, depth: let depth):
-                OpenGL.glClear((color ? OpenGL.COLOR_BUFFER_BIT : 0) | (depth ? OpenGL.DEPTH_BUFFER_BIT : 0))
+                OpenGL.glClear(
+                    (color ? OpenGL.COLOR_BUFFER_BIT : 0) | 
+                    (depth ? OpenGL.DEPTH_BUFFER_BIT : 0))
+            case .draw(let command):
+                if let program:GPU.Program = state.program, program === command.program 
+                {
+                } 
+                else 
+                {
+                    state.arguments = [:]
+                }
+                
+                var update:[String: GPU.Program.Constant] = [:]
+                for (parameter, value):(String, GPU.Program.Constant) in command.arguments 
+                {
+                    guard   let old:GPU.Program.Constant = state.arguments[parameter], 
+                                old == value 
+                    else 
+                    {
+                        state.arguments[parameter]  = value 
+                        update[parameter]           = value 
+                        continue
+                    }
+                } 
+                
+                if command.blend != state.blendMode 
+                {
+                    switch command.blend 
+                    {
+                    case .mix:
+                        OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
+                    case .add:
+                        OpenGL.glBlendFunc(OpenGL.ONE, OpenGL.ONE)
+                    }
+                    state.blendMode = command.blend
+                }
+                
+                if command.depth != state.depthTest 
+                {
+                    switch (state.depthTest, command.depth) 
+                    {
+                    case (.off, .off):
+                        break 
+                    case (_, .off):
+                        OpenGL.glDisable(OpenGL.DEPTH_TEST)
+                    case (.off, _):
+                        OpenGL.glEnable(OpenGL.DEPTH_TEST)
+                    default:
+                        break
+                    }
+                    
+                    switch command.depth 
+                    {
+                    case .never:
+                        OpenGL.glDepthFunc(OpenGL.NEVER)
+                    case .less:
+                        OpenGL.glDepthFunc(OpenGL.LESS)
+                    case .lessEqual:
+                        OpenGL.glDepthFunc(OpenGL.LEQUAL)
+                    case .equal:
+                        OpenGL.glDepthFunc(OpenGL.EQUAL)
+                    case .greaterEqual:
+                        OpenGL.glDepthFunc(OpenGL.GEQUAL)
+                    case .greater:
+                        OpenGL.glDepthFunc(OpenGL.GREATER)
+                    case .notEqual:
+                        OpenGL.glDepthFunc(OpenGL.NOTEQUAL)
+                    case .always:
+                        OpenGL.glDepthFunc(OpenGL.ALWAYS)
+                    case .off:
+                        break
+                    }
+                    state.depthTest = command.depth
+                }
+                
+                // push command binds the program, even if the update is empty. 
+                // program binding also checks cached state, but there’s no harm
+                // in checking twice (and can prevent a smal number of rebinds across
+                // render command groups)
+                command.program.push(constants: update)
+                if command.indexed 
+                {
+                    command.vertexArray.draw(indices: command.range, as: command.primitive)
+                }
+                else 
+                {
+                    command.vertexArray.draw(command.range, as: command.primitive)
+                }
             }
+            
         }
     }
-    /* struct Command 
-    {
-        enum Indexing 
-        {
-            case direct 
-            case indexed 
-        }
-        
-        
-        
-        let shader:Shader 
-        let geometry:Geometry 
-        let indexing:Indexing, 
-            primitive:Primitive, 
-            range:Range<Int>
-    }
-    
-    enum Shader 
-    {
-        enum Selector:Hashable
-        {
-            case text(Texture)                  // (sx, sy, tx, ty, x, y, z, r, g, b, a)
-            case solidVertex(Vector4<UInt8>)    // (x, y, z, _)
-            case colorVertex                    // (x, y, z, r, g, b, a) x 3
-            case globe(Texture)                 // (x, y, z, _)
-        }
-    }
-    
-    struct Element<Vertex>
-    {
-        var vertices:[Vertex]
-        let shader:Shader.Selector
-    } */
 }
 extension Renderer 
 {
@@ -2513,12 +2626,6 @@ extension Renderer
             // options always set to constant value 
             OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, OpenGL.FILL)
             
-            // DEBUG
-            OpenGL.glEnable(OpenGL.BLEND)
-            OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
-            OpenGL.glEnable(OpenGL.DEPTH_TEST)
-            OpenGL.glDepthFunc(OpenGL.GEQUAL)
-            
             Self.initialized = true
         }
         
@@ -2564,6 +2671,103 @@ extension Renderer
                 
                 Log.print(severity, message, from: .opengl)
             }, nil)
+        }
+    }
+}
+extension Renderer 
+{
+    enum Command 
+    {
+        enum BlendMode 
+        {
+            case mix, add 
+        }
+
+        enum DepthTest
+        {
+            case off, 
+                 never, 
+                 less, 
+                 lessEqual, 
+                 equal, 
+                 greaterEqual, 
+                 greater, 
+                 notEqual, 
+                 always
+        }
+        
+        struct Draw 
+        {
+            let program:GPU.Program
+            let arguments:[String: GPU.Program.Constant]
+            let vertexArray:GPU.Vertex.AnyArray
+            let range:Range<Int>
+            let indexed:Bool
+            let primitive:GPU.Primitive
+            
+            let blend:BlendMode
+            let depth:DepthTest 
+            let cull:Bool
+        }
+        
+        case draw(Draw)
+        case clear(color:Bool, depth:Bool)
+        
+        static 
+        func draw<R>(elements:R, 
+            of vertexArray:GPU.Vertex.AnyArray, 
+            as primitive:GPU.Primitive, 
+            
+            blendMode:BlendMode = .mix, 
+            depthTest:DepthTest = .greaterEqual, 
+            cull:Bool           = true, 
+            
+            using program:GPU.Program,
+            _ arguments:[String: GPU.Program.Constant]) -> Self
+            where R:RangeExpression, R.Bound == Int
+        {
+            let indices:Range<Int> = 0 ..< vertexArray.count.index
+            let draw:Draw = .init(
+                program: program, 
+                arguments: arguments, 
+                vertexArray: vertexArray, 
+                range: indices[elements], 
+                indexed: true, 
+                primitive: primitive, 
+                
+                blend: blendMode, 
+                depth: depthTest, 
+                cull: cull 
+                )
+            return .draw(draw)
+        }
+        static 
+        func draw<R>(_ vertices:R, 
+            of vertexArray:GPU.Vertex.AnyArray, 
+            as primitive:GPU.Primitive, 
+            
+            blendMode:BlendMode = .mix, 
+            depthTest:DepthTest = .greaterEqual, 
+            cull:Bool           = true, 
+            
+            using program:GPU.Program,
+            _ arguments:[String: GPU.Program.Constant]) -> Self
+            where R:RangeExpression, R.Bound == Int
+        {
+            let indices:Range<Int> = 0 ..< vertexArray.count.vertex
+            let draw:Draw = .init(
+                program: program, 
+                arguments: arguments, 
+                vertexArray: vertexArray, 
+                range: indices[vertices], 
+                indexed: false, 
+                primitive: primitive, 
+                
+                blend: blendMode, 
+                depth: depthTest, 
+                cull: cull 
+                )
+            return .draw(draw)
         }
     }
 }

@@ -184,8 +184,8 @@ extension UI
             willSet(new)
             {
                 if  new.color               != self.computedStyle.color             ||
-                    new.backgroundColor    != self.computedStyle.backgroundColor  ||
-                    new.borderColor        != self.computedStyle.borderColor      ||
+                    new.backgroundColor     != self.computedStyle.backgroundColor   ||
+                    new.borderColor         != self.computedStyle.borderColor       ||
                     new.trace               != self.computedStyle.trace             ||
                     new.offset              != self.computedStyle.offset 
                 {
@@ -220,11 +220,12 @@ extension UI
             self.recomputeStyle = .no
         }
         
-        func event(_:UI.Event, pass _:UI.Event.Pass) 
+        func event(_ event:UI.Event, pass _:Int, response:inout UI.Event.Response) -> Bool
         {
+            return false
         }
         
-        func process(delta _:Int) 
+        func process(_:Int) 
         {
         }
         
@@ -290,21 +291,27 @@ extension UI.Element
         }
         
         override
-        func event(_ event:UI.Event, pass:UI.Event.Pass) 
+        func event(_ event:UI.Event, pass:Int, response:inout UI.Event.Response) -> Bool
         {
+            var consumed:Bool = false 
             for element:UI.Element in self.elements 
             {
-                element.event(event, pass: pass)
+                if element.event(event, pass: pass, response: &response) 
+                {
+                    consumed = true 
+                }
             }
+            
+            return consumed
         }
         
         override 
-        func process(delta:Int) 
+        func process(_ delta:Int) 
         {
-            super.process(delta: delta)
+            super.process(delta)
             for element:UI.Element in self.elements 
             {
-                element.process(delta: delta)
+                element.process(delta)
             }
         }
         
@@ -963,11 +970,6 @@ extension UI.Element
             super.init(identifier: identifier, classes: classes, style: style)
         }
         
-        /* func process(delta:Int) 
-        {
-            super.process(delta: delta)
-        } */
-        
         final override 
         func contribute(
             text    :inout [UI.DrawElement.Text], 
@@ -1021,20 +1023,22 @@ extension UI.Element
             super.init(identifier: identifier, classes: classes, style: style)
         }
         
-        override 
-        func event(_ event:UI.Event, pass _:UI.Event.Pass) 
+        /* override 
+        func event(_ event:UI.Event, pass _:Int, response:inout UI.Event.Response) -> Bool
         {
             switch event 
             {
             case .character(let character):
                 self.spans[1].text.append(character)
+                return .consumed 
             
             case .paste(let string):
                 self.spans[1].text += string
+                return .consumed
             default:
-                return 
+                return .unconsumed
             }
-        }
+        } */
         
         override 
         func layout(max size:Vector2<Int>, fonts:UI.Style.Styles.FontLibrary) 

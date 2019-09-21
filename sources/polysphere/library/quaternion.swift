@@ -1,6 +1,6 @@
 // BinaryFloatingPoint, because we use float literals with math
 struct Quaternion<F>:Equatable, Interpolable 
-    where F:FloatingPoint & ExpressibleByFloatLiteral & Mathematical & SIMDScalar
+    where F:FloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar
 {
     private 
     var q:Vector4<F> 
@@ -28,7 +28,7 @@ struct Quaternion<F>:Equatable, Interpolable
     
     init(axis:Vector3<F>, angle:F)
     {
-        self.init(F.Math.cos(0.5 * angle), F.Math.sin(0.5 * angle) * axis)
+        self.init(F.cos(0.5 * angle), F.sin(0.5 * angle) * axis)
     }
     
     init(_ a:F, _ b:Vector3<F>)
@@ -89,6 +89,26 @@ struct Quaternion<F>:Equatable, Interpolable
     static 
     func interpolate(_ a:Quaternion<F>, _ b:Quaternion<F>, by t:F) -> Quaternion<F> 
     {
-        return t < 0.5 ? a : b
+        let dot:F = a.q <> b.q 
+        let v:(Vector4<F>, Vector4<F>) = 
+        (
+            dot < 0 ? -a.q : a.q, 
+            b.q
+        )
+        
+        let adot:F = abs(dot)
+        guard adot < (1 - 0x1p-5) 
+        else 
+        {
+            return .init((a.q * (1 - t) + b.q * t).normalized())
+        }
+        
+        let theta:(F, F)
+        theta.0         = .acos(adot)
+        theta.1         = theta.0 * t
+        let f:F         = .sin(theta.1) / .sin(theta.0)
+        let s:(F, F)    = (.cos(theta.1) - adot * f, f)
+        
+        return .init((s.0 * v.0) + (s.1 * v.1))
     }
 }

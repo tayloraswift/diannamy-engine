@@ -4,7 +4,7 @@ enum Display
     {
         enum Movement 
         {
-            case orbit(Vector2<Float>, confirmation:UI.Event.Confirmation)
+            case orbit(Vector2<Float>)
             case jump(Vector3<Float>)
             case jumpRelative(Vector3<Float>)
             case jumpLocal(Vector3<Float>)
@@ -21,8 +21,7 @@ enum Display
             case orbit(  orientation:Quaternion<Float>,     // the original orientation of the trackball
                               radius:Float,                 // the original radius of the trackball
                               anchor:Vector3<Float>,        // the part of the trackball clicked 
-                             rayfilm:Rayfilm,               // the original configuration of the view plane
-                        confirmation:UI.Event.Confirmation) // the event to watch for to end the action
+                             rayfilm:Rayfilm)               // the original configuration of the view plane
         }
         
         
@@ -130,6 +129,7 @@ extension Display.Plane3D
             self.matrices    = self.animation.current.matrices(frame: self.frame, 
                                                             viewport: self.viewport, 
                                                                 clip: .init(-0.1, -100))
+            self.update      = nil
             // return true 
         }
         else 
@@ -138,12 +138,12 @@ extension Display.Plane3D
         }
     }
     
-    mutating 
+    private mutating 
     func move(_ movement:Movement) 
     {
         switch movement 
         {
-        case .orbit(let s, let confirmation):
+        case .orbit(let s):
             self.animation.stop()
             let rig:Camera<Float>.Rig = self.animation.current 
             // save the current rayfilm
@@ -156,8 +156,7 @@ extension Display.Plane3D
             self.action = .orbit(orientation: rig.orientation, 
                                       radius: r, 
                                       anchor: (a - rig.center).normalized(), 
-                                     rayfilm: rayfilm, 
-                                confirmation: confirmation)
+                                     rayfilm: rayfilm)
         
         case .jump(let target):
             self.charge
@@ -205,40 +204,77 @@ extension Display.Plane3D
         
         self.animation.charge(time: 256, transform: body)
     }
-
-    // to *trigger* an action, have the caller sort the event, and call the `move(_:)` 
-    // method directly.
+    
     mutating 
-    func event(_ event:UI.Event, pass _:UI.Event.Pass) -> Bool 
+    func event(_ event:UI.Event, pass:Int, response:inout UI.Event.Response) -> Bool
     {
-        switch self.action 
+        if pass == 0 
         {
-        case .none:
+            switch self.action 
+            {
+            case .none:
+                return false 
+            
+            case .orbit(let orientation, let radius, let anchor, let rayfilm):
+                switch event 
+                {
+                case .cursor(let s):
+                    self.animation.charge(time: 64)
+                    {
+                        let b:Vector3<Float>    = Self.project(ray: rayfilm.cast(s), on: $0.center, radius: radius), 
+                            q:Quaternion<Float> = .init(from: anchor, to: (b - $0.center).normalized())
+                        $0.orientation = q.inverse >< orientation
+                    } 
+                
+                case .primary(.up, _, _), .leave:
+                    self.action = .none 
+                            
+                default:
+                    break 
+                }
+                
+                response.cursor = .hand
+                return true 
+            }
+        }
+        else if pass == 1 
+        {
             return false 
-        
-        case .orbit(let orientation, let radius, let anchor, let rayfilm, let confirmation):
+        }
+        else  
+        {
             switch event 
             {
-            case .enter(let s):
-                self.animation.charge(time: 0)
+            case .primary(.down, let s, _):
+                self.move(.orbit(s))
+            
+            case .scroll(.down, _):
+                self.move(.zoom(.down))
+            case .scroll(.up, _):
+                self.move(.zoom(.up))
+                
+            case .key(.Q, _):
+                self.charge
                 {
-                    let b:Vector3<Float>    = Self.project(ray: rayfilm.cast(s), on: $0.center, radius: radius), 
-                        q:Quaternion<Float> = .init(from: anchor, to: (b - $0.center).normalized())
-                    $0.orientation = q.inverse >< orientation
+                    let q:Quaternion<Float> = .init(axis: .init(0, 0, 1), angle: .pi * 0.33)
+                    $0.orientation = q >< $0.orientation 
+                } 
+            case .key(.E, _):
+                self.charge
+                {
+                    let q:Quaternion<Float> = .init(axis: .init(0, 0, 1), angle: .pi * -0.33)
+                    $0.orientation = q >< $0.orientation 
                 } 
             
             case .leave:
-                self.action = .none 
-                        
+                return false 
+              
+            
             default:
-                break 
+                break
             }
             
-            if confirmation ~= event 
-            {
-                self.action = .none 
-            }
-            
+            response.cursor = .hand
             return true 
         }
     }

@@ -1,6 +1,6 @@
 #version 330 core
 
-layout(location = 0) in vec3 position;
+layout(location = 0) in vec4 position;
 
 layout(std140) uniform Camera
 {
@@ -10,7 +10,10 @@ layout(std140) uniform Camera
     vec3 position;  // F[3]
 } camera;
 
+uniform vec3 origin;
+uniform float scale;
+
 void main()
 {
-    gl_Position  = camera.U * vec4(position, 1);
+    gl_Position  = camera.U * vec4(position.xyz * scale + origin, 1);
 }
