@@ -147,7 +147,7 @@ struct Controller//:LayerController
         texture:GPU.Texture.D2<Vector4<UInt8>>
     )
     private 
-    let points:GPU.Vertex.Array<Mesh.Preset.ColorVertex, UInt8>
+    let points:GPU.Vertex.Array<Mesh.Preset.ColorVertex, UInt32>
     
     var viewport:Rectangle<Int> = .zero 
     {
@@ -394,13 +394,22 @@ struct Controller//:LayerController
         self.cube.texture = .init(layout: .rgba8, magnification: .nearest, minification: .nearest)
         self.cube.texture.assign(checkerboard)
         
-        let vertices:GPU.Buffer.Array<Mesh.Preset.ColorVertex> = .init(hint: .static)
-        let points:[Mesh.Preset.ColorVertex] = Algorithm.fibonacci(1 << 16, as: Double.self).map 
+        let vertices:GPU.Buffer.Array<Mesh.Preset.ColorVertex>  = .init(hint: .static)
+        let triangulation:GPU.Buffer.IndexArray<UInt32>         = .init(hint: .static)
+        
+        let fbs:[Vector3<Double>] = Algorithm.fibonacci(1 << 12, as: Double.self)
+        // delaunay 
+        let triangles:[UInt32] = Algorithm.Delaunay.triangulate(fbs).flatMap 
+        {
+            [.init($0.0), .init($0.1), .init($0.2)]
+        }
+        let points:[Mesh.Preset.ColorVertex] = fbs.map 
         {
             .init(.cast($0), color: .extend(.cast(($0 * 0.5 + 0.5) * 255), .max))
         }
         vertices.assign(points)
-        self.points = .init(vertices: vertices, indices: .init(hint: .static))
+        triangulation.assign(triangles)
+        self.points = .init(vertices: vertices, indices: triangulation)
     }
     
     mutating 
@@ -446,7 +455,7 @@ struct Controller//:LayerController
     func draw(_ context:Coordinator.Context) -> [Renderer.Command] 
     {
         [
-            .draw(elements: 0..., of: self.cube.vao, as: .triangles, 
+            /* .draw(elements: 0..., of: self.cube.vao, as: .triangles, 
                 depthTest: .off,
                 using: context.shaders.implicitSphere,
                 [
@@ -456,15 +465,21 @@ struct Controller//:LayerController
                     "scale"     : .float32(1.0),
                     
                     "globetex"  : .texture2(self.cube.texture),
-                ]), 
-            .draw(0..., of: self.points, as: .points, 
+                ]),  */
+            .draw(elements: 0..., of: self.points, as: .triangles, 
                 depthTest: .off, 
-                using: context.shaders.solidPoints,
+                using: context.shaders.colorTriangles,
+                [
+                    "Camera"    : .block(self.cameraBuffer),
+                ]), 
+            /* .draw(0..., of: self.points, as: .points, 
+                depthTest: .off, 
+                using: context.shaders.colorPoints,
                 [
                     "Display"   : .block(context.display),
                     "Camera"    : .block(self.cameraBuffer),
                     "radius"    : .float32(4),
-                ])
+                ]) */
         ]
     }
 } 
@@ -481,7 +496,8 @@ struct Coordinator
             
             implicitSphere: GPU.Program, 
             
-            solidPoints:    GPU.Program
+            colorPoints:    GPU.Program,
+            colorTriangles: GPU.Program
         )
     )
     
@@ -542,13 +558,19 @@ struct Coordinator
                     (.fragment, "shaders/sphere.frag"),
                 ], 
                 debugName: "diannamy://engine/shaders/sphere*")
-            self.context.shaders.solidPoints = try .init(
+            self.context.shaders.colorPoints = try .init(
                 [
                     (.vertex,   "shaders/Mesh.Preset.ColorVertex.vert"),
-                    (.geometry, "shaders/solid-points.geom"),
-                    (.fragment, "shaders/solid-points.frag"),
+                    (.geometry, "shaders/color-points.geom"),
+                    (.fragment, "shaders/color-points.frag"),
                 ], 
-                debugName: "diannamy://engine/shaders/solid-points*")
+                debugName: "diannamy://engine/shaders/color-points*")
+            self.context.shaders.colorTriangles = try .init(
+                [
+                    (.vertex,   "shaders/Mesh.Preset.ColorVertex.vert"),
+                    (.fragment, "shaders/color-triangles.frag"),
+                ], 
+                debugName: "diannamy://engine/shaders/color-triangles*")
         }
         catch 
         {

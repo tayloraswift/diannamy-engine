@@ -2558,6 +2558,19 @@ class Renderer
                     state.depthTest = command.depth
                 }
                 
+                if command.cull != state.cull 
+                {
+                    if command.cull 
+                    {
+                        OpenGL.glEnable(OpenGL.CULL_FACE)
+                    }
+                    else 
+                    {
+                        OpenGL.glDisable(OpenGL.CULL_FACE)
+                    }
+                    state.cull = command.cull 
+                }
+                
                 // push command binds the program, even if the update is empty. 
                 // program binding also checks cached state, but there’s no harm
                 // in checking twice (and can prevent a smal number of rebinds across
@@ -2625,6 +2638,8 @@ extension Renderer
             
             // options always set to constant value 
             OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, OpenGL.FILL)
+            OpenGL.glCullFace(OpenGL.BACK)
+            OpenGL.glFrontFace(OpenGL.CCW)
             
             Self.initialized = true
         }

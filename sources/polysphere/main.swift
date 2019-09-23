@@ -298,7 +298,7 @@ func main()
     
     Renderer.Backend.initialize(loader: loader, options: 
         .debug, 
-        .clear(r: 0.4, g: 0, b: 1, a: 1), 
+        .clear(r: 0.1, g: 0.1, b: 0.1, a: 1), 
         .clearDepth(-1))
     let coordinator:Coordinator = .init()
     let context:Context         = .init(coordinator, backpointer: window)
