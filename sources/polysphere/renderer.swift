@@ -168,6 +168,9 @@ protocol _GPUAnyTextureD2:GPU.AnyTexture
 protocol _GPUAnyTextureD3:GPU.AnyTexture 
 {
 }
+protocol _GPUAnyTextureCube:GPU.AnyTexture 
+{
+}
 
 enum GPU 
 {
@@ -176,6 +179,7 @@ enum GPU
         case points 
         case lines 
         case triangles
+        case linesAdjacency
         
         fileprivate 
         var code:OpenGL.Enum 
@@ -188,6 +192,8 @@ enum GPU
                 return OpenGL.LINES 
             case .triangles:
                 return OpenGL.TRIANGLES
+            case .linesAdjacency:
+                return OpenGL.LINES_ADJACENCY
             }
         }
         
@@ -201,6 +207,8 @@ enum GPU
                 return 2
             case .triangles:
                 return 3
+            case .linesAdjacency:
+                return 4
             }
         }
     }
@@ -939,6 +947,14 @@ enum GPU
                     OpenGL.TEXTURE_3D
                 }
             }
+            enum Cube:AnyTarget 
+            {
+                static 
+                var code:OpenGL.Enum 
+                {
+                    OpenGL.TEXTURE_CUBE_MAP
+                }
+            }
         }
         
         fileprivate 
@@ -1016,12 +1032,30 @@ enum GPU
                     OpenGL.glGenerateMipmap(Target.code)
                 }
             }
+            func assign<Atom>(cubemap data:Array2D<Atom>, layout:Layout, mipmap:Bool)
+            {
+                let size:Vector2<OpenGL.Size> = .cast(.init(data.size.x, data.size.y / 6))
+                for k:Int in 0 ..< 6 
+                {
+                    data.buffer.withUnsafeBufferPointer 
+                    {
+                        OpenGL.glTexImage2D(OpenGL.TEXTURE_CUBE_MAP_POSITIVE_X + .init(k), 0, layout.storage, 
+                            size.x, size.y, 0, layout.layout, layout.type, $0.baseAddress.map{ $0 + k * .init(size.x * size.y) })
+                    }
+                }
+                if mipmap 
+                {
+                    OpenGL.glGenerateMipmap(Target.code)
+                }
+            }
         }
         
         typealias AnyD2         = _GPUAnyTextureD2
         typealias AnyD3         = _GPUAnyTextureD3
+        typealias AnyCube       = _GPUAnyTextureCube
         typealias D2<Element>   = Texture<Target.D2, Element>
         typealias D3<Element>   = Texture<Target.D3, Element>
+        typealias Cube<Element> = Texture<Target.Cube, Element>
         
         final 
         class Texture<Target, Element>:AnyTexture where Target:AnyTarget
@@ -1226,6 +1260,7 @@ enum GPU
             
             case texture2   (Texture.AnyD2)
             case texture3   (Texture.AnyD3)
+            case textureCube(Texture.AnyCube)
             
             case block      (Buffer.AnyUniform, range:Range<Int>)
             
@@ -1285,7 +1320,8 @@ enum GPU
                         .matrix4    (let value as Any),
                 
                         .texture2   (let value as Any),
-                        .texture3   (let value as Any):
+                        .texture3   (let value as Any),
+                        .textureCube(let value as Any):
                     return .init(describing: type(of: value))
                 
                 case    .block      (let value as Any, range: let range):
@@ -1337,6 +1373,8 @@ enum GPU
                     return t1 === t2
                 case (.texture3   (let t1), .texture3   (let t2)):
                     return t1 === t2
+                case (.textureCube(let t1), .textureCube(let t2)):
+                    return t1 === t2
                 
                 case (.block      (let b1, range: let r1), .block      (let b2, range: let r2)):
                     return b1 === b2 && r1 == r2
@@ -1360,7 +1398,7 @@ enum GPU
                     case uint32, uint32x2, uint32x3, uint32x4
                     
                     case matrix2, matrix3, matrix4
-                    case texture2, texture3
+                    case texture2, texture3, textureCube
                     case block(size:Int)
                     
                     fileprivate 
@@ -1407,6 +1445,8 @@ enum GPU
                             metatype = Texture.AnyD2.self 
                         case .texture3:
                             metatype = Texture.AnyD3.self 
+                        case .textureCube:
+                            metatype = Texture.AnyCube.self 
                         
                         case .block(size: let size):
                             metatype = Buffer.AnyUniform.self 
@@ -1539,8 +1579,9 @@ enum GPU
                         ]
                         OpenGL.glUniformMatrix4fv(parameter.location, 16, false, flattened)
                     
-                    case    (.texture2, .texture2   (let texture as AnyTexture)), 
-                            (.texture3, .texture3   (let texture as AnyTexture)):
+                    case    (.texture2,     .texture2   (let texture as AnyTexture)), 
+                            (.texture3,     .texture3   (let texture as AnyTexture)),
+                            (.textureCube,  .textureCube(let texture as AnyTexture)):
                         if let index:Int = Manager.Texture.pin(texture) 
                         {
                             OpenGL.glUniform1i(parameter.location, .init(index))
@@ -1671,6 +1712,8 @@ enum GPU
                             type = .texture2
                         case OpenGL.SAMPLER_3D:
                             type = .texture3
+                        case OpenGL.SAMPLER_CUBE:
+                            type = .textureCube
                         
                         default:
                             Log.warning("uniform '\(name)' has unsupported glsl type (code \(buffer.type))")
@@ -1891,6 +1934,16 @@ extension GPU.Texture.D3:GPU.Texture.AnyD3
         GPU.Manager.Texture.with(self) 
         {
             self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
+        }
+    }
+}
+extension GPU.Texture.Cube:GPU.Texture.AnyCube
+{
+    func assign(cubemap data:Array2D<Element>)
+    {
+        GPU.Manager.Texture.with(self) 
+        {
+            self.core.assign(cubemap: data, layout: self.layout, mipmap: self.mipmap)
         }
     }
 }
@@ -2640,6 +2693,7 @@ extension Renderer
             OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, OpenGL.FILL)
             OpenGL.glCullFace(OpenGL.BACK)
             OpenGL.glFrontFace(OpenGL.CCW)
+            OpenGL.glEnable(OpenGL.TEXTURE_CUBE_MAP_SEAMLESS)
             
             Self.initialized = true
         }

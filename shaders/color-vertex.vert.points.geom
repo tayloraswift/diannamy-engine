@@ -6,7 +6,7 @@ layout(triangle_strip, max_vertices = 4) out;
 in Vertex
 {
     vec4 color;
-    bool _facing;
+    float _facing;
 } vertex[1];
 
 out Vertex
@@ -33,10 +33,10 @@ vec4 clip(vec3 screen)
 
 void main()
 {
-    if (!vertex[0]._facing) 
-    {
-        return;
-    }
+    // if (!vertex[0]._facing) 
+    // {
+    //     return;
+    // }
     
     float r = radius + 1;
     vec3 center    = screen(gl_in[0].gl_Position);

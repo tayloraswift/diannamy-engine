@@ -9,7 +9,8 @@ infix operator ~~ :ComparisonPrecedence     // distance test
 infix operator !~ :ComparisonPrecedence     // distance test 
 
 %{
-    C                               = 'x', 'y', 'z', 'w'
+    C = 'x', 'y', 'z', 'w'
+    U = 'i', 'j', 'k', 'h'
 }%
 
 extension FixedWidthInteger 
@@ -118,6 +119,32 @@ struct Vector${N}<Scalar>:Hashable, Codable, CustomStringConvertible where Scala
     {
         return .init(${ ', '.join('try transform(self.{0})'.format(c) for c in C[:N]) })
     }
+    
+    // Codable
+    enum CodingKeys:CodingKey 
+    {
+        case ${ ', '.join(C[:N]) }
+    }
+    
+    init(from decoder:Decoder) throws 
+    {
+        let serialized:KeyedDecodingContainer<CodingKeys> = 
+            try decoder.container(keyedBy: CodingKeys.self)
+        % for c in C[:N]:
+        let ${c}:Scalar = try serialized.decode(Scalar.self, forKey: .${c})
+        % end 
+        
+        self.init(${ ', '.join(C[:N]) })
+    }
+    
+    func encode(to encoder:Encoder) throws 
+    {
+        var serialized:KeyedEncodingContainer<CodingKeys> = 
+            encoder.container(keyedBy: CodingKeys.self)
+        % for c in C[:N]:
+        try serialized.encode(self.${c}, forKey: .${c})
+        % end 
+    }
 }
 
 extension Vector${N} where Scalar:BinaryInteger 
@@ -212,6 +239,17 @@ extension Vector${N} where Scalar:FixedWidthInteger
     {
         return (lhs &* rhs).wrappingSum
     }
+}
+
+extension Vector${N} where Scalar:ExpressibleByIntegerLiteral 
+{
+    % for i, u in zip(range(N), U[:N]):
+    static 
+    var ${u}:Self 
+    {
+        .init(${ ', '.join('1' if i == j else '0' for j in range(N)) })
+    }
+    % end 
 }
 
 extension Vector${N} where Scalar:FloatingPoint 
@@ -412,35 +450,19 @@ extension Vector3 where Scalar:FloatingPoint
     }
 }
 
-extension Spherical2 where Scalar == Float
+extension Spherical2 where Scalar:ElementaryFunctions
 {
     init(cartesian:Vector3<Scalar>)
     {
         let colatitude:Scalar = Scalar.acos(cartesian.z / cartesian.length)
-        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
+        let longitude:Scalar  = Scalar.argument(y: cartesian.y, x: cartesian.x)
         self.init(colatitude, longitude)
     }
     
     init(normalized cartesian:Vector3<Scalar>)
     {
         let colatitude:Scalar = Scalar.acos(cartesian.z)
-        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
-        self.init(colatitude, longitude)
-    }
-}
-extension Spherical2 where Scalar == Double
-{
-    init(cartesian:Vector3<Scalar>)
-    {
-        let colatitude:Scalar = Scalar.acos(cartesian.z / cartesian.length)
-        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
-        self.init(colatitude, longitude)
-    }
-    
-    init(normalized cartesian:Vector3<Scalar>)
-    {
-        let colatitude:Scalar = Scalar.acos(cartesian.z)
-        let longitude:Scalar  = Scalar.atan2(y: cartesian.y, x: cartesian.x)
+        let longitude:Scalar  = Scalar.argument(y: cartesian.y, x: cartesian.x)
         self.init(colatitude, longitude)
     }
 }
@@ -692,8 +714,22 @@ extension Matrix${N} where T:FloatingPoint
 }
 % end 
 
+extension Matrix2 where T:FloatingPoint 
+{
+    func inversed() -> Self 
+    {
+        let a:T = self.columns.0.x,
+            b:T = self.columns.1.x,
+            c:T = self.columns.0.y,
+            d:T = self.columns.1.y
+        
+        let determinant:T = 1 / (a * d - b * c)
+        return .init(determinant * .init(d, -c), determinant * .init(-b, a))
+    }
+}
 
-struct Rectangle<T> where T:SIMDScalar
+
+struct Rectangle<T>:Equatable where T:SIMDScalar
 {
     var storage:SIMD4<T> 
     
@@ -770,5 +806,36 @@ extension Rectangle where T:FloatingPoint & ExpressibleByFloatLiteral
     var midpoint:Vector2<T> 
     {
         return 0.5 * (self.a + self.b)
+    }
+}
+
+
+extension Rectangle where T:BinaryInteger 
+{
+    static 
+    func cast<Source>(_ v:Rectangle<Source>) -> Self where Source:BinaryFloatingPoint 
+    {
+        return v.map(T.init(_:))
+    }
+    static 
+    func cast<Source>(_ v:Rectangle<Source>) -> Self where Source:BinaryInteger 
+    {
+        return v.map(T.init(_:))
+    }
+}
+extension Rectangle where T:FloatingPoint 
+{
+    static 
+    func cast<Source>(_ v:Rectangle<Source>) -> Self where Source:BinaryInteger 
+    {
+        return v.map(T.init(_:))
+    }
+}
+extension Rectangle where T:BinaryFloatingPoint 
+{
+    static 
+    func cast<Source>(_ v:Rectangle<Source>) -> Self where Source:BinaryFloatingPoint 
+    {
+        return v.map(T.init(_:))
     }
 }

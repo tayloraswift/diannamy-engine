@@ -327,6 +327,8 @@ extension UI.Style
         ('margin',          'margin metrics',       'Metrics',          '.zero'), 
         ('borderRadius',    'line-height',          'Int',              '0'), 
         
+        ('occlude',         'occlusion mode',       'Bool',             'false'), 
+        
         ('wrap',            'line-wrapping mode',   'Bool',             'true'), 
         ('indent',          'indentation',          'Int',              '0'), 
         ('lineHeight',      'line-height',          'Int',              '0'), 
@@ -343,7 +345,7 @@ extension UI.Style
         ('position',        'positioning mode',     'Positioning',      '.relative'),
         ('justify',         'justification mode',   'Justification',    '.start'), 
         ('align',           'alignment mode',       'Alignment',        '.start'), 
-        ('alignSelf',       'per-element alignment mode',       'Alignment',        '.auto'), 
+        ('alignSelf',       'per-element alignment mode',  'Alignment', '.auto'), 
         ('axis',            'content major axis',   'Axis',             '.vertical')
     )
     }%

@@ -9,7 +9,8 @@ let package = Package(
     ],
     dependencies: 
     [
-        .package(url: "https://github.com/kelvin13/png", .exact("3.0.0")), 
+        .package(url: "https://github.com/kelvin13/png",   .exact("3.0.0")), 
+        .package(url: "https://github.com/kelvin13/noise", .branch("master")), 
 //        .package(url: "https://github.com/kelvin13/swiftxml", .branch("master")), 
     ],
     targets: 
@@ -18,6 +19,6 @@ let package = Package(
         .systemLibrary(name: "FreeType", path: "sources/c/freetype", pkgConfig: "freetype2"), 
         .systemLibrary(name: "HarfBuzz", path: "sources/c/harfbuzz", pkgConfig: "harfbuzz"), 
         .target(name: "GLFW", path: "sources/c/glfw"), 
-        .target(name: "polysphere", dependencies: ["FreeType", "HarfBuzz", "GLFW", "PNG"], path: "sources/polysphere"),
+        .target(name: "polysphere", dependencies: ["FreeType", "HarfBuzz", "GLFW", "PNG", "Noise"], path: "sources/polysphere"),
     ]
 )

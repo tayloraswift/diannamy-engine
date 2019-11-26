@@ -1,0 +1,54 @@
+#container
+{
+    margin: 20
+    align: center
+    justify: center
+}
+
+#toolbar 
+{
+    axis: horizontal
+    margin: 20
+}
+
+p > span 
+{
+    color           : rgb(255,255,255)
+    font            : 'SanFranciscoText-Semibold.otf' @ 14
+    features        : kern, onum, liga, calt
+}
+
+
+button > p 
+{
+    line-height: 15
+    wrap: false
+}
+button  
+{
+    occlude: true 
+    
+    border: 2 
+    background-color: rgba(255, 255, 255, 0)
+    border-color: rgb(255, 255, 255)
+    border-radius: 50
+    padding: 4 12 10
+    
+    grow: 0
+    stretch: 0
+    
+    margin: 0 10
+}
+button:hover 
+{
+    background-color:   rgba(255, 30, 120, 0)
+    border-color:       rgb(255, 30, 120)
+}
+button:hover span
+{
+    color:              rgb(255, 30, 120)
+}
+button:focus  
+{
+    offset: 2 0
+}

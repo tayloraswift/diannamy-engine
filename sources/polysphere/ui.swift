@@ -130,16 +130,53 @@ struct UI
         case key(Key, Key.Modifiers)
         case character(Character)
         
-        case cut 
+        /* case cut 
         case copy 
         case paste(String)
         
-        case leave
+        case leave */
         
-        struct Response  
+        /* struct Response  
         {
             var cursor:Cursor       = .arrow
             var clipboard:String?   = nil 
+        } */
+        
+        enum Action 
+        {
+            case primary(Vector2<Float>) 
+            case secondary(Vector2<Float>)
+            case drag(Vector2<Float>)
+            case complete(Vector2<Float>)
+            case hover(Vector2<Float>)
+            
+            case scroll(Direction.D2)
+            
+            case key(Key, Key.Modifiers)
+            case character(Character)
+            
+            case defocus, deactivate, dehover
+            
+            
+            func reflect(vertical h:Float) -> Self 
+            {
+                switch self 
+                {
+                case .primary(let s):
+                    return .primary(.init(s.x, h - s.y))
+                case .secondary(let s):
+                    return .secondary(.init(s.x, h - s.y))
+                case .drag(let s):
+                    return .drag(.init(s.x, h - s.y))
+                case .complete(let s):
+                    return .complete(.init(s.x, h - s.y))
+                case .hover(let s):
+                    return .hover(.init(s.x, h - s.y))
+                
+                default:
+                    return self
+                }
+            }
         }
     }
     
@@ -151,6 +188,11 @@ struct UI
         case hand 
         case resizeHorizontal
         case resizeVertical
+    }
+    
+    struct State 
+    {
+        let cursor:Cursor 
     }
 
     /* struct BitVector 

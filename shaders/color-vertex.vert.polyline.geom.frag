@@ -3,12 +3,12 @@
 in Vertex
 {
     vec4 color;
-    bool _facing;
+    float facing;
 } vertex;
 
 out vec4 color;
 
 void main()
 {
-    color = vertex.color;
+    color = vertex.facing < 0 ? vec4(0, 0, 0, 0) : vertex.color;
 }

@@ -1,0 +1,63 @@
+import func Glibc.atan2
+import func Glibc.pow
+
+%{
+    elementary_functions = 'sqrt', 'log', 'exp', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan'
+}%
+
+% for function in elementary_functions:
+import func Glibc.${function}
+% end 
+
+protocol ElementaryFunctions 
+{
+    % for function in elementary_functions:
+    static 
+    func ${function}(_ x:Self) -> Self 
+    % end 
+    
+    static 
+    func power(_ base:Self, to exponent:Self) -> Self 
+    static 
+    func argument(y:Self, x:Self) -> Self 
+}
+
+% for type in ('Float', 'Double'):
+extension ${type}:ElementaryFunctions
+{
+    % for function in elementary_functions:
+    static 
+    func ${function}(_ x:Self) -> Self 
+    {
+        return Glibc.${function}(x)
+    }
+    % end 
+    
+    static 
+    func power(_ base:Self, to exponent:Self) -> Self 
+    {
+        return Glibc.pow(base, exponent)
+    }
+    
+    static 
+    func argument(y:Self, x:Self) -> Self 
+    {
+        return Glibc.atan2(y, x)
+    }
+}
+% end
+
+% for count in (2, 3, 4):
+extension SIMD${count} where Scalar:ElementaryFunctions
+{
+    % for function in elementary_functions:
+    static 
+    func ${function}(_ x:Self) -> Self 
+    {
+        return .init(
+            ${ ', '.join('Scalar.{1}(x.{0})'.format(c, function) for c in 'xyzw'[:count]) }
+            )
+    }
+    % end 
+}
+% end

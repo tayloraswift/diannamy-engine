@@ -136,11 +136,30 @@ extension UI
     }
 }
 
+protocol _UIGroup:AnyObject 
+{
+    func contains(_:Vector2<Float>) -> UI.Group?
+    func action(_:UI.Event.Action)
+    func update(_:Int, styles:UI.Styles, viewport:Vector2<Int>, frame:Rectangle<Int>)
+    
+    var state:(focus:Bool, active:Bool, hover:Bool) 
+    {
+        get 
+        set
+    }
+    
+    var cursor:(inactive:UI.Cursor, active:UI.Cursor)
+    {
+        get 
+    }
+}
 extension UI 
 {
-    class Element 
+    typealias Group = _UIGroup 
+    
+    class Element
     {
-        enum Recompute 
+        /* enum Recompute 
         {
             enum Style 
             {
@@ -154,33 +173,24 @@ extension UI
             {
                 case physical, cosmetic, no
             }
-        }
+        } */
         
         final 
-        var classes:Set<String>, 
-            identifier:String?
+        var classes:Set<String>
+        final 
+        var identifier:String?
         
+        final private 
         var path:UI.Style.Path 
-        {
-            willSet 
-            {
-                self.recomputeStyle = .intrinsic
-            }
-        }
+        
+        final 
+        var elements:[UI.Element]
         
         final 
         var style:UI.Style.Rules 
-        {
-            willSet 
-            {
-                self.recomputeStyle = .intrinsic
-            }
-        }
         
-        final 
-        var recomputeStyle:Recompute.Style  = .no 
-        var computedStyle:UI.Style.Rules       = .init()
-        {
+        var computedStyle:UI.Style.Rules = .init()
+        /* {
             willSet(new)
             {
                 if  new.color               != self.computedStyle.color             ||
@@ -195,34 +205,52 @@ extension UI
                     }
                 }
             }
-        }
+        } */
         
+        // final 
+        // var recomputeLayout:Recompute.Layout = .physical
+        
+        // Group conformance 
         final 
-        var recomputeLayout:Recompute.Layout = .physical
+        var state:(focus:Bool, active:Bool, hover:Bool) = (false, false, false)
+        //
         
         init(identifier:String?, classes:Set<String>, style:UI.Style.Rules)
         {
             self.classes    = classes 
             self.identifier = identifier
-            self.path       = .init()
             self.style      = style
+            
+            self.path       = .init()
+            
+            self.elements   = []
         }
         
-        func restyle(definitions:inout UI.Style.Styles) 
+        final 
+        func postorder(_ body:(UI.Element) throws -> ()) rethrows 
         {
-            guard self.recomputeStyle != .no
-            else 
+            for element:UI.Element in self.elements 
             {
-                return 
+                try element.postorder(body)
             }
             
-            self.computedStyle  = definitions.resolve(self.path).overlaid(with: self.style)  
-            self.recomputeStyle = .no
+            try body(self)
         }
         
-        func event(_ event:UI.Event, pass _:Int, response:inout UI.Event.Response) -> Bool
+        final 
+        func set(prefix:UI.Style.Path) 
         {
-            return false
+            self.path = prefix.appended(self) 
+            for element:UI.Element in self.elements
+            {
+                element.set(prefix: self.path)
+            }
+        }
+        
+        final 
+        func restyle(_ styles:UI.Styles) 
+        {
+            self.computedStyle = styles.resolve(self.path).overlaid(with: self.style)  
         }
         
         func process(_:Int) 
@@ -232,45 +260,27 @@ extension UI
         func contribute(
             text     _:inout [UI.DrawElement.Text], 
             geometry _:inout [UI.DrawElement.Geometry], 
-            s0 _:Vector2<Float>) 
+            s        _:Vector2<Float>) 
         {
-            self.recomputeLayout = .no 
         }
     }
 }
 extension UI.Element 
 {
-    class Block:UI.Element
+    class Block:UI.Element, UI.Group
     {
-        var elements:[UI.Element] 
-        {
-            []
-        }
-
-        final override 
-        var path:UI.Style.Path 
-        {
-            willSet(path)
-            {
-                for element:UI.Element in self.elements
-                {
-                    element.path = path.appended(element)
-                }
-            }
-        }
-        
-        final 
-        var recomputeConstraints:Recompute.Constraints = .intrinsic 
+        // final 
+        // var recomputeConstraints:Recompute.Constraints = .intrinsic 
         final 
         var computedConstraints:(main:Int, cross:Int) = (0, 0) // represents minimum size 
         
         final fileprivate(set) 
         var size:Vector2<Int>   = .zero, 
-            offset:Vector2<Int> = .zero 
+            s:Vector2<Float>    = .zero 
         
-        override 
-        var computedStyle:UI.Style.Rules 
-        {
+        /* override 
+        var computedStyle:UI.Style.Rules  */
+        /* {
             willSet(new) 
             {
                 if  new.axis    != self.computedStyle.axis     ||
@@ -288,40 +298,94 @@ extension UI.Element
                     self.recomputeConstraints = .extrinsic 
                 }
             }
+        } */
+        
+        // Group conformance 
+        var cursor:(inactive:UI.Cursor, active:UI.Cursor) 
+        {
+            (.arrow, .arrow)
         }
         
-        override
-        func event(_ event:UI.Event, pass:Int, response:inout UI.Event.Response) -> Bool
+        func action(_:UI.Event.Action)
         {
-            var consumed:Bool = false 
+        }
+        
+        final 
+        func contains(_ point:Vector2<Float>) -> UI.Group? 
+        {
             for element:UI.Element in self.elements 
             {
-                if element.event(event, pass: pass, response: &response) 
+                if  let group:UI.Group  = element as? UI.Group, 
+                    let result:UI.Group = group.contains(point) 
                 {
-                    consumed = true 
+                    return result 
                 }
             }
             
-            return consumed
-        }
-        
-        override 
-        func process(_ delta:Int) 
-        {
-            super.process(delta)
-            for element:UI.Element in self.elements 
+            guard self.computedStyle.occlude
+            else 
             {
-                element.process(delta)
+                return nil
+            }
+            
+            let l:Vector2<Float> = point - self.s
+            let (a, b, r):(Vector2<Float>, Vector2<Float>, Float) = 
+                self.boundingBox(  padding: self.computedStyle.padding, 
+                                    border: self.computedStyle.border, 
+                                    radius: self.computedStyle.borderRadius)
+            
+            if (a.x ... b.x) ~= l.x, (a.y ... b.y) ~= l.y 
+            {
+                let q:Vector2<Float>
+                //      left           right          top            bottom 
+                switch (l.x - a.x < r, b.x - l.x < r, l.y - a.y < r, b.y - l.y < r)
+                {
+                case (true, false, true, false):
+                    q =       a            + r
+                case (false, true, true, false):
+                    q = .init(b.x - r, a.y + r)
+                case (true, false, false, true):
+                    q = .init(a.x + r, b.y - r)
+                case (false, true, false, true):
+                    q =       b            - r
+                default:
+                    return self 
+                }
+                // radial test 
+                return (l - q) <> (l - q) < r * r ? self : nil 
+            }
+            else 
+            {
+                return nil
             }
         }
+        //
         
-        final override 
-        func restyle(definitions:inout UI.Style.Styles) 
+        final 
+        func update(_ delta:Int, styles:UI.Styles, viewport _:Vector2<Int>, frame:Rectangle<Int>) 
         {
-            super.restyle(definitions: &definitions)
+            self.set(prefix: .init())
+            self.postorder 
+            {
+                (element:UI.Element) in 
+                
+                element.process(delta)
+                element.restyle(styles)
+            }
+            
+            self.reconstrain()
+            self.layout(max: frame.size, fonts: styles.fonts)
+            self.distribute(at: .cast(frame.a))
+        }
+        
+        /* final override 
+        func restyle(definitions:inout UI.Styles, prefix:UI.Style.Path) 
+        {
+            super.restyle(definitions: &definitions, prefix: prefix)
+            let prefix:UI.Style.Path = prefix.appended(self)
             for element:UI.Element in self.elements
             {
-                element.restyle(definitions: &definitions)
+                element.restyle(definitions: &definitions, prefix: prefix)
             }
         }
         
@@ -356,47 +420,42 @@ extension UI.Element
                 self.recomputeLayout = .physical
                 return true 
             }
-        }
+        } */
         
         func reconstrain() 
         {
-            guard self.recomputeConstraints != .no 
+            /* guard self.recomputeConstraints != .no 
             else 
             {
                 return 
-            }
+            } */
             
             self.computedConstraints  = (0, 0)
-            self.recomputeConstraints = .no
+            // self.recomputeConstraints = .no
         }
         
-        func layout(max size:Vector2<Int>, fonts _:UI.Style.Styles.FontLibrary)
+        func layout(max size:Vector2<Int>, fonts _:UI.Styles.FontLibrary)
         {
             self.size = size 
         }
         
-        func distribute(at base:Vector2<Int>) 
+        func distribute(at base:Vector2<Float>) 
         {
-            self.offset = base
-        }
-        
-        final override 
-        func contribute(
-            text    :inout [UI.DrawElement.Text], 
-            geometry:inout [UI.DrawElement.Geometry], 
-            s0 _:Vector2<Float>) 
-        {
-            super.contribute(text: &text, geometry: &geometry, s0: .cast(self.offset))
-            
-            let s:Vector2<Float>
             switch self.computedStyle.position 
             {
             case .absolute:
-                s = self.computedStyle.offset 
+                self.s = self.computedStyle.offset
             case .relative:
-                s = self.computedStyle.offset + .cast(self.offset)
+                self.s = self.computedStyle.offset + base 
             }
-            
+        }
+        
+        final override
+        func contribute(
+            text    :inout [UI.DrawElement.Text], 
+            geometry:inout [UI.DrawElement.Geometry], 
+            s      _:Vector2<Float>) 
+        {    
             let r:Vector3<Float>         = self.computedStyle.trace
             
             let bg:Vector4<UInt8>        = self.computedStyle.backgroundColor, 
@@ -422,11 +481,8 @@ extension UI.Element
                 b:(Vector2<Float>, Vector2<Float>) 
             
             // outer edges of border box
-            a.0 = .cast(.init(-padding.left  - border.left,   -padding.top    - border.top)) 
-            b.1 = .cast(.init( padding.right + border.right,   padding.bottom + border.bottom) &+ self.size) 
-            
-            let area:Vector2<Float> = b.1 - a.0
-            let radius:Float        = min((min(area.x, area.y) / 2).rounded(.down), .init(self.computedStyle.borderRadius))
+            let radius:Float
+            (a.0, b.1, radius) = self.boundingBox(padding: padding, border: border, radius: self.computedStyle.borderRadius)
             
             let d:(top:Float, right:Float, bottom:Float, left:Float) = 
             (
@@ -504,19 +560,19 @@ extension UI.Element
                 (10, 15, 11),   // ◥
             ]
             
-            geometry.append(.init(vertices: vertices, triangles: triangles, s0: s, r0: r))
+            geometry.append(.init(vertices: vertices, triangles: triangles, s0: self.s, r0: r))
             
             for element:UI.Element in self.elements 
             {
-                element.contribute(text: &text, geometry: &geometry, s0: s)
+                element.contribute(text: &text, geometry: &geometry, s: self.s)
             }
         }
         
-        
-        func frame(rectangle:Rectangle<Int>, definitions:inout UI.Style.Styles) 
+        /* final 
+        func frame(rectangle:Rectangle<Int>, definitions:inout UI.Styles) 
             -> (text:[UI.DrawElement.Text], geometry:[UI.DrawElement.Geometry])?
         {
-            self.restyle(definitions: &definitions)
+            self.restyle(definitions: &definitions, prefix: .init())
             let _ = self.raiseFlags()
             
             var recompute:Recompute.Layout = self.recomputeLayout
@@ -541,6 +597,18 @@ extension UI.Element
             {
                 return nil 
             }
+        } */
+        
+        private 
+        func boundingBox(padding:UI.Style.Metrics, border:UI.Style.Metrics, radius:Int) 
+            -> (Vector2<Float>, Vector2<Float>, radius:Float) 
+        {
+            // outer edges of border box
+            let a:Vector2<Float>    = .cast(.init(-padding.left  - border.left,   -padding.top    - border.top)),
+                b:Vector2<Float>    = .cast(.init( padding.right + border.right,   padding.bottom + border.bottom) &+ self.size) 
+            let area:Vector2<Float> = b - a
+            let radius:Float        = min((min(area.x, area.y) / 2).rounded(.down), .init(radius))
+            return (a, b, radius)
         }
     }
     
@@ -548,25 +616,22 @@ extension UI.Element
     class Div:UI.Element.Block 
     {
         private 
-        var children:[Block]
-        private 
         var childConstraints:
         (
             emptyMain:Int, 
             elements:[(offset:(main:Int, cross:Int), emptyCross:Int)]
-        ) = (0, [])
-        
-        override 
-        var elements:[UI.Element] 
-        {
-            self.children as [UI.Element]
-        }
+        ) 
+        = 
+        (
+            0, 
+            []
+        )
         
         init(_ children:[UI.Element.Block], identifier:String? = nil, classes:Set<String> = [], 
             style:UI.Style.Rules = .init()) 
         {
-            self.children = children
             super.init(identifier: identifier, classes: classes, style: style)
+            self.elements = children
         }
         
         private 
@@ -663,14 +728,15 @@ extension UI.Element
         final override  
         func reconstrain() 
         {
-            guard self.recomputeConstraints != .no 
+            let children:[Block] = self.elements.compactMap{ $0 as? Block }
+            /* guard self.recomputeConstraints != .no 
             else 
             {
                 return 
-            }
+            } */
             
             // update soft layouts for children 
-            for block:Block in self.children
+            for block:Block in children
             {
                 block.reconstrain() 
             }
@@ -697,7 +763,7 @@ extension UI.Element
             
             var mains:[Region]                  = [], 
                 crosses:[[Region]]              = []
-            for block:Block in self.children
+            for block:Block in children
             {
                 let inner:(axis:UI.Style.Axis, min:(main:Int, cross:Int)) 
                 inner.axis = block.computedStyle.axis
@@ -774,7 +840,7 @@ extension UI.Element
             }
             
             self.computedConstraints  = min
-            self.recomputeConstraints = .no
+            // self.recomputeConstraints = .no
             
             self.childConstraints = (emptyMain, elements)
         }
@@ -782,15 +848,16 @@ extension UI.Element
         // it would be nice if we could avoid recomputing all the margin collapsing, 
         // the the max() operation on the cross-axis makes computation reuse hard 
         final override 
-        func layout(max size:Vector2<Int>, fonts:UI.Style.Styles.FontLibrary) 
+        func layout(max size:Vector2<Int>, fonts:UI.Styles.FontLibrary) 
         {
+            let children:[Block]   = self.elements.compactMap{ $0 as? Block }
             let axis:UI.Style.Axis = self.computedStyle.axis
             
             // add up total claims 
             let claims:(main:Float, cross:Float) = 
             (
-                max(1, self.children.reduce(0){ $0 + $1.computedStyle.grow }), 
-                self.children.reduce(1){    max($0,  $1.computedStyle.stretch) }
+                max(1, children.reduce(0){ $0 + $1.computedStyle.grow }), 
+                children.reduce(1){    max($0,  $1.computedStyle.stretch) }
             )
             var claimed:Float = 0
             
@@ -800,7 +867,7 @@ extension UI.Element
             var content:(main:Int, cross:[Int]) = (0, [])
                 content.main                   += self.childConstraints.emptyMain
             for (block, (_, emptyCross)):(Block, (offset:(main:Int, cross:Int), emptyCross:Int)) in 
-                zip(self.children, self.childConstraints.elements)
+                zip(children, self.childConstraints.elements)
             {
                 // believe it or not, the order of the repacking axes is irrelevant
                 let inner:(axis:UI.Style.Axis, min:(main:Int, cross:Int)) 
@@ -831,21 +898,14 @@ extension UI.Element
                 
                 let size:(main:Int, cross:Int) = axis.unpack(block.size)
                 
-                /* if block.identifier == "container" 
-                {
-                    print(size)
-                } */
                 content.main += size.main 
                 
-                /* if (self.children.contains{ $0.identifier == "container" } )
-                {
-                    print(":", size.cross + emptyCross)
-                }  */
                 content.cross.append(size.cross + emptyCross)
             }
             
             let size:(main:Int, cross:Int) 
-            if (self.children.contains{ $0.identifier == "container" } )
+            // TODO: WHAT??
+            if (children.contains{ $0.identifier == "container" } )
             {
                 size = area
             }  
@@ -858,24 +918,22 @@ extension UI.Element
                 )
             }
             
-            self.size    = axis.pack(size)
-            //print(self.identifier ?? "nil", ">", self.size)
+            self.size = axis.pack(size)
         }
         
         final override 
-        func distribute(at base:Vector2<Int>) 
+        func distribute(at base:Vector2<Float>) 
         {
-            //print(self.identifier, ">", base)
             super.distribute(at: base)
+            let children:[Block] = self.elements.compactMap{ $0 as? Block }
             
             let axis:UI.Style.Axis = self.computedStyle.axis
             
             let size:(main:Int, cross:Int) = axis.unpack(self.size)
             
-            
             var free:(main:Int, cross:Int)
             free.main = size.main - self.childConstraints.emptyMain 
-            for block:Block in self.children 
+            for block:Block in children 
             {
                 let (main, _):(Int, Int) = axis.unpack(block.size)
                 free.main -= main 
@@ -883,7 +941,7 @@ extension UI.Element
             
             var advance:Int = 0
             for ((offset, emptyCross), (i, block)):((offset:(main:Int, cross:Int), emptyCross:Int), (Int, Block)) in 
-                zip(self.childConstraints.elements, self.children.enumerated())
+                zip(self.childConstraints.elements, children.enumerated())
             {
                 let (main, cross):(Int, Int) = axis.unpack(block.size)
                 
@@ -899,11 +957,11 @@ extension UI.Element
                 case .center:
                     space.main = free.main / 2
                 case .spaceBetween:
-                    space.main = .init(Double.init(free.main) * Double.init(i) / Double.init(self.children.count - 1))
+                    space.main = .init(Double.init(free.main) * Double.init(i) / Double.init(children.count - 1))
                 case .spaceAround:
-                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 1) / Double.init(2 * self.children.count))
+                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 1) / Double.init(2 * children.count))
                 case .spaceEvenly:
-                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 2) / Double.init(2 * self.children.count + 2))
+                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 2) / Double.init(2 * children.count + 2))
                 }
                 switch (block.computedStyle.alignSelf, self.computedStyle.align) 
                 {
@@ -921,9 +979,41 @@ extension UI.Element
                     offset.cross + space.cross
                 )
                 
-                block.distribute(at: base &+ axis.pack(position))
+                block.distribute(at: self.s + .cast(axis.pack(position)))
                 
                 advance += main 
+            }
+        }
+    }
+    
+    class Button:UI.Element.Div 
+    {
+        override
+        var cursor:(inactive:UI.Cursor, active:UI.Cursor) 
+        {
+            (.hand, .hand)
+        }
+        
+        final 
+        var click:Int = 0
+        
+        init(label:String, identifier:String? = nil, classes:Set<String> = [], 
+            style:UI.Style.Rules = .init()) 
+        {
+            let label:UI.Element.P = .init([.init(label)])
+            super.init([label], identifier: identifier, classes: classes, style: style)
+        }
+        
+        override 
+        func action(_ action:UI.Event.Action)
+        {
+            super.action(action)
+            switch action 
+            {
+            case .complete:
+                self.click &+= 1
+            default:
+                break
             }
         }
     }
@@ -935,11 +1025,13 @@ extension UI.Element
     final 
     class Span:UI.Element
     {
+        fileprivate 
+        var reshape:Bool = true 
         var text:String
         {
             willSet 
             {
-                self.recomputeLayout = .physical
+                self.reshape = true
             }
         }
         
@@ -951,7 +1043,7 @@ extension UI.Element
                 if  new.font        != self.computedStyle.font      ||
                     new.features    != self.computedStyle.features  
                 {
-                    self.recomputeLayout = .physical
+                    self.reshape = true
                 }
             }
         }
@@ -974,13 +1066,13 @@ extension UI.Element
         func contribute(
             text    :inout [UI.DrawElement.Text], 
             geometry:inout [UI.DrawElement.Geometry], 
-            s0:Vector2<Float>) 
+            s       :Vector2<Float>) 
         {
-            super.contribute(text: &text, geometry: &geometry, s0: s0)
+            super.contribute(text: &text, geometry: &geometry, s: s)
             
             text.append(.init(
                 vertices:   self.vertices, 
-                s0:         self.computedStyle.offset + s0, 
+                s0:         self.computedStyle.offset + s, 
                 r0:         self.computedStyle.trace,
                 color:      self.computedStyle.color))
         }
@@ -988,18 +1080,11 @@ extension UI.Element
     
     class P:UI.Element.Block
     {
-        override 
-        var elements:[UI.Element] 
-        {
-            self.spans as [UI.Element]
-        }
-        
         private 
-        var spans:[Span]
-        
+        var reshape:Bool = true 
         var description:String 
         {
-            "<P>\n\(self.spans.map{ $0.description }.joined(separator: "\n"))\n</P>"
+            "<P>\n\(self.elements.compactMap{ ($0 as? Span)?.description }.joined(separator: "\n"))\n</P>"
         }
         
         override 
@@ -1007,11 +1092,11 @@ extension UI.Element
         {
             willSet(new)
             {
-                if  new.wrap        != self.computedStyle.wrap      ||
-                    new.indent      != self.computedStyle.indent    ||
+                if  new.wrap       != self.computedStyle.wrap      ||
+                    new.indent     != self.computedStyle.indent    ||
                     new.lineHeight != self.computedStyle.lineHeight
                 {
-                    self.spans.first?.recomputeLayout = .physical
+                    self.reshape = true
                 }
             }
         }
@@ -1019,8 +1104,8 @@ extension UI.Element
         init(_ spans:[Span], identifier:String? = nil, classes:Set<String> = [], 
             style:UI.Style.Rules = .init()) 
         {
-            self.spans = spans 
             super.init(identifier: identifier, classes: classes, style: style)
+            self.elements = spans 
         }
         
         /* override 
@@ -1041,17 +1126,18 @@ extension UI.Element
         } */
         
         override 
-        func layout(max size:Vector2<Int>, fonts:UI.Style.Styles.FontLibrary) 
+        func layout(max size:Vector2<Int>, fonts:UI.Styles.FontLibrary) 
         {
-            guard size != self.size || (self.spans.contains{ $0.recomputeLayout == .physical })
+            let spans:[Span] = self.elements.compactMap{ $0 as? Span }
+            guard self.size != size || self.reshape || spans.contains(where: \.reshape)
             else  
             {
                 return 
             }
             
             // fill in shaping parameters 
-            let texts:[String] = self.spans.map{ $0.text }
-            let parameters:[HarfBuzz.ShapingParameters] = self.spans.map 
+            let texts:[String] = spans.map{ $0.text }
+            let parameters:[HarfBuzz.ShapingParameters] = spans.map 
             {
                 let margin:UI.Style.Metrics = $0.computedStyle.margin
                 let parameters:HarfBuzz.ShapingParameters = 
@@ -1076,7 +1162,7 @@ extension UI.Element
                 // line number, should start at 0
                 var l:Int = indices.lines.startIndex
                 for ((span, font), range):((Span, Typeface.Font), Range<Int>) in 
-                    zip(zip(self.spans, parameters.map{ $0.font }), indices.runs) 
+                    zip(zip(spans, parameters.map{ $0.font }), indices.runs) 
                 {
                     var vertices:[(s:Vector2<Float>, t:Vector2<Float>)] = []
                         vertices.reserveCapacity(range.count * 2)
@@ -1109,7 +1195,7 @@ extension UI.Element
                 let (glyphs, indices, width):([HarfBuzz.Glyph], [Range<Int>], Int) = 
                     HarfBuzz.line(zip(texts, parameters))
                 for ((span, font), range):((Span, Typeface.Font), Range<Int>) in 
-                    zip(zip(self.spans, parameters.map{ $0.font }), indices) 
+                    zip(zip(spans, parameters.map{ $0.font }), indices) 
                 {
                     var vertices:[(s:Vector2<Float>, t:Vector2<Float>)] = []
                         vertices.reserveCapacity(range.count * 2)
@@ -1133,138 +1219,4 @@ extension UI.Element
             }
         }
     }
-    
-    /*
-    struct Console 
-    {
-        private 
-        var cells:[(history:String, field:[Character])], 
-            arrow:Int
-        
-        private(set)
-        var hash:UInt64 = 0
-        
-        private(set)
-        var cursors:Range<Int>
-        {
-            didSet 
-            {
-                self.hash &+= 1
-            }
-        }
-        
-        private(set)
-        var field:[Character] 
-        {
-            get 
-            {
-                return self.cells[self.arrow].field
-            }
-            set(v) 
-            {
-                self.cells[self.arrow].field = v
-                self.hash &+= 1
-            }
-        }
-        
-        init() 
-        {
-            self.cells = [(history: "", field: [])]
-            self.arrow = self.cells.endIndex - 1
-            
-            self.cursors = 0 ..< 0
-        }
-        
-        mutating 
-        func keypress(_ key:UI.Key, _ modifiers:UI.Key.Modifiers) -> [Response]
-        {
-            switch key 
-            {
-            case .enter:
-                let command:String = .init(self.field)
-                self.cells[self.cells.endIndex - 1] = (command, self.field)
-                self.cells.append(("", []))
-                self.field   = .init(self.cells[self.arrow].history)
-                self.arrow   = self.cells.endIndex - 1
-                self.cursors = 0 ..< 0
-                
-                Log.note(command)
-                return [.text(command)]
-            
-            case .up:
-                if self.arrow > self.cells.startIndex 
-                {
-                    self.arrow  -= 1
-                    self.cursors = self.field.endIndex ..< self.field.endIndex
-                }
-            
-            case .down:
-                if self.arrow < self.cells.endIndex - 1 
-                {
-                    self.arrow  += 1
-                    self.cursors = self.field.endIndex ..< self.field.endIndex
-                }
-            
-            case .left:
-                let i:Int 
-                if modifiers.control 
-                {
-                    i    = self.field[..<self.cursors.lowerBound].lastIndex{ $0 != " " } 
-                        ?? self.field.startIndex
-                }
-                else 
-                {
-                    i    = max(self.cursors.lowerBound - 1, self.field.startIndex)
-                }
-                
-                self.cursors = i ..< (modifiers.shift ? self.cursors.upperBound : i)
-            
-            case .right:
-                let j:Int 
-                if modifiers.control 
-                {
-                    j    = self.field[self.cursors.upperBound...].firstIndex{ $0 != " " } 
-                        ?? self.field.endIndex
-                }
-                else 
-                {
-                    j    = min(self.cursors.upperBound + 1, self.field.endIndex)
-                }
-                
-                self.cursors = (modifiers.shift ? self.cursors.lowerBound : j) ..< j
-            
-            case .backspace:
-                if self.cursors.count == 0 
-                {
-                    self.keypress(.left, modifiers | .init(shift: true))
-                }
-                
-                self.field.removeSubrange(self.cursors)
-            
-            case .delete:
-                if self.cursors.count == 0 
-                {
-                    self.keypress(.right, modifiers | .init(shift: true))
-                }
-                
-                self.field.removeSubrange(self.cursors)
-            
-            default:
-                break 
-            }
-            
-            return []
-        }
-        
-        mutating 
-        func character(_ character:Character) -> [Response]
-        {
-            Log.note("\(character)")
-            self.field[self.cursors] = [character]
-            self.cursors = self.cursors.lowerBound + 1 ..< self.cursors.upperBound + 1
-            
-            return [] 
-        }
-    }
-    */
 }

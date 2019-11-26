@@ -1,3 +1,6 @@
+import Noise
+import PNG
+
 @propertyWrapper 
 final 
 class State<Value>
@@ -128,334 +131,446 @@ extension LayerController
 
 struct Controller//:LayerController
 {
-    @State.Binding private 
-    var style:UI.Style.Styles
-    
-    let ui:UI.Element.Block 
-    
+    // UI
     private 
-    let cameraBuffer:GPU.Buffer.Uniform<UInt8>
-    @State.Binding private
-    var cameraMatrices:Camera<Float>.Matrices 
-    
-    private 
-    var plane:Display.Plane3D
-    private 
-    let cube: 
-    (
-        vao:GPU.Vertex.Array<Mesh.Preset.Vertex, UInt8>, 
-        texture:GPU.Texture.D2<Vector4<UInt8>>
-    )
-    private 
-    let points:GPU.Vertex.Array<Mesh.Preset.ColorVertex, UInt32>
-    
-    var viewport:Rectangle<Int> = .zero 
+    var focus:UI.Group? 
     {
-        didSet 
+        didSet(old) 
         {
-            self.plane.viewport     =               .cast(self.viewport.size)
-            self.plane.frame        = .init(.zero,  .cast(self.viewport.size))
+            switch (old, self.focus) 
+            {
+            case (let old?, let new?):
+                if old !== new 
+                {
+                    old.state.focus = false 
+                    new.state.focus = true 
+                    
+                    old.action(.defocus)
+                }
             
-            self.ui.recomputeLayout = .physical
+            case (let old?, nil):
+                old.state.focus = false 
+                old.action(.defocus)
+            
+            case (nil, let new?):
+                new.state.focus = true 
+            
+            case (nil, nil):
+                break 
+            }
+        }
+    }
+    private 
+    var active:UI.Group? 
+    {
+        didSet(old) 
+        {
+            switch (old, self.active) 
+            {
+            case (let old?, let new?):
+                if old !== new 
+                {
+                    old.state.active = false 
+                    new.state.active = true 
+                    
+                    old.action(.deactivate)
+                }
+            
+            case (let old?, nil):
+                old.state.active = false 
+                old.action(.deactivate)
+            
+            case (nil, let new?):
+                new.state.active = true 
+            
+            case (nil, nil):
+                break 
+            }
+        }
+    }
+    private 
+    var hover:UI.Group? 
+    {
+        didSet(old) 
+        {
+            switch (old, self.hover) 
+            {
+            case (let old?, let new?):
+                if old !== new 
+                {
+                    old.state.hover = false 
+                    new.state.hover = true 
+                    
+                    old.action(.dehover)
+                }
+            
+            case (let old?, nil):
+                old.state.hover = false 
+                old.action(.dehover)
+            
+            case (nil, let new?):
+                new.state.hover = true 
+            
+            case (nil, nil):
+                break 
+            }
         }
     }
     
-    init(style:State<UI.Style.Styles>.Binding) 
+    private 
+    let ui:UI.Element.Block, 
+        plane:UI.Plane3D
+    private 
+    var layers:[UI.Group] 
     {
-        self._style = style
-        
+        [self.ui, self.plane]
+    }
+    private 
+    let buttons:[UI.Element.Button]
+    //
+    
+    private 
+    let cameraBuffer:GPU.Buffer.Uniform<UInt8>
+    
+    private 
+    let cube: 
+    (
+        vao:GPU.Vertex.Array<Mesh.Vertex, UInt8>, 
+        texture:GPU.Texture.Cube<Vector4<UInt8>>
+    )
+    private 
+    let points:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>,
+        isolineVertices:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>
+    private 
+    var sphere:Algorithm.FibonacciSphere<Double>
+    private 
+    var isolines:Algorithm.Isolines
+    //var fluid:Algorithm.Fluid<Double>
+    
+    private 
+    var _active:Int = 0, 
+        _activeTriangle:Int = 0 
+    
+    // private 
+    // var _phase:Int = 0
+    
+    init() 
+    {
         // ui elements 
-        let container:UI.Element.Div = 
+        self.buttons = 
+        [
+            "Renormalize ABC", 
+            "Bake"
+        ].map 
         {
-            let top:UI.Element.Div = 
-            {
-                let header:UI.Element.Div = 
-                {
-                    let date:UI.Element.P = .init(
-                        [
-                            .init("Tuesday, August 6, 2019")
-                        ],
-                        identifier: "time", classes: ["status"])
-                    let logo:UI.Element.P = .init(
-                        [
-                            .init("The New York Times")
-                        ],
-                        identifier: "logo")
-                    let label:UI.Element.P = .init(
-                        [
-                            .init("Today’s Paper")
-                        ],
-                        classes: ["status"])
-                    
-                    return .init([date, logo, label], identifier: "banner")
-                }()
-                let masthead:UI.Element.Div = 
-                {
-                    let labels:[String] = 
-                    [
-                        "World",
-                        "U.S.",
-                        "Politics",
-                        "N.Y.",
-                        "Business",
-                        "Opinion",
-                        "Tech",
-                        "Science",
-                        "Health",
-                        "Sports",
-                        "Arts",
-                        "Books",
-                        "Style",
-                        "Food",
-                        "Travel",
-                        "Magazine",
-                        "T Magazine",
-                        "Real Estate",
-                        "Video",
-                    ]
-                    let items:[UI.Element.P] = labels.map{ .init([.init($0)]) }
-                    return .init(items, identifier: "masthead")
-                }()
-                
-                return .init([header, masthead], identifier: "top")
-            }()
-            
-            let body:UI.Element.Div 
-            do 
-            {
-                let main:UI.Element.Div 
-                do
-                {
-                    let story1:UI.Element.Div 
-                    do 
-                    {
-                        let left:UI.Element.Div 
-                        do 
-                        {
-                            let subtitle:UI.Element.P = .init(
-                                [
-                                    .init("GUN VIOLENCE")
-                                ], 
-                                classes: ["topic"])
-                            let title:UI.Element.P = .init(
-                                [
-                                    .init("After Two Mass Shootings, Will Republicans Take a New Stance on Guns?")
-                                ], 
-                                classes: ["headline", "headline-major"])
-                            let p1:UI.Element.P = .init(
-                                [
-                                    .init("President Trump explored whether to expand background checks for guns, and Senator Mitch McConnell signaled he would be open to considering the idea.")
-                                ])
-                            let p2:UI.Element.P = .init(
-                                [
-                                    .init("Both have opposed such legislation in the past. Their willingness to weigh it now suggests Republicans feel pressured to act after two mass shootings.")
-                                ])
-                            let statusbar:UI.Element.P = .init(
-                                [
-                                    .init("Live", classes: ["accent", "strong"]), 
-                                    .init("9m ago", classes: ["accent", "strong"]), 
-                                    .init("595 comments"), 
-                                ], 
-                                classes: ["statusbar"])
-                            
-                            left = .init([subtitle, title, p1, p2, statusbar], style: .init([.grow: 1 as Float]))
-                        }
-                        
-                        let right:UI.Element.Div 
-                        do 
-                        {
-                            let top:UI.Element.Div, 
-                                bottom:UI.Element.Div 
-                            
-                            do 
-                            {
-                                let illustration:UI.Element.Div
-                                do 
-                                {
-                                    let picture:UI.Element.Div = .init([], classes: ["image-placeholder"])
-                                    let caption:UI.Element.P = .init(
-                                        [
-                                            .init("A vigil for victims of the mass shootings in El Paso and Dayton was held outside the National Rifle Association’s headquarters in Fairfax, Va., on Monday.")
-                                        ], 
-                                        classes: ["caption"])
-                                    let creditline:UI.Element.P = .init(
-                                        [
-                                            .init("Anna Moneymaker/The New York Times")
-                                        ], 
-                                        classes: ["credit-line"])
-                                    
-                                    illustration = .init([picture, caption, creditline], classes: ["illustration"], style: .init([.grow: 2 as Float]))
-                                }
-                                let right:UI.Element.Div
-                                do 
-                                {
-                                    let title:UI.Element.P = .init(
-                                        [
-                                            .init("Will Shootings Sway Voters? Look First to Virginia Races")
-                                        ], 
-                                        classes: ["headline"])
-                                    let p1:UI.Element.P = .init(
-                                        [
-                                            .init("The state’s elections in November will test the potency of gun rights as a voting issue.")
-                                        ])
-                                    let statusbar:UI.Element.P = .init(
-                                        [
-                                            .init("5m ago"), 
-                                            .init("87 comments"), 
-                                        ], 
-                                        classes: ["statusbar"])
-                                    right = .init([title, p1, statusbar])
-                                }
-                                
-                                top = .init([illustration, right], style: .init([.axis: UI.Style.Axis.horizontal]))
-                            }
-                            do 
-                            {
-                                let title:UI.Element.P = .init(
-                                    [
-                                        .init("In the weeks before the El Paso shooting, the suspect’s mother called the police about a gun he had ordered.")
-                                    ], 
-                                    classes: ["headline"])
-                                let statusbar:UI.Element.P = .init(
-                                    [
-                                        .init("5h ago")
-                                    ], 
-                                    classes: ["statusbar"])
-                                bottom = .init([title, statusbar])
-                            }
-                            
-                            
-                            right = .init([top, bottom], style: .init([.grow: 2 as Float]))
-                        }
-                        
-                        story1 = .init([left, right], classes: ["story"], style: .init([.axis: UI.Style.Axis.horizontal]))
-                    }
-                    
-                    
-                    main = .init([story1], identifier: "main-panel")
-                }
-                
-                let side:UI.Element.Div 
-                do
-                {
-                    let section:UI.Element.P = .init(
-                        [
-                            .init("Opinion >")
-                        ], 
-                        identifier: "opinion-header")
-                    let author:UI.Element.P = .init(
-                        [
-                            .init("Sahil Chinoy")
-                        ], 
-                        classes: ["author"])
-                    let title:UI.Element.P = .init(
-                        [
-                            .init("Quiz: Let Us Predict Whether You’re a Democrat or a Republican")
-                        ], 
-                        classes: ["headline"])
-                    let summary:UI.Element.P = .init(
-                        [
-                            .init("Just a handful of questions are very likely to reveal how you vote.")
-                        ])
-                    let statusbar:UI.Element.P = .init(
-                        [
-                            .init("1h ago"), 
-                            .init("1107 comments"), 
-                        ], 
-                        classes: ["statusbar"])
-                    
-                    side = .init([section, author, title, summary, statusbar], identifier: "side-panel")
-                }
-                
-                body = .init([main, side], identifier: "page-body")
-            }
-            
-            
-            return .init([top, body], identifier: "container")
-        }()
+            let button:UI.Element.Button = .init(label: $0, classes: ["button"])
+            return button 
+        }
         
-        self.ui         = UI.Element.Div.init([container])
-        self.ui.path    = UI.Style.Path.init().appended(self.ui)
+        do 
+        {
+            let toolbar:UI.Element.Div   = .init(self.buttons, identifier: "toolbar")
+            let container:UI.Element.Div = .init([toolbar], identifier: "container")
+            self.ui = UI.Element.Div.init([container])
+        }
         
-        let plane:Display.Plane3D = .init(.init(
+        let plane:UI.Plane3D = .init(.init(
             center:         .zero, 
             orientation:    .identity, 
             distance:       6))
         
         self.cameraBuffer       = .init(hint: .dynamic, debugName: "ubo/camera")
-        self._cameraMatrices    = plane.$matrices.binding 
         self.plane              = plane
         // cube 
         self.cube.vao = Mesh.Preset.cube()
-        let checkerboard:Array2D<Vector4<UInt8>> = .init(size: .init(16, 16)) 
+        /* let checkerboard:Array2D<Vector4<UInt8>> = .init(size: .init(16, 16)) 
         {
-            return .init(repeating: (($0.x &+ $0.y) & 1) == 1 ? 255 : 40)
-        }
-        self.cube.texture = .init(layout: .rgba8, magnification: .nearest, minification: .nearest)
-        self.cube.texture.assign(checkerboard)
+            return .init(repeating: (($0.x &+ $0.y) & 1) == 1 ? 80 : 40)
+        } */
+        self.cube.texture = .init(layout: .rgba8, magnification: .linear, minification: .linear)
         
-        let vertices:GPU.Buffer.Array<Mesh.Preset.ColorVertex>  = .init(hint: .static)
-        let triangulation:GPU.Buffer.IndexArray<UInt32>         = .init(hint: .static)
         
-        let fbs:[Vector3<Double>] = Algorithm.fibonacci(1 << 12, as: Double.self)
+        let vertices:GPU.Buffer.Array<Mesh.ColorVertex>  = .init(hint: .static)
+        let triangulation:GPU.Buffer.IndexArray<UInt32>  = .init(hint: .static)
+        
+        //let fluid:Algorithm.Fluid<Double> = .init(count: 1 << 8)
+        let sphere:Algorithm.FibonacciSphere<Double> = .init(count: 1 << 8)
         // delaunay 
-        let triangles:[UInt32] = Algorithm.Delaunay.triangulate(fbs).flatMap 
+        let triangles:[UInt32] = sphere.triangulation.flatMap 
         {
             [.init($0.0), .init($0.1), .init($0.2)]
         }
-        let points:[Mesh.Preset.ColorVertex] = fbs.map 
+        
+        // compute elevations 
+        
+        // let (pixels, n):([UInt8], (x:Int, y:Int)) = try! PNG.v(path: "/home/klossy/downloads/earth.png", of: UInt8.self)
+        // var samples:[[UInt8]] = .init(repeating: [], count: sphere.points.count)
+        // for y:Int in 0 ..< n.y 
+        // {
+        //     for x:Int in 0 ..< n.x 
+        //     {
+        //         let theta:Double =     .pi * (.init(y) + 0.5) / .init(n.y), 
+        //             phi:Double   = 2 * .pi * (.init(x) + 0.5) / .init(n.x)
+        //         let index:Int    = sphere.nearest(to: .init(spherical: .init(theta, phi)))
+        //         samples[index].append(pixels[y * n.x + x])
+        //     }
+        // }
+        
+        let points:[Mesh.ColorVertex] = sphere.points.map // zip(samples, sphere.points).map 
         {
-            .init(.cast($0), color: .extend(.cast(($0 * 0.5 + 0.5) * 255), .max))
+            // let (cell, position):([UInt8], Vector3<Double>) = $0
+            // let height:UInt8 = .init(cell.map(Double.init(_:)).reduce(0, +) / .init(cell.count))
+            /* let offset:Double = 0.75 * 255
+            let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))), 
+                g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
+                b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
+             */
+            return .init(.cast($0), color: .init(0, 0, 0, .max))
         }
         vertices.assign(points)
-        triangulation.assign(triangles)
+        triangulation.assign(triangles) 
+        //self.fluid = fluid
+        self.sphere = sphere
         self.points = .init(vertices: vertices, indices: triangulation)
+        
+        self.isolines           = .init()
+        self.isolineVertices    = .init(vertices: .init(hint: .dynamic), indices: .init(hint: .dynamic))
+        
+        self.isolines.render()
+        self.isolineVertices.buffers.vertex.assign(self.isolines.vertices)
+        self.isolineVertices.buffers.index.assign (self.isolines.indices)
+        
+        
+        let noise:(r:GradientNoise3D, g:GradientNoise3D, b:GradientNoise3D) = 
+        (
+            .init(amplitude: 1.2 * 0.5 * 255, frequency: 4, seed: 0),
+            .init(amplitude: 1.2 * 0.5 * 255, frequency: 2, seed: 1),
+            .init(amplitude: 1.2 * 0.5 * 255, frequency: 1, seed: 2)
+        ) 
+        let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: 4) 
+        {
+            let offset:Double = 0.75 * 255
+            let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))), 
+                g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
+                b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
+            let d:Double = self.isolines.distance(to: $0), 
+                i:UInt8  = .init(min(max(0, 128 + 800 * d), 255))
+            return .init(r, g, b, i)
+            // return .extend(.cast(128 + 127 * $0), .max)
+        }
+        self.cube.texture.assign(cubemap: cubemap)
     }
     
-    mutating 
-    func event(_ event:UI.Event) -> UI.Event.Response
+    private 
+    func collision(_ s:Vector2<Float>) -> UI.Group? 
     {
-        var response:UI.Event.Response  = .init()
-        var event:UI.Event              = event 
-        for pass:Int in 0 ... 2
+        for layer:UI.Group in self.layers 
         {
-            if  // self.ui.event(event, pass: pass, response: &response) || 
-                self.plane.event(event, pass: pass, response: &response) 
+            if let result:UI.Group = layer.contains(s) 
             {
-                event = .leave
+                return result
             }
         }
-        
-        return response
+        return nil 
     }
     
     mutating 
-    func process(_ delta:Int) -> Bool 
+    func event(_ event:UI.Event) -> UI.State 
     {
-        self.ui.process(delta) 
-        self.plane.process(delta)
-        
-        if self.$cameraMatrices.mutated 
+        // clear buttons 
+        self.buttons.forEach 
         {
-            let matrices:Camera<Float>.Matrices = self.cameraMatrices
-            self.cameraBuffer.assign(std140: 
-                .matrix4(matrices.U), 
-                .matrix4(matrices.V), 
-                .matrix3(matrices.F), 
-                .float32x4(.extend(matrices.position, 0)))
-            self.$cameraMatrices.update()
-            return true 
+            $0.click = 0
+        }
+        
+        if let focus:UI.Group = self.focus 
+        {
+            switch event 
+            {
+            case    .primary(.down, _, doubled: _), 
+                    .secondary(.down, _, doubled: _):
+                self.focus = nil  
+            case    .primary(.up, let s, doubled: _), 
+                    .secondary(.up, let s, doubled: _):
+                if self.focus === self.collision(s)
+                {
+                    focus.action(.complete(s))
+                }
+                self.focus = nil
+            
+            case    .cursor(let s):
+                focus.action(.drag(s))
+            
+            case    .scroll, .key, .character:
+                break 
+            }
         }
         else 
         {
-            return false
+            switch event 
+            {
+            case    .primary(.down, let s, doubled: _):
+                self.focus  = self.hover
+                self.active = self.hover // self.collision(s)
+                self.active?.action(.primary(s))
+                
+            case    .secondary(.down, let s, doubled: _):
+                self.focus  = self.hover
+                self.active = self.hover // self.collision(s)
+                self.active?.action(.secondary(s))
+                
+            case    .primary(.up, _, doubled: _), 
+                    .secondary(.up, _, doubled: _):
+                break
+            
+            case    .cursor(let s):
+                self.hover = self.collision(s)
+                self.hover?.action(.hover(s))
+                
+            case    .scroll(let direction, _):
+                self.hover?.action(.scroll(direction))
+                
+            case    .key(let key, let modifiers):
+                if self.active !== self.hover 
+                {
+                    self.hover?.action(.key(key, modifiers))
+                }
+                self.active?.action(.key(key, modifiers))
+                
+            case    .character(let character):
+                self.active?.action(.character(character))
+            }
         }
+        
+        for (i, button):(Int, UI.Element.Button) in self.buttons.enumerated()
+        {
+            if button.click > 0 
+            {
+                Log.print("button \(i) clicked")
+            }
+        }
+        
+        let cursor:UI.Cursor = self.focus?.cursor.active ?? self.hover?.cursor.inactive ?? .arrow
+        return .init(cursor: cursor)
+    }
+    /* mutating 
+    func event(_ event:UI.Event) -> UI.Event.Response
+    {
+        for button:UI.Element.Button in self.buttons 
+        {
+        //    button.click =
+        }
+        switch event 
+        {
+        case .cursor(let s):
+            if let preselection:UI.Entity = self.ui.find(s)
+            {
+                self.preselection = .element(preselection)
+            }
+            else 
+            {
+                self.preselection = .plane(s)
+            }
+        case .action(let a):
+            switch self.preselection 
+            {
+            case .element(let element):
+                break
+            }
+        }
+        var event:(l:UI.Event, r:UI.Event) = (event, event.reflect(self.viewport.size.y)) 
+        
+        for pass:Int in 0 ... 2
+        {
+            if self.ui.event(event.l, pass: pass) 
+            {
+                event = (.leave, .leave) 
+            }
+            
+            switch event.r 
+            {
+                case    .primary    (_, let s, doubled: _), 
+                        .secondary  (_, let s, doubled: _), 
+                        .cursor     (   let s):
+                    let point:Vector3<Float> = self.plane.project(s, on: .zero, radius: 1)
+                    
+                    let dpoint:Vector3<Double> = .cast(point)
+                    self._active         = self.sphere.nearest(to: dpoint)
+                    self._activeTriangle = self.sphere.triangle(containing: dpoint)
+                    
+                default: 
+                    break 
+            }
+            
+            if self.plane.event(event.r, pass: pass) 
+            {
+                event = (.leave, .leave) 
+            }
+        }
+        
+        for (i, button):(Int, UI.Element.Button) in self.buttons.enumerated() 
+        {
+            if button.click > 0 
+            {
+                print("click \(i)")
+            }
+        }
+        //return .init(cursor: report.handcursor ? .hand : .crosshair)
+        return .init(cursor: .hand)
+    } */
+    
+    mutating 
+    func process(_ delta:Int, styles:UI.Styles, viewport:Vector2<Int>, frame:Rectangle<Int>)
+    {
+        for layer:UI.Group in self.layers 
+        {
+            layer.update(delta, styles: styles, viewport: viewport, frame: frame)
+        }
+        
+        let matrices:Camera<Float>.Matrices = self.plane.matrices
+        self.cameraBuffer.assign(std140: 
+            .matrix4(matrices.U), 
+            .matrix4(matrices.V), 
+            .matrix3(matrices.F), 
+            .float32x4(.extend(matrices.position, 0)))
+        // self.ui.process(delta) 
+        // self.plane.process(delta)
+        
+        /* self._phase -= delta
+        if self._phase < 0 
+        {
+            self._phase = 64
+            self.fluid.advect()
+            
+            let points:[Mesh.ColorVertex] = zip(self.fluid.sphere.points.indices, self.fluid.sphere.points).map  
+            {
+                /* let offset:Double = 0.75 * 255
+                let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))), 
+                    g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
+                    b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
+                */
+                let v:UInt8 = .init(clamping: Int.init(self.fluid[current: $0.0].mass * 24))
+                return .init(.cast($0.1), color: .init(v, v, v, .max))
+            }
+            self.points.buffers.vertex.assign(points)
+            self._mutated = true
+        } */
+        
+    }
+    
+    func vector() -> (text:[UI.DrawElement.Text], geometry:[UI.DrawElement.Geometry]) 
+    {
+        var text:[UI.DrawElement.Text]         = []
+        var geometry:[UI.DrawElement.Geometry] = []
+        self.ui.contribute(text: &text, geometry: &geometry, s: .zero) 
+        
+        return (text, geometry)
     }
     
     func draw(_ context:Coordinator.Context) -> [Renderer.Command] 
     {
         [
-            /* .draw(elements: 0..., of: self.cube.vao, as: .triangles, 
+            .draw(elements: 0..., of: self.cube.vao, as: .triangles, 
                 depthTest: .off,
                 using: context.shaders.implicitSphere,
                 [
@@ -463,23 +578,39 @@ struct Controller//:LayerController
                     "Camera"    : .block(self.cameraBuffer),
                     "origin"    : .float32x3(.init(repeating: 0.0)),
                     "scale"     : .float32(1.0),
-                    
-                    "globetex"  : .texture2(self.cube.texture),
-                ]),  */
-            .draw(elements: 0..., of: self.points, as: .triangles, 
-                depthTest: .off, 
-                using: context.shaders.colorTriangles,
-                [
-                    "Camera"    : .block(self.cameraBuffer),
+            
+                    "globetex"  : .textureCube(self.cube.texture),
                 ]), 
-            /* .draw(0..., of: self.points, as: .points, 
+            // .draw(elements: 0..., of: self.points, as: .triangles, 
+            //     depthTest: .off, 
+            //     using: context.shaders.colorTriangles,
+            //     [
+            //         "Camera"    : .block(self.cameraBuffer),
+            //     ]), 
+            // .draw(0..., of: self.points, as: .points, 
+            //     depthTest: .off, 
+            //     using: context.shaders.colorPoints,
+            //     [
+            //         "Display"   : .block(context.display),
+            //         "Camera"    : .block(self.cameraBuffer),
+            //         "radius"    : .float32(4),
+            //     ]),
+            .draw(self._active ... self._active, of: self.points, as: .points, 
                 depthTest: .off, 
                 using: context.shaders.colorPoints,
                 [
                     "Display"   : .block(context.display),
                     "Camera"    : .block(self.cameraBuffer),
-                    "radius"    : .float32(4),
-                ]) */
+                    "radius"    : .float32(8),
+                ]), 
+            .draw(elements: 0..., of: self.isolineVertices, as: .linesAdjacency, 
+                depthTest: .off, 
+                using: context.shaders.colorLines,
+                [
+                    "Display"   : .block(context.display),
+                    "Camera"    : .block(self.cameraBuffer),
+                    "thickness" : .float32(1),
+                ]) 
         ]
     }
 } 
@@ -489,16 +620,7 @@ struct Coordinator
     typealias Context =  
     (
         display:GPU.Buffer.Uniform<UInt8>,
-        shaders: 
-        (
-            text:           GPU.Program,
-            xo:             GPU.Program,
-            
-            implicitSphere: GPU.Program, 
-            
-            colorPoints:    GPU.Program,
-            colorTriangles: GPU.Program
-        )
+        shaders:Shader.Programs
     )
     
     private 
@@ -506,8 +628,8 @@ struct Coordinator
     
     private 
     let context:Context
-    @State 
-    var style:UI.Style.Styles
+    
+    let styles:UI.Styles
     
     private 
     let text:GPU.Vertex.Array<UI.DrawElement.Text.Vertex, UInt8>, 
@@ -526,7 +648,6 @@ struct Coordinator
             
             self.context.display.assign(std140: .float32x2(.cast(self.window)))
             self.renderer.viewport      = viewport
-            self.controller.viewport    = viewport 
         }
     }
     
@@ -537,52 +658,13 @@ struct Coordinator
         // display UBO 
         self.context.display    = .init(hint: .dynamic, debugName: "ubo/display")
         // compile shaders 
-        do 
-        {
-            self.context.shaders.text = try .init(
-                [
-                    (.vertex,   "shaders/text.vert"),
-                    (.geometry, "shaders/text.geom"),
-                    (.fragment, "shaders/text.frag"),
-                ], 
-                debugName: "diannamy://engine/shaders/text*")
-            self.context.shaders.xo = try .init(
-                [
-                    (.vertex,   "shaders/colorD2.vert"),
-                    (.fragment, "shaders/colorD2.frag"),
-                ], 
-                debugName: "diannamy://engine/shaders/colorD2*")
-            self.context.shaders.implicitSphere = try .init(
-                [
-                    (.vertex,   "shaders/sphere.vert"),
-                    (.fragment, "shaders/sphere.frag"),
-                ], 
-                debugName: "diannamy://engine/shaders/sphere*")
-            self.context.shaders.colorPoints = try .init(
-                [
-                    (.vertex,   "shaders/Mesh.Preset.ColorVertex.vert"),
-                    (.geometry, "shaders/color-points.geom"),
-                    (.fragment, "shaders/color-points.frag"),
-                ], 
-                debugName: "diannamy://engine/shaders/color-points*")
-            self.context.shaders.colorTriangles = try .init(
-                [
-                    (.vertex,   "shaders/Mesh.Preset.ColorVertex.vert"),
-                    (.fragment, "shaders/color-triangles.frag"),
-                ], 
-                debugName: "diannamy://engine/shaders/color-triangles*")
-        }
-        catch 
-        {
-            Log.trace(error: error)
-            Log.fatal("failed to compile one or more shader programs")
-        }
+        self.context.shaders    = Shader.programs()
         
         // parse styles
         let stylesheet:[(selector:UI.Style.Selector, rules:UI.Style.Rules)]
         do 
         {
-            stylesheet = try UI.Style.Sheet.parse(path: "default")
+            stylesheet = try UI.Style.Sheet.parse(path: "mapeditor")
         }
         catch 
         {
@@ -591,8 +673,7 @@ struct Coordinator
         }
         
         // print(stylesheet.map{ "\($0.0)\n\($0.1)" }.joined(separator: "\n\n"))
-        let style:State<UI.Style.Styles> = .init(wrappedValue: .init(stylesheet: stylesheet))
-        self._style = style 
+        self.styles = .init(stylesheet: stylesheet) 
         
         // UI layers 
         self.text     = .init(
@@ -602,74 +683,69 @@ struct Coordinator
             vertices:   .init(hint: .streaming, debugName: "ui/geometry/buffers/vertex"), 
             indices:    .init(hint: .static,    debugName: "ui/geometry/buffers/index"))
         
-        self.controller = .init(style: style.binding)
+        self.controller = .init()
     }
     
     mutating 
-    func event(_ event:UI.Event) -> UI.Event.Response
+    func event(_ event:UI.Event) -> UI.State
     {
         return self.controller.event(event)
     }
     
     mutating 
-    func process(delta:Int) -> Bool 
+    func process(_ delta:Int)  
     {
-        var controllerChanged:Bool = self.controller.process(delta) 
+        self.controller.process(delta, styles: self.styles, viewport: self.window, frame: .init(.zero, self.window)) 
         
-        if let (text, geometry):([UI.DrawElement.Text], [UI.DrawElement.Geometry]) = 
-            self.controller.ui.frame(rectangle: .init(.zero, self.window), definitions: &self.style)
-        {
-            controllerChanged = true 
-            
-            var buffer:
+        let (text, geometry):([UI.DrawElement.Text], [UI.DrawElement.Geometry]) = self.controller.vector()
+        var buffer:
+        (
+            text:[UI.DrawElement.Text.Vertex], 
+            geometry:
             (
-                text:[UI.DrawElement.Text.Vertex], 
-                geometry:
-                (
-                    vertices:[UI.DrawElement.Geometry.Vertex], 
-                    indices:[UInt32]
-                )
-            ) 
-            
-            buffer.geometry.indices  = []
-            buffer.geometry.indices.reserveCapacity(3 * geometry.map{ $0.triangles.count }.reduce(0, +))
-            var z:Float = -1
-            buffer.geometry.vertices = []
-            buffer.geometry.vertices.reserveCapacity(geometry.map{ $0.count }.reduce(0, +))
-            for element:UI.DrawElement.Geometry in geometry 
+                vertices:[UI.DrawElement.Geometry.Vertex], 
+                indices:[UInt32]
+            )
+        ) 
+        
+        buffer.geometry.indices  = []
+        buffer.geometry.indices.reserveCapacity(3 * geometry.map{ $0.triangles.count }.reduce(0, +))
+        var z:Float = -1
+        buffer.geometry.vertices = []
+        buffer.geometry.vertices.reserveCapacity(geometry.map{ $0.count }.reduce(0, +))
+        for element:UI.DrawElement.Geometry in geometry 
+        {
+            let base:Int = buffer.geometry.vertices.count
+            for triangle:(Int, Int, Int) in element.triangles 
             {
-                let base:Int = buffer.geometry.vertices.count
-                for triangle:(Int, Int, Int) in element.triangles 
-                {
-                    buffer.geometry.indices.append(.init(triangle.0 + base))
-                    buffer.geometry.indices.append(.init(triangle.1 + base))
-                    buffer.geometry.indices.append(.init(triangle.2 + base))
-                }
-                
-                z = z.nextUp
-                buffer.geometry.vertices.append(contentsOf: element)
-            }
-                    
-            buffer.text = []
-            buffer.text.reserveCapacity(text.map{ $0.count }.reduce(0, +))
-            for element:UI.DrawElement.Text in text
-            {
-                z = z.nextUp
-                buffer.text.append(contentsOf: element)
+                buffer.geometry.indices.append(.init(triangle.0 + base))
+                buffer.geometry.indices.append(.init(triangle.1 + base))
+                buffer.geometry.indices.append(.init(triangle.2 + base))
             }
             
-            self.text.buffers.vertex.assign(buffer.text)
-            self.geometry.buffers.vertex.assign(buffer.geometry.vertices)
-            self.geometry.buffers.index.assign(buffer.geometry.indices)
+            z = z.nextUp
+            buffer.geometry.vertices.append(contentsOf: element)
         }
+                
+        buffer.text = []
+        buffer.text.reserveCapacity(text.map{ $0.count }.reduce(0, +))
+        for element:UI.DrawElement.Text in text
+        {
+            z = z.nextUp
+            buffer.text.append(contentsOf: element)
+        }
+        
+        self.text.buffers.vertex.assign(buffer.text)
+        self.geometry.buffers.vertex.assign(buffer.geometry.vertices)
+        self.geometry.buffers.index.assign(buffer.geometry.indices)
         
         self.renderer.execute(
             [
                 .clear(color: true, depth: true), 
-            ]
+            ] as [Renderer.Command]
             +
             self.controller.draw(self.context) 
-            /* +
+            +
             [
                 .clear(color: false, depth: true), 
                 .draw(elements: 0..., of: self.geometry, as: .triangles, 
@@ -681,9 +757,8 @@ struct Coordinator
                     using: self.context.shaders.text,  
                     [
                         "Display"   : .block(self.context.display), 
-                        "fontatlas" : .texture2(self.style.fonts.atlas.texture)
+                        "fontatlas" : .texture2(self.styles.fonts.atlas.texture)
                     ])
-            ]*/)
-        return controllerChanged
+            ] as [Renderer.Command])
     }
 }

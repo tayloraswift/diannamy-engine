@@ -1,5 +1,25 @@
 extension UI.Style 
 {
+    enum PseudoClass 
+    {
+        case hover, focus, active 
+        
+        init?(string:String) 
+        {
+            switch string 
+            {
+            case "hover":
+                self = .hover 
+            case "focus":
+                self = .focus 
+            case "active":
+                self = .active 
+            default:
+                return nil 
+            }
+        }
+    }
+    
     struct Path:Hashable, CustomStringConvertible 
     {
         fileprivate 
@@ -8,6 +28,11 @@ extension UI.Style
         init() 
         {
             self.levels = []
+        }
+        
+        init(_ element:UI.Element)  
+        {
+            self.levels = [.init(element)]
         }
         
         private 
@@ -19,15 +44,19 @@ extension UI.Style
         mutating 
         func append(_ element:UI.Element)  
         {
-            let level:Selector.Level = .init(element: type(of: element), 
-                classes: element.classes, identifier: element.identifier)
-            self.levels.append(level)
+            self.levels.append(.init(element))
         }
         func appended(_ element:UI.Element) -> Self 
         {
             var extended:Self = self 
             extended.append(element)
             return extended
+        }
+        
+        mutating 
+        func update(_ element:UI.Element) 
+        {
+            self.levels[self.levels.endIndex - 1] = .init(element) 
         }
         
         var description:String 
@@ -42,13 +71,14 @@ extension UI.Style
             var element:Any.Type 
             var classes:Set<String>
             var identifier:String?
+            var pseudoclasses:Set<PseudoClass>
             
             static 
-            let any:Self = .init(element: Any.self, classes: [], identifier: nil)
+            let any:Self = .init(element: Any.self, classes: [], identifier: nil, pseudoclasses: [])
             
             var description:String 
             {
-                let components:(element:String, classes:String, identifier:String)
+                let components:(element:String, classes:String, identifier:String, pseudoclasses:String)
                 if let element:UI.Element.Type = self.element as? UI.Element.Type 
                 {
                     components.element = "<\(String(reflecting: element).split(separator: ".").dropFirst().joined(separator: "."))>"
@@ -58,9 +88,10 @@ extension UI.Style
                     components.element = self.classes.isEmpty && self.identifier == nil ? "*" : ""
                 }
                 
-                components.classes = self.classes.map{ ".\($0)" }.joined(separator: "")
-                components.identifier = self.identifier.map{ "#\($0)" } ?? ""
-                return "\(components.element)\(components.classes)\(components.identifier)"
+                components.classes          = self.classes.map{ ".\($0)" }.joined(separator: "")
+                components.identifier       = self.identifier.map{ "#\($0)" } ?? ""
+                components.pseudoclasses    = self.pseudoclasses.map{ ":\($0)" }.joined(separator: "")
+                return "\(components.element)\(components.classes)\(components.identifier)\(components.pseudoclasses)"
             }
             
             static 
@@ -85,6 +116,11 @@ extension UI.Style
                         return false 
                     }
                 }
+                guard pattern.pseudoclasses.isSubset(of: level.pseudoclasses) 
+                else 
+                {
+                    return false 
+                }
                 return true 
             }
             
@@ -92,9 +128,10 @@ extension UI.Style
             static 
             func == (a:Self, b:Self) -> Bool 
             {
-                return a.element == b.element &&
-                    a.classes    == b.classes && 
-                    a.identifier == b.identifier
+                return a.element    == b.element &&
+                    a.classes       == b.classes && 
+                    a.identifier    == b.identifier && 
+                    a.pseudoclasses == b.pseudoclasses
             }
             
             func hash(into hasher:inout Hasher) 
@@ -102,6 +139,34 @@ extension UI.Style
                 hasher.combine(ObjectIdentifier.init(self.element))
                 hasher.combine(self.classes)
                 hasher.combine(self.identifier)
+                hasher.combine(self.pseudoclasses)
+            }
+            
+            init(_ element:UI.Element)  
+            {
+                self.element        = type(of: element) 
+                self.classes        = element.classes
+                self.identifier     = element.identifier
+                self.pseudoclasses  = []
+                if element.state.hover 
+                {
+                    self.pseudoclasses.insert(.hover)
+                }
+                if element.state.focus 
+                {
+                    self.pseudoclasses.insert(.focus)
+                }
+                if element.state.active 
+                {
+                    self.pseudoclasses.insert(.active)
+                }
+            }
+            init(element:Any.Type, classes:Set<String>, identifier:String?, pseudoclasses:Set<PseudoClass>)  
+            {
+                self.element        = element
+                self.classes        = classes
+                self.identifier     = identifier
+                self.pseudoclasses  = pseudoclasses
             }
         }
         

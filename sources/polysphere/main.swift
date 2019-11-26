@@ -36,20 +36,13 @@ class Context
     // clipboard and cursor callbacks 
     func event(_ event:UI.Event) 
     {
-        let response:UI.Event.Response = self.coordinator.event(event) 
-        switch event 
-        {
-        case .primary, .secondary, .cursor, .scroll:
-            glfwSetCursor(self.backpointer, Self.cursors[response.cursor])
+        let state:UI.State = self.coordinator.event(event) 
+        glfwSetCursor(self.backpointer, Self.cursors[state.cursor])
         
-        default:
-            break
-        }
-        
-        if let string:String = response.clipboard 
+        /* if let string:String = response.clipboard 
         {
             glfwSetClipboardString(self.backpointer, string)
-        }
+        } */
     }
     
     func connect() 
@@ -100,12 +93,12 @@ class Context
             {
                 switch key 
                 {
-                case .X:
+                /* case .X:
                     event = .cut  
                 case .C:
                     event = .copy 
                 case .V:
-                    event = .paste(.init(cString: glfwGetClipboardString(context.backpointer)))
+                    event = .paste(.init(cString: glfwGetClipboardString(context.backpointer))) */
                 default:
                     event = .key(key, modifiers)
                 }
@@ -123,8 +116,7 @@ class Context
             (context:OpaquePointer?, x:Double, y:Double) in
             
             let context:Context = .reconstitute(from: context)
-            let position:Vector2<Float> = 
-                .init(.init(x), .init(context.coordinator.window.y) - .init(y))
+            let position:Vector2<Float> = .cast(.init(x, y))
             context.event(.cursor(position))
         }
 
@@ -214,10 +206,9 @@ class Context
             glfwWaitEventsTimeout(1.0 / 60.0)
             let t1:Double = glfwGetTime()
             
-            if self.coordinator.process(delta: .init(t1 * 1000) - .init(t0 * 1000)) 
-            {
-                glfwSwapBuffers(self.backpointer)
-            }
+            self.event(.cursor(self.cursorPosition()))
+            self.coordinator.process(.init(t1 * 1000) - .init(t0 * 1000)) 
+            glfwSwapBuffers(self.backpointer)
             
             //print(1 / (t1 - t0))
             t0 = t1
@@ -235,7 +226,7 @@ class Context
     {
         var (x, y):(Double, Double) = (0, 0) 
         glfwGetCursorPos(self.backpointer, &x, &y)
-        return .init(.init(x), .init(self.coordinator.window.y) - .init(y))
+        return .cast(.init(x, y))
     }
     private 
     func framebufferSize() -> Vector2<Int> 

@@ -373,7 +373,7 @@ extension UI.Style
                             string.append(character)
                             self = .string(string, quote: quote, escape: false)
                             return nil 
-                        case .string(var string, quote: nil, escape: let escape):
+                        case .string(_, quote: nil, escape: _):
                             break atom 
                         
                         case .comment(var comment):
@@ -730,7 +730,7 @@ extension UI.Style
             {
                 enum Keyword 
                 {
-                    case element, property, feature, positioning, alignment, justification, axis, colortype
+                    case element, pseudoclass, property, feature, positioning, alignment, justification, axis, colortype
                     
                     var prosaicDescription:String 
                     {
@@ -738,6 +738,8 @@ extension UI.Style
                         {
                         case .element:
                             return "element type"
+                        case .pseudoclass:
+                            return "pseudoclass"
                         case .property:
                             return "stylesheet property"
                         case .feature:
@@ -936,7 +938,7 @@ extension UI.Style
                     {
                         enum Component 
                         {
-                            case `class`, identifier
+                            case `class`, identifier, pseudoclass
                         }
                         
                         // text foo.bar.baz 
@@ -972,12 +974,19 @@ extension UI.Style
                         case    (.startHead,            .identifier("span")?):
                             level.element = UI.Element.Span.self 
                             state = .startBodyComponent
+                        case    (.startHead,            .identifier("button")?):
+                            level.element = UI.Element.Button.self 
+                            state = .startBodyComponent
                         
                         case    (.startHead,            .identifier(let identifier)?):
                             throw Error.undefined(.element, identifier, in: .selector, range: range)
                             
                         case    (.startHead,            .star?):
                             state = .startBodyComponent
+                        
+                        case    (.startHead,            .colon?), 
+                                (.startBodyComponent,   .colon?):
+                            state = .expectBodyComponent(.pseudoclass)
                         
                         case    (.startHead,            .period?), 
                                 (.startBodyComponent,   .period?):
@@ -1018,6 +1027,15 @@ extension UI.Style
                         case    (.startBodyComponent,   .chevron?):
                             throw Error.missing(.whitespace, before: .chevron, in: .selector, range: range)
                         
+                        
+                        case    (.expectBodyComponent(.pseudoclass),.identifier(let identifier)?):
+                            guard let pseudoclass:PseudoClass = PseudoClass.init(string: identifier) 
+                            else 
+                            {
+                                throw Error.undefined(.pseudoclass, identifier, in: .selector, range: range)
+                            }
+                            level.pseudoclasses.update(with: pseudoclass)
+                            state = .startBodyComponent
                         
                         case    (.expectBodyComponent(.class),      .identifier(let identifier)?):
                             level.classes.update(with: identifier)
@@ -1122,7 +1140,7 @@ extension UI.Style
                 {
                     switch property 
                     {
-                    case .wrap, .marginCollapse, .borderCollapse:
+                    case .occlude, .wrap, .marginCollapse, .borderCollapse:
                         let value:Bool = try self.expect(expression: .value(property, .bool), 
                             where: Lex.Lexeme.load(bool:range:)) 
                         return value 
@@ -1604,17 +1622,18 @@ extension UI.Style
     }
 }
 
-extension UI.Style
+extension UI
 {
-    struct Styles
+    final 
+    class Styles
     {
         struct FontLibrary 
         {
             private 
-            let fonts:[FontSelection: Typeface.Font]
+            let fonts:[Style.FontSelection: Typeface.Font]
             let atlas:Atlas 
             
-            init(_ selections:[FontSelection]) 
+            init(_ selections:[Style.FontSelection]) 
             {
                 let fonts:[Typeface.Font]
                 (self.atlas, fonts) = Typeface.assemble(selections)
@@ -1623,7 +1642,7 @@ extension UI.Style
                 self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
             }
             
-            subscript(selection:FontSelection) -> Typeface.Font 
+            subscript(selection:Style.FontSelection) -> Typeface.Font 
             {
                 guard let font:Typeface.Font = self.fonts[selection]
                 else 
@@ -1644,15 +1663,15 @@ extension UI.Style
         let fonts:FontLibrary
         
         private 
-        var cache:[Path: Rules]
+        var cache:[Style.Path: Style.Rules]
         private 
-        let stylesheet:[(selector:Selector, rules:Rules)]
+        let stylesheet:[(selector:Style.Selector, rules:Style.Rules)]
         
-        init(stylesheet:[(selector:Selector, rules:Rules)]) 
+        init(stylesheet:[(selector:Style.Selector, rules:Style.Rules)]) 
         {
             // distinct fonts (differ by size) and distinct faces
-            var fontSelections:Set<FontSelection>   = []
-            for (_, rules):(Selector, Rules) in stylesheet
+            var fontSelections:Set<Style.FontSelection> = []
+            for (_, rules):(Style.Selector, Style.Rules) in stylesheet
             {
                 fontSelections.update(with: rules.font)
             }
@@ -1662,21 +1681,20 @@ extension UI.Style
             self.stylesheet = stylesheet
         }
         
-        mutating 
-        func resolve(_ path:Path) -> Rules 
+        func resolve(_ path:Style.Path) -> Style.Rules 
         {
-            if let entry:Rules = self.cache[path] 
+            if let entry:Style.Rules = self.cache[path] 
             {
                 return entry 
             }
             
-            let style:Rules = self.stylesheet.filter{ $0.selector ~= path }
+            let style:Style.Rules = self.stylesheet.filter{ $0.selector ~= path }
             .reduce(into: .init()) 
             {
                 $0.overlay(with: $1.rules)
             }
             
-            let entry:Rules  = style
+            let entry:Style.Rules  = style
             self.cache[path] = entry
             return entry
         }

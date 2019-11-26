@@ -15,7 +15,7 @@ layout(std140) uniform Camera
 uniform vec3 origin;
 uniform float scale;
 
-uniform sampler2D globetex;
+uniform samplerCube globetex;
 
 out vec4 color;
 
@@ -31,13 +31,14 @@ vec4 pixel(vec2 fragment)
     float discriminant = scale * scale + l * l - dot(c, c);
     if (discriminant < 0)
     {
-        return vec4(0);
+        return vec4(0); 
     }
     
     vec3 normal = normalize(camera.position + ray * (l - sqrt(discriminant)) - origin);
     
-    vec2 equirectangular = vec2(atan(normal.y, normal.x) * INV_2PI, acos(normal.z) * INV_PI);
-    vec3 albedo = texture(globetex, equirectangular).rgb;
+    //vec2 equirectangular = vec2(atan(normal.y, normal.x) * INV_2PI, acos(normal.z) * INV_PI);
+    //vec3 albedo = texture(globetex, normal).rgb;
+    vec3 albedo = texture(globetex, normal).a > 0.5 ? vec3(0.5, 0.7, 0.6) : vec3(0.5, 0.6, 0.8);
     return vec4(albedo * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1)))) + 0.05), 1);
 }
 void main()

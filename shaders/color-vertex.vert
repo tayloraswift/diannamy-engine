@@ -14,7 +14,7 @@ layout(std140) uniform Camera
 out Vertex
 {
     vec4 color;
-    bool _facing;
+    float _facing;
 } vertex;
 
 void main()
@@ -23,5 +23,5 @@ void main()
     gl_Position   = camera.U * vec4(position, 1);
     
     vec3 normal   = position; // only because these are sphere points
-    vertex._facing = dot(camera.position - position, normal) < 0 ? false : true;
+    vertex._facing = dot(normalize(camera.position - position), normal);
 }

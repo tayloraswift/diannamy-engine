@@ -1,6 +1,7 @@
-enum Display
+extension UI
 {
-    struct Plane3D 
+    final 
+    class Plane3D
     {
         enum Movement 
         {
@@ -11,8 +12,8 @@ enum Display
             case zoom(UI.Event.Direction.D1)
         }
         
-        private 
-        typealias Update = (frame:Rectangle<Float>, viewport:Vector2<Float>)
+        /* private 
+        typealias Update = (frame:Rectangle<Float>, viewport:Vector2<Float>) */
         
         private 
         enum Action
@@ -51,52 +52,114 @@ enum Display
             }
         }
         
-        @State private(set)
+        // UI.Group 
+        var state:(focus:Bool, active:Bool, hover:Bool) = (false, false, false)
+        //
+        
+        private(set)
         var matrices:Camera<Float>.Matrices = .identity
         
         private
-        var update:Update?, 
-            action:Action, 
+        var action:Action, 
             animation:Transition<Camera<Float>.Rig, Curve.Quadratic>
+        
+        init(_ camera:Camera<Float>.Rig)
+        {
+            self.action     = .none 
+            self.animation  = .init(initial: camera)
+        }
     }
 }
 
-extension Display.Plane3D
+extension UI.Plane3D:UI.Group 
 {
-    init(_ camera:Camera<Float>.Rig)
+    var cursor:(inactive:UI.Cursor, active:UI.Cursor) 
     {
-        self.update     = nil   
-        self.action     = .none 
-        self.animation  = .init(initial: camera)
+        (.crosshair, .hand)
     }
     
+    func contains(_:Vector2<Float>) -> UI.Group?
+    {
+        return self
+    }
+    
+    func update(_ delta:Int, styles:UI.Styles, viewport:Vector2<Int>, frame:Rectangle<Int>) 
+    {
+        let viewport:Vector2<Float> = .cast(viewport), 
+            frame:Rectangle<Float>  = .cast(frame)
+        if  self.animation.process(delta)       || 
+            self.matrices.viewport  != viewport || 
+            self.matrices.frame     != frame 
+        {
+            self.matrices    = self.animation.current.matrices(frame: frame, 
+                                                            viewport: viewport, 
+                                                                clip: .init(-0.1, -100))
+        }
+    }
+     
+    func action(_ action:UI.Event.Action)
+    {
+        let action:UI.Event.Action = action.reflect(vertical: self.matrices.viewport.y)
+        switch action 
+        {
+        case .primary(let s):
+            self.move(.orbit(s))
+        
+        case .secondary(_):
+            break 
+        
+        case .drag(let s):
+            guard case .orbit(let orientation, let radius, let anchor, let rayfilm) = self.action 
+            else 
+            {
+                break
+            }
+            
+            self.animation.charge(time: 64)
+            {
+                let b:Vector3<Float>    = Self.project(ray: rayfilm.cast(s), on: $0.center, radius: radius), 
+                    q:Quaternion<Float> = .init(from: anchor, to: (b - $0.center).normalized())
+                $0.orientation = q.inverse >< orientation
+            } 
+        
+        case .defocus:
+            self.action = .none
+            
+        case .scroll(let direction):
+            switch direction 
+            {
+            case .up:
+                self.move(.zoom(.up))
+            case .down:
+                self.move(.zoom(.down))
+            default:
+                break
+            }
+            
+        case .key(.Q, _):
+            self.charge
+            {
+                let q:Quaternion<Float> = .init(axis: .init(0, 0, 1), angle: .pi * 0.33)
+                $0.orientation = q >< $0.orientation 
+            } 
+        case .key(.E, _):
+            self.charge
+            {
+                let q:Quaternion<Float> = .init(axis: .init(0, 0, 1), angle: .pi * -0.33)
+                $0.orientation = q >< $0.orientation 
+            } 
+        
+        default:
+            break
+        }
+    }
+}
+extension UI.Plane3D
+{    
     var position:Vector3<Float>
     {
         return self.matrices.position
     }
-    
-    var frame:Rectangle<Float> 
-    {
-        get 
-        {
-            self.update?.frame ?? self.matrices.frame
-        }
-        set(frame) 
-        {
-            self.update = (frame, self.viewport)
-        }
-    } 
-    var viewport:Vector2<Float> 
-    {
-        get 
-        {
-            self.update?.viewport ?? self.matrices.viewport
-        }
-        set(viewport) 
-        {
-            self.update = (self.frame, viewport)
-        }
-    } 
     
     private 
     var rayfilm:Rayfilm 
@@ -119,26 +182,7 @@ extension Display.Plane3D
         return p
     }
     
-    
-    // returns true if the view system has changed
-    mutating
-    func process(_ delta:Int) // -> Bool 
-    {
-        if self.animation.process(delta) || self.update != nil 
-        {
-            self.matrices    = self.animation.current.matrices(frame: self.frame, 
-                                                            viewport: self.viewport, 
-                                                                clip: .init(-0.1, -100))
-            self.update      = nil
-            // return true 
-        }
-        else 
-        {
-            // return false
-        }
-    }
-    
-    private mutating 
+    private  
     func move(_ movement:Movement) 
     {
         switch movement 
@@ -192,7 +236,7 @@ extension Display.Plane3D
     
     // rebases to the current animation state and starts the transition timer to 
     // progress to whatever head will be set to
-    private mutating 
+    private  
     func charge(_ body:(inout Camera<Float>.Rig) -> ())
     {
         // if an action is in progress, ignore
@@ -203,80 +247,6 @@ extension Display.Plane3D
         }
         
         self.animation.charge(time: 256, transform: body)
-    }
-    
-    mutating 
-    func event(_ event:UI.Event, pass:Int, response:inout UI.Event.Response) -> Bool
-    {
-        if pass == 0 
-        {
-            switch self.action 
-            {
-            case .none:
-                return false 
-            
-            case .orbit(let orientation, let radius, let anchor, let rayfilm):
-                switch event 
-                {
-                case .cursor(let s):
-                    self.animation.charge(time: 64)
-                    {
-                        let b:Vector3<Float>    = Self.project(ray: rayfilm.cast(s), on: $0.center, radius: radius), 
-                            q:Quaternion<Float> = .init(from: anchor, to: (b - $0.center).normalized())
-                        $0.orientation = q.inverse >< orientation
-                    } 
-                
-                case .primary(.up, _, _), .leave:
-                    self.action = .none 
-                            
-                default:
-                    break 
-                }
-                
-                response.cursor = .hand
-                return true 
-            }
-        }
-        else if pass == 1 
-        {
-            return false 
-        }
-        else  
-        {
-            switch event 
-            {
-            case .primary(.down, let s, _):
-                self.move(.orbit(s))
-            
-            case .scroll(.down, _):
-                self.move(.zoom(.down))
-            case .scroll(.up, _):
-                self.move(.zoom(.up))
-                
-            case .key(.Q, _):
-                self.charge
-                {
-                    let q:Quaternion<Float> = .init(axis: .init(0, 0, 1), angle: .pi * 0.33)
-                    $0.orientation = q >< $0.orientation 
-                } 
-            case .key(.E, _):
-                self.charge
-                {
-                    let q:Quaternion<Float> = .init(axis: .init(0, 0, 1), angle: .pi * -0.33)
-                    $0.orientation = q >< $0.orientation 
-                } 
-            
-            case .leave:
-                return false 
-              
-            
-            default:
-                break
-            }
-            
-            response.cursor = .hand
-            return true 
-        }
     }
     
     private static 
