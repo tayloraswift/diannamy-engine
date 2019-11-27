@@ -38,7 +38,8 @@ vec4 pixel(vec2 fragment)
     
     //vec2 equirectangular = vec2(atan(normal.y, normal.x) * INV_2PI, acos(normal.z) * INV_PI);
     //vec3 albedo = texture(globetex, normal).rgb;
-    vec3 albedo = texture(globetex, normal).a > 0.5 ? vec3(0.5, 0.7, 0.6) : vec3(0.5, 0.6, 0.8);
+    vec4 entry  = texture(globetex, normal);
+    vec3 albedo = entry.a > 0.5 ? entry.rgb : vec3(entry.r + entry.g + entry.b) * 0.25;
     return vec4(albedo * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1)))) + 0.05), 1);
 }
 void main()

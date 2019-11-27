@@ -1172,12 +1172,33 @@ extension UI.Style
                         }
                         return value 
                     
+                    case .crease:
+                        let v:[Bool] = try self.vector(1 ... 4, expression: .value(property, .metrics(.bool)), 
+                            innerExpression: .metrics(.bool), 
+                            whereElement: Lex.Lexeme.load(bool:range:)) 
+                                                
+                        let value:Metrics<Bool>
+                        switch v.count 
+                        {
+                        case 1:
+                            value = .init(v[0])
+                        case 2:
+                            value = .init(vertical: v[0], horizontal: v[1])
+                        case 3:
+                            value = .init(top: v[0], horizontal: v[1], bottom: v[2])
+                        case 4:
+                            value = .init(top: v[0], right: v[1], bottom: v[2], left: v[3])
+                        default:
+                            Log.unreachable()
+                        }
+                        return value 
+                    
                     case .padding, .border, .margin:
                         let v:[Int] = try self.vector(1 ... 4, expression: .value(property, .metrics(.int)), 
                             innerExpression: .metrics(.int), 
                             whereElement: Lex.Lexeme.load(int:range:)) 
                                                 
-                        let value:Metrics 
+                        let value:Metrics<Int>
                         switch v.count 
                         {
                         case 1:

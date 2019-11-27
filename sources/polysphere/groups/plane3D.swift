@@ -1,4 +1,4 @@
-extension UI
+extension Editor
 {
     final 
     class Plane3D
@@ -71,7 +71,7 @@ extension UI
     }
 }
 
-extension UI.Plane3D:UI.Group 
+extension Editor.Plane3D:UI.Group 
 {
     var cursor:(inactive:UI.Cursor, active:UI.Cursor) 
     {
@@ -154,7 +154,7 @@ extension UI.Plane3D:UI.Group
         }
     }
 }
-extension UI.Plane3D
+extension Editor.Plane3D
 {    
     var position:Vector3<Float>
     {

@@ -32,84 +32,79 @@ extension Algorithm
         return vertices
     }
     
-    struct Isolines
+    struct Isolines:Codable 
     {
-        struct Model:Codable 
+        struct Isoline:Codable, RandomAccessCollection 
         {
-            struct Isoline:Codable, RandomAccessCollection 
+            let height:Int, 
+                group:String, 
+                name:String,
+                points:[Vector3<Double>]
+            
+            var startIndex:Int 
             {
-                let height:Int, 
-                    group:String, 
-                    name:String,
-                    points:[Vector3<Double>]
-                
-                var startIndex:Int 
-                {
-                    self.points.startIndex
-                }
-                var endIndex:Int 
-                {
-                    self.points.endIndex
-                }
-                subscript(index:Int) -> (Vector3<Double>, Vector3<Double>) 
-                {
-                    let previous:Int = index + (index < 1 ? self.points.count : 0) - 1
-                    return (self.points[previous], self.points[index])
-                }
+                self.points.startIndex
             }
-            
-            var background:String
-            var isolines:[Isoline]
-            
-            enum CodingKeys:String, CodingKey 
+            var endIndex:Int 
             {
-                case background = "background-image"
-                case isolines = "isolines"
-                
-                case foo
+                self.points.endIndex
             }
-            
-            init(from decoder:Decoder) throws 
+            subscript(index:Int) -> (Vector3<Double>, Vector3<Double>) 
             {
-                let serialized:KeyedDecodingContainer<CodingKeys> = 
-                    try decoder.container(keyedBy: CodingKeys.self)
-                
-                self.background = try serialized.decode(String.self,    forKey: .background)
-                self.isolines   = try serialized.decode([Isoline].self, forKey: .isolines)
+                let previous:Int = index + (index < 1 ? self.points.count : 0) - 1
+                return (self.points[previous], self.points[index])
             }
+        }
+        
+        var background:String
+        var isolines:[Isoline]
+        
+        enum CodingKeys:String, CodingKey 
+        {
+            case background = "background-image"
+            case isolines = "isolines"
             
-            func encode(to encoder:Encoder) throws 
-            {
-                var serialized:KeyedEncodingContainer<CodingKeys> = 
-                    encoder.container(keyedBy: CodingKeys.self)
-                
-                try serialized.encode(self.background, forKey: .background)
-                try serialized.encode(self.isolines,   forKey: .isolines)
-            }
+            case foo
+        }
+        
+        init(from decoder:Decoder) throws 
+        {
+            let serialized:KeyedDecodingContainer<CodingKeys> = 
+                try decoder.container(keyedBy: CodingKeys.self)
             
-            init(filename:String) throws 
+            self.background = try serialized.decode(String.self,    forKey: .background)
+            self.isolines   = try serialized.decode([Isoline].self, forKey: .isolines)
+        }
+        
+        func encode(to encoder:Encoder) throws 
+        {
+            var serialized:KeyedEncodingContainer<CodingKeys> = 
+                encoder.container(keyedBy: CodingKeys.self)
+            
+            try serialized.encode(self.background, forKey: .background)
+            try serialized.encode(self.isolines,   forKey: .isolines)
+        }
+        
+        init(filename:String)  
+        {
+            do 
             {
                 let data:Foundation.Data            = .init(try File.read(filename))
                 let decoder:Foundation.JSONDecoder  = .init()
                 self = try decoder.decode(Self.self, from: data)
             }
-        }
-        
-        var model:Model
-        
-        // graphics
-        var vertices:[Mesh.ColorVertex] = [], 
-            indices:[UInt32]            = []
-        
-        init() 
-        {
-            self.model = try! .init(filename: "map.json")
+            catch 
+            {
+                Log.trace(error: error)
+                self.background = ""
+                self.isolines   = []
+            }
         }
         
         func distance(to x:Vector3<Double>) -> Double 
         {
             var minimum:Double = .infinity
-            for isoline:Model.Isoline in self.model.isolines 
+            for isoline:Isoline in self.isolines 
             {
                 for e:Int in isoline.indices  
                 {
@@ -171,45 +166,6 @@ extension Algorithm
             }
             
             return minimum
-        }
-        
-        mutating //private mutating 
-        func render() 
-        {
-            var vertices:[Mesh.ColorVertex] = [], 
-                indices:[UInt32]            = []
-            for isoline:Model.Isoline in self.model.isolines 
-            {
-                let base:UInt32 = .init(vertices.count)
-                for edge:(Vector3<Double>, Vector3<Double>) in isoline 
-                {
-                    let subdivided:[Mesh.ColorVertex] = slerp(edge.0, edge.1, resolution: 0.01).map 
-                    {
-                        .init(.cast($0), color: .init(repeating: .max))
-                    }
-                    vertices.append(contentsOf: subdivided)
-                }
-                let count:UInt32 = .init(vertices.count) - base
-                
-                for k:UInt32 in 0 ..< count 
-                {
-                    let line:(UInt32, UInt32, UInt32, UInt32) = 
-                    (
-                        k &+ (k < 3 ? count : 0) &- 3,
-                        k &+ (k < 2 ? count : 0) &- 2,
-                        k &+ (k < 1 ? count : 0) &- 1,
-                        k
-                    )
-                    
-                    indices.append(base + line.0)
-                    indices.append(base + line.1)
-                    indices.append(base + line.2)
-                    indices.append(base + line.3)
-                }
-            }
-            
-            self.vertices = vertices
-            self.indices  = indices
         }
     }
 }

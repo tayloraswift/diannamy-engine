@@ -1,7 +1,4 @@
-import Noise
-import PNG
-
-@propertyWrapper 
+/* @propertyWrapper 
 final 
 class State<Value>
 {
@@ -73,7 +70,7 @@ class State<Value>
             self.sequence = nil 
         }
     }
-}
+} */
 
 
 
@@ -129,7 +126,7 @@ extension LayerController
 //  +-----------+-------------------------------+
 //            -1,-1        viewport            1,-1 
 
-struct Controller//:LayerController
+class Controller//:LayerController
 {
     // UI
     private 
@@ -219,14 +216,27 @@ struct Controller//:LayerController
     
     private 
     let ui:UI.Element.Block, 
-        plane:UI.Plane3D
+        isolines:Editor.Isolines,
+        plane:Editor.Plane3D
     private 
     var layers:[UI.Group] 
     {
-        [self.ui, self.plane]
+        [self.ui, self.isolines, self.plane]
     }
+    
+    // button and label handles 
     private 
-    let buttons:[UI.Element.Button]
+    let buttons:
+    (
+        renormalize:UI.Element.Button,
+        bake:UI.Element.Button, 
+        
+        labels:
+        (
+            renormalize:UI.Element.P,
+            bake:UI.Element.P
+        )
+    )
     //
     
     private 
@@ -243,13 +253,24 @@ struct Controller//:LayerController
         isolineVertices:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>
     private 
     var sphere:Algorithm.FibonacciSphere<Double>
-    private 
-    var isolines:Algorithm.Isolines
     //var fluid:Algorithm.Fluid<Double>
     
     private 
     var _active:Int = 0, 
         _activeTriangle:Int = 0 
+    
+    // async depot 
+    private 
+    var depot:
+    (
+        cubemap:(progress:Double?, value:Array2D<Vector4<UInt8>>?), 
+        _:Void? 
+    )
+    = 
+    (
+        (nil, nil),
+        nil 
+    )
     
     // private 
     // var _phase:Int = 0
@@ -257,24 +278,20 @@ struct Controller//:LayerController
     init() 
     {
         // ui elements 
-        self.buttons = 
-        [
-            "Renormalize ABC", 
-            "Bake"
-        ].map 
-        {
-            let button:UI.Element.Button = .init(label: $0, classes: ["button"])
-            return button 
-        }
+        self.buttons.labels.renormalize = .init([.init("Renormalize")])
+        self.buttons.labels.bake        = .init([.init("Bake")])
+        
+        self.buttons.renormalize    = .init([self.buttons.labels.renormalize])
+        self.buttons.bake           = .init([self.buttons.labels.bake])
         
         do 
         {
-            let toolbar:UI.Element.Div   = .init(self.buttons, identifier: "toolbar")
+            let toolbar:UI.Element.Div   = .init([self.buttons.0, self.buttons.1], identifier: "toolbar")
             let container:UI.Element.Div = .init([toolbar], identifier: "container")
             self.ui = UI.Element.Div.init([container])
         }
         
-        let plane:UI.Plane3D = .init(.init(
+        let plane:Editor.Plane3D = .init(.init(
             center:         .zero, 
             orientation:    .identity, 
             distance:       6))
@@ -333,32 +350,15 @@ struct Controller//:LayerController
         self.sphere = sphere
         self.points = .init(vertices: vertices, indices: triangulation)
         
-        self.isolines           = .init()
+        self.isolines           = .init(filename: "map.json")
         self.isolineVertices    = .init(vertices: .init(hint: .dynamic), indices: .init(hint: .dynamic))
         
-        self.isolines.render()
-        self.isolineVertices.buffers.vertex.assign(self.isolines.vertices)
-        self.isolineVertices.buffers.index.assign (self.isolines.indices)
-        
-        
-        let noise:(r:GradientNoise3D, g:GradientNoise3D, b:GradientNoise3D) = 
-        (
-            .init(amplitude: 1.2 * 0.5 * 255, frequency: 4, seed: 0),
-            .init(amplitude: 1.2 * 0.5 * 255, frequency: 2, seed: 1),
-            .init(amplitude: 1.2 * 0.5 * 255, frequency: 1, seed: 2)
-        ) 
-        let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: 4) 
+        do 
         {
-            let offset:Double = 0.75 * 255
-            let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))), 
-                g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
-                b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
-            let d:Double = self.isolines.distance(to: $0), 
-                i:UInt8  = .init(min(max(0, 128 + 800 * d), 255))
-            return .init(r, g, b, i)
-            // return .extend(.cast(128 + 127 * $0), .max)
+            let (vertices, indices):([Mesh.ColorVertex], [UInt32]) = self.isolines.render()
+            self.isolineVertices.buffers.vertex.assign(vertices)
+            self.isolineVertices.buffers.index.assign (indices)
         }
-        self.cube.texture.assign(cubemap: cubemap)
     }
     
     private 
@@ -374,14 +374,11 @@ struct Controller//:LayerController
         return nil 
     }
     
-    mutating 
     func event(_ event:UI.Event) -> UI.State 
     {
         // clear buttons 
-        self.buttons.forEach 
-        {
-            $0.click = 0
-        }
+        self.buttons.0.click = 0
+        self.buttons.1.click = 0
         
         if let focus:UI.Group = self.focus 
         {
@@ -442,12 +439,27 @@ struct Controller//:LayerController
             }
         }
         
-        for (i, button):(Int, UI.Element.Button) in self.buttons.enumerated()
+        if self.buttons.0.click > 0 
         {
-            if button.click > 0 
+            Log.print("button 0 clicked")
+        }
+        if self.buttons.1.click > 0 
+        {
+            Log.print("button 1 clicked")
+        }
+        bake:
+        if self.buttons.bake.click > 0 
+        {
+            guard self.depot.cubemap.progress == nil 
+            else 
             {
-                Log.print("button \(i) clicked")
+                break bake
             }
+            
+            self.depot.cubemap.progress = 0
+            Terrain.generate(isolines: self.isolines.model, self, 
+                progress:   \.depot.cubemap.progress, 
+                return:     \.depot.cubemap.value)
         }
         
         let cursor:UI.Cursor = self.focus?.cursor.active ?? self.hover?.cursor.inactive ?? .arrow
@@ -519,9 +531,23 @@ struct Controller//:LayerController
         return .init(cursor: .hand)
     } */
     
-    mutating 
     func process(_ delta:Int, styles:UI.Styles, viewport:Vector2<Int>, frame:Rectangle<Int>)
     {
+        // check async depot 
+        if let percent:Double = self.depot.cubemap.progress 
+        {
+            let text:String = "generating texture (\((percent * 100).rounded()) percent)"
+            self.buttons.labels.bake.spans[0].text = text
+        }
+        if let new:Array2D<Vector4<UInt8>> = self.depot.cubemap.value
+        {
+            self.cube.texture.assign(cubemap: new)
+            self.depot.cubemap.value    = nil 
+            self.depot.cubemap.progress = nil 
+            
+            self.buttons.labels.bake.spans[0].text = "Bake"
+        }
+        
         for layer:UI.Group in self.layers 
         {
             layer.update(delta, styles: styles, viewport: viewport, frame: frame)
@@ -533,6 +559,8 @@ struct Controller//:LayerController
             .matrix4(matrices.V), 
             .matrix3(matrices.F), 
             .float32x4(.extend(matrices.position, 0)))
+        
+        self.isolines.update(projection: matrices.U)
         // self.ui.process(delta) 
         // self.plane.process(delta)
         
@@ -636,7 +664,7 @@ struct Coordinator
         geometry:GPU.Vertex.Array<UI.DrawElement.Geometry.Vertex, UInt32>
     
     private 
-    var controller:Controller 
+    let controller:Controller 
     
     // window framebuffer size is distinct from viewport size, 
     // as multiple viewports can be tiled in the same window 
@@ -686,7 +714,6 @@ struct Coordinator
         self.controller = .init()
     }
     
-    mutating 
     func event(_ event:UI.Event) -> UI.State
     {
         return self.controller.event(event)

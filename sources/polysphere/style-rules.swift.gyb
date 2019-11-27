@@ -109,17 +109,15 @@ extension UI.Style
         }
     }
     
-    struct Metrics:Equatable
+    struct Metrics<T>:Equatable
+        where T:Equatable
     {
-        var top:Int, 
-            right:Int, 
-            bottom:Int, 
-            left:Int 
+        var top:T, 
+            right:T, 
+            bottom:T, 
+            left:T 
         
-        static 
-        let zero:Self = .init(0)
-        
-        init(top:Int, right:Int, bottom:Int, left:Int) 
+        init(top:T, right:T, bottom:T, left:T) 
         {
             self.top    = top 
             self.right  = right 
@@ -127,17 +125,17 @@ extension UI.Style
             self.left   = left
         }
         
-        init(top:Int, horizontal:Int, bottom:Int) 
+        init(top:T, horizontal:T, bottom:T) 
         {
             self.init(top: top, right: horizontal, bottom: bottom, left: horizontal)
         }
         
-        init(vertical:Int, horizontal:Int) 
+        init(vertical:T, horizontal:T) 
         {
             self.init(top: vertical, right: horizontal, bottom: vertical, left: horizontal)
         }
         
-        init(_ width:Int) 
+        init(_ width:T) 
         {
             self.init(top: width, right: width, bottom: width, left: width)
         }
@@ -264,8 +262,9 @@ extension UI.Style
             }
         }
         
-        func unpack(_ metrics:Metrics) 
-            -> ((main:Int, cross:Int), (main:Int, cross:Int))
+        func unpack<T>(_ metrics:Metrics<T>) 
+            -> ((main:T, cross:T), (main:T, cross:T))
+            where T:Equatable
         {
             switch self 
             {
@@ -322,10 +321,11 @@ extension UI.Style
         ('trace',           '3D tracing center',    'Vector3<Float>',   '.init(.nan, .nan, .nan)'), 
         ('offset',          '2D offset',            'Vector2<Float>',   '.init(0, 0)'), 
         
-        ('padding',         'padding metrics',      'Metrics',          '.zero'), 
-        ('border',          'border metrics',       'Metrics',          '.zero'), 
-        ('margin',          'margin metrics',       'Metrics',          '.zero'), 
+        ('padding',         'padding metrics',      'Metrics<Int>',     '.zero'), 
+        ('border',          'border metrics',       'Metrics<Int>',     '.zero'), 
+        ('margin',          'margin metrics',       'Metrics<Int>',     '.zero'), 
         ('borderRadius',    'line-height',          'Int',              '0'), 
+        ('crease',          'crease',               'Metrics<Bool>',    '.false'), 
         
         ('occlude',         'occlusion mode',       'Bool',             'false'), 
         
@@ -454,5 +454,22 @@ extension UI.Style
         {
             "{\n\(self.properties.map{ "    \($0.0): \($0.1)" }.joined(separator: "\n"))\n}"
         }
+    }
+}
+
+extension UI.Style.Metrics where T:Numeric 
+{
+    static 
+    var zero:Self 
+    {
+        .init(0)
+    }
+}
+extension UI.Style.Metrics where T == Bool  
+{
+    static 
+    var `false`:Self 
+    {
+        .init(false)
     }
 }

@@ -2,8 +2,8 @@
 
 in Vertex
 {
-    noperspective vec2    hb;
-    noperspective float   hr;
+    noperspective vec2    border;
+    noperspective float   radius;
     noperspective vec2    i;
     noperspective vec4    color_outer_h;
     noperspective vec4    color_outer_v;
@@ -53,13 +53,13 @@ float signed_distance_line(const vec2 line, const vec2 i)
 
 void main()
 {
-    vec2 range      = max(vertex.hb, vertex.hr);
+    vec2 range      = max(vertex.border, vertex.radius);
     vec2 i          = vertex.i * range;
     
-    float mask_z    = smoothstep(-0.5, 0.5, signed_distance_line(vertex.hb, vec2(vertex.hr) - i));
+    float mask_z    = smoothstep(-0.5, 0.5, signed_distance_line(vertex.border, vec2(vertex.radius) - i));
     
-    float r1        = signed_distance_ellipse(range - vertex.hb,    i);
-    float r2        = signed_distance_ellipse(vec2(vertex.hr),      max(i - range + vertex.hr, 0));
+    float r1        = signed_distance_ellipse(range - vertex.border, i);
+    float r2        = signed_distance_ellipse(vec2(vertex.radius),   max(i - range + vertex.radius, 0));
     
     vec2 mask_r     = smoothstep(-0.5, 0.5, vec2(r1 == r2 ? -0.5 : r1, r2));
     color           =   mask_z  * ((1 - mask_r.x) * vertex.color_inner + mask_r.x * vertex.color_outer_v) + 

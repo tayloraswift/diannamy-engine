@@ -81,10 +81,12 @@ struct Vector${N}<Scalar>:Hashable, Codable, CustomStringConvertible where Scala
     }
     
     % if N > 2:
-    var ${ ''.join(C[:N - 1]) }:Vector${ N - 1 }<Scalar> 
+    % for M in range(2, N):
+    var ${ ''.join(C[:M]) }:Vector${ M }<Scalar> 
     {
-        .init(${ ', '.join('self.{0}'.format(c) for c in C[:N - 1]) })
+        .init(${ ', '.join('self.{0}'.format(c) for c in C[:M]) })
     }
+    % end 
     
     static 
     func extend(_ body:Vector${ N - 1 }<Scalar>, _ tail:Scalar) 

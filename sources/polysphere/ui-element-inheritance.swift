@@ -62,31 +62,29 @@ extension UI
                 // screen coordinates (pixels)
                 let s:(Float, Float) 
                 // implicit parameters 
-                let hb:(Float, Float)
-                // tracer coordinates
-                let r:(Float, Float, Float)
-                // implicit parameters 
-                let hr:Float 
+                // we use the diameter to avoid having to represent fractional radii
+                let p:(UInt16, UInt16, UInt16)
+                // implicit coordinates 
+                let i:(UInt8, UInt8)
                 // color horizontal(inner, outer), vertical(inner, outer)
                 let c:
                 (
                     ((UInt8, UInt8, UInt8, UInt8), (UInt8, UInt8, UInt8, UInt8)),
                      (UInt8, UInt8, UInt8, UInt8)
                 )
-                // implicit coordinates 
-                let i:(UInt8, UInt8)
+                
+                // padding 
+                let padding:UInt32 = 0
                 
                 static 
                 var attributes:[GPU.Vertex.Attribute<Self>] = 
                 [
                         .float32x2(\.s,     as: .float32),
-                        .float32x2(\.hb,    as: .float32),
-                        .float32x3(\.r,     as: .float32),
-                        .float32(  \.hr,    as: .float32),
+                        .uint16x3( \.p,     as: .float32(normalized: false)),
+                        .uint8x2(  \.i,     as: .float32(normalized: false)),
                         .uint8x4(  \.c.0.0, as: .float32(normalized: true)),
                         .uint8x4(  \.c.0.1, as: .float32(normalized: true)),
                         .uint8x4(  \.c.1,   as: .float32(normalized: true)),
-                        .uint8x2(  \.i,     as: .float32(normalized: false)),
                 ] 
             }
             
@@ -95,14 +93,13 @@ extension UI
             let vertices:
             [(
                 s:Vector2<Float>, 
-                hb:Vector2<Float>, 
-                hr:Float,
-                c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>),
-                i:Vector2<UInt8>
+                p:(x:UInt16, y:UInt16, d:UInt16), 
+                i:Vector2<UInt8>,
+                c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>)
             )] 
             let triangles:[Triangle]
-            let s0:Vector2<Float>, 
-                r0:Vector3<Float> 
+            let s0:Vector2<Float>//, 
+            //    r0:Vector3<Float> 
             
             var startIndex:Int 
             {
@@ -115,22 +112,18 @@ extension UI
             
             subscript(index:Int) -> Vertex
             {
-                let (s, hb, hr, c, i):
+                let (s, p, i, c):
                 (
                     s:Vector2<Float>, 
-                    hb:Vector2<Float>, 
-                    hr:Float,
-                    c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>),
-                    i:Vector2<UInt8>
-                ) 
-                (s, hb, hr, c, i) = self.vertices[index]
+                    p:(x:UInt16, y:UInt16, d:UInt16), 
+                    i:Vector2<UInt8>,
+                    c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>)
+                ) = self.vertices[index]
                 return .init(
                     s: (self.s0 + s).tuple, 
-                    hb: hb.tuple,
-                    r: (self.r0    ).tuple, 
-                    hr: hr, 
-                    c: ((c.0.0.tuple, c.0.1.tuple), c.1.tuple),
-                    i: (          i).tuple) 
+                    p: p, 
+                    i: (i.x, i.y),
+                    c: ((c.0.0.tuple, c.0.1.tuple), c.1.tuple))
             }
         }
     }
@@ -183,8 +176,10 @@ extension UI
         final private 
         var path:UI.Style.Path 
         
-        final 
         var elements:[UI.Element]
+        {
+            []
+        }
         
         final 
         var style:UI.Style.Rules 
@@ -222,8 +217,6 @@ extension UI
             self.style      = style
             
             self.path       = .init()
-            
-            self.elements   = []
         }
         
         final 
@@ -329,11 +322,16 @@ extension UI.Element
             }
             
             let l:Vector2<Float> = point - self.s
-            let (a, b, r):(Vector2<Float>, Vector2<Float>, Float) = 
+            let bounds:(Vector2<Int>, Vector2<Int>, diameter:Int) = 
                 self.boundingBox(  padding: self.computedStyle.padding, 
                                     border: self.computedStyle.border, 
                                     radius: self.computedStyle.borderRadius)
-            
+            let (a, b, r):(Vector2<Float>, Vector2<Float>, Float) =
+            (
+                .cast(bounds.0), 
+                .cast(bounds.1), 
+                .init(bounds.diameter) / 2
+            )
             if (a.x ... b.x) ~= l.x, (a.y ... b.y) ~= l.y 
             {
                 let q:Vector2<Float>
@@ -456,12 +454,30 @@ extension UI.Element
             geometry:inout [UI.DrawElement.Geometry], 
             s      _:Vector2<Float>) 
         {    
-            let r:Vector3<Float>         = self.computedStyle.trace
+            // let r:Vector3<Float>         = self.computedStyle.trace
+            let p:
+            (
+                color:(fill:Vector4<UInt8>, border:Vector4<UInt8>),
+                crease:UI.Style.Metrics<Bool>, 
+                padding:UI.Style.Metrics<Int>, 
+                border:UI.Style.Metrics<Int>, 
+                radius:Int
+            ) = 
+            (
+                (self.computedStyle.backgroundColor, self.computedStyle.borderColor),
+                self.computedStyle.crease,
+                self.computedStyle.padding,
+                self.computedStyle.border,
+                self.computedStyle.borderRadius
+            )
             
-            let bg:Vector4<UInt8>        = self.computedStyle.backgroundColor, 
-                bd:Vector4<UInt8>        = self.computedStyle.borderColor
-            let padding:UI.Style.Metrics = self.computedStyle.padding
-            let border:UI.Style.Metrics  = self.computedStyle.border
+            let crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool) = 
+            (
+                p.crease.top,
+                p.crease.right,
+                p.crease.left,
+                p.crease.bottom
+            )
             
             let color:
             (
@@ -471,58 +487,94 @@ extension UI.Element
                 rb:(Vector4<UInt8>, Vector4<UInt8>)
             ) = 
             (
-                (bd, bd),
-                (bd, bd),
-                (bd, bd),
-                (bd, bd)
+                (p.color.border, p.color.border),
+                (p.color.border, p.color.border),
+                (p.color.border, p.color.border),
+                (p.color.border, p.color.border)
             )
-            
-            let a:(Vector2<Float>, Vector2<Float>), 
-                b:(Vector2<Float>, Vector2<Float>) 
             
             // outer edges of border box
-            let radius:Float
-            (a.0, b.1, radius) = self.boundingBox(padding: padding, border: border, radius: self.computedStyle.borderRadius)
+            let bounds:(Vector2<Int>, Vector2<Int>, diameter:Int) = 
+                self.boundingBox(padding: p.padding, border: p.border, radius: p.radius)
+            let a:(Vector2<Float>, Vector2<Float>), 
+                b:(Vector2<Float>, Vector2<Float>)
             
+            a.0 = .cast(bounds.0)
+            b.1 = .cast(bounds.1)
+            
+            // perform UInt16 encoding 
+            let border:(top:UInt16, right:UInt16, bottom:UInt16, left:UInt16), 
+                diameter:UInt16
+            border.top      = .init(clamping: p.border.top)
+            border.right    = .init(clamping: p.border.right)
+            border.bottom   = .init(clamping: p.border.bottom)
+            border.left     = .init(clamping: p.border.left)
+            diameter        = .init(clamping: bounds.diameter)
+            
+            // use `diameter / 2`, not `radius` because the diameter is constrained 
+            // to the size of the element
             let d:(top:Float, right:Float, bottom:Float, left:Float) = 
             (
-                max(radius, .init(border.top)),
-                max(radius, .init(border.right)),
-                max(radius, .init(border.bottom)),
-                max(radius, .init(border.left))
+                max(.init(diameter) / 2, .init(border.top)),
+                max(.init(diameter) / 2, .init(border.right)),
+                max(.init(diameter) / 2, .init(border.bottom)),
+                max(.init(diameter) / 2, .init(border.left))
             )
             // inset edges
-            a.1 = a.0 + .init(d.left, d.top)
+            a.1 = a.0 + .init(d.left,  d.top)
             b.0 = b.1 - .init(d.right, d.bottom)
             
             let vertices:
             [(
                 s:Vector2<Float>, 
-                hb:Vector2<Float>, 
-                hr:Float,
-                c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>),
-                i:Vector2<UInt8>
+                p:(x:UInt16, y:UInt16, d:UInt16), 
+                i:Vector2<UInt8>,
+                c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>)
             )] =
             [
-                (.init(a.0.x, a.0.y), .cast(.init(border.left,  border.top)),    radius, (color.lt, bg), .init(1, 1)),
-                (.init(a.1.x, a.0.y), .cast(.init(border.left,  border.top)),    radius, (color.lt, bg), .init(0, 1)),
-                (.init(b.0.x, a.0.y), .cast(.init(border.right, border.top)),    radius, (color.rt, bg), .init(0, 1)),
-                (.init(b.1.x, a.0.y), .cast(.init(border.right, border.top)),    radius, (color.rt, bg), .init(1, 1)),
+                (.init(a.0.x, a.0.y), (border.left,  border.top,    diameter), .init(1, 1), (color.lt, p.color.fill)),
+                (
+                    crease.lt ? a.0                 : .init(a.1.x, a.0.y), 
+                                      (border.left,  border.top,    diameter), .init(0, 1), (color.lt, p.color.fill)
+                ),
+                (
+                    crease.rt ? .init(b.1.x, a.0.y) : .init(b.0.x, a.0.y), 
+                                      (border.right, border.top,    diameter), .init(0, 1), (color.rt, p.color.fill)
+                ),
+                (.init(b.1.x, a.0.y), (border.right, border.top,    diameter), .init(1, 1), (color.rt, p.color.fill)),
                 
-                (.init(a.0.x, a.1.y), .cast(.init(border.left,  border.top)),    radius, (color.lt, bg), .init(1, 0)),
-                (.init(a.1.x, a.1.y), .cast(.init(border.left,  border.top)),    radius, (color.lt, bg), .init(0, 0)),
-                (.init(b.0.x, a.1.y), .cast(.init(border.right, border.top)),    radius, (color.rt, bg), .init(0, 0)),
-                (.init(b.1.x, a.1.y), .cast(.init(border.right, border.top)),    radius, (color.rt, bg), .init(1, 0)),
+                (
+                    crease.lt ? a.0                 : .init(a.0.x, a.1.y), 
+                                      (border.left,  border.top,    diameter), .init(1, 0), (color.lt, p.color.fill)
+                ),
+                (.init(a.1.x, a.1.y), (border.left,  border.top,    diameter), .init(0, 0), (color.lt, p.color.fill)),
+                (.init(b.0.x, a.1.y), (border.right, border.top,    diameter), .init(0, 0), (color.rt, p.color.fill)),
+                (
+                    crease.rt ? .init(b.1.x, a.0.y) : .init(b.1.x, a.1.y), 
+                                      (border.right, border.top,    diameter), .init(1, 0), (color.rt, p.color.fill)
+                ),
                 
-                (.init(a.0.x, b.0.y), .cast(.init(border.left,  border.bottom)), radius, (color.lb, bg), .init(1, 0)),
-                (.init(a.1.x, b.0.y), .cast(.init(border.left,  border.bottom)), radius, (color.lb, bg), .init(0, 0)),
-                (.init(b.0.x, b.0.y), .cast(.init(border.right, border.bottom)), radius, (color.rb, bg), .init(0, 0)),
-                (.init(b.1.x, b.0.y), .cast(.init(border.right, border.bottom)), radius, (color.rb, bg), .init(1, 0)),
+                (
+                    crease.lb ? .init(a.0.x, b.1.y) : .init(a.0.x, b.0.y), 
+                                      (border.left,  border.bottom, diameter), .init(1, 0), (color.lb, p.color.fill)
+                ),
+                (.init(a.1.x, b.0.y), (border.left,  border.bottom, diameter), .init(0, 0), (color.lb, p.color.fill)),
+                (.init(b.0.x, b.0.y), (border.right, border.bottom, diameter), .init(0, 0), (color.rb, p.color.fill)),
+                (
+                    crease.rb ? b.1                 : .init(b.1.x, b.0.y), 
+                                      (border.right, border.bottom, diameter), .init(1, 0), (color.rb, p.color.fill)
+                ),
                 
-                (.init(a.0.x, b.1.y), .cast(.init(border.left,  border.bottom)), radius, (color.lb, bg), .init(1, 1)),
-                (.init(a.1.x, b.1.y), .cast(.init(border.left,  border.bottom)), radius, (color.lb, bg), .init(0, 1)),
-                (.init(b.0.x, b.1.y), .cast(.init(border.right, border.bottom)), radius, (color.rb, bg), .init(0, 1)),
-                (.init(b.1.x, b.1.y), .cast(.init(border.right, border.bottom)), radius, (color.rb, bg), .init(1, 1)),
+                (.init(a.0.x, b.1.y), (border.left,  border.bottom, diameter), .init(1, 1), (color.lb, p.color.fill)),
+                (
+                    crease.lb ? .init(a.0.x, b.1.y) : .init(a.1.x, b.1.y), 
+                                      (border.left,  border.bottom, diameter), .init(0, 1), (color.lb, p.color.fill)
+                ),
+                (
+                    crease.rb ? b.1                 : .init(b.0.x, b.1.y), 
+                                      (border.right, border.bottom, diameter), .init(0, 1), (color.rb, p.color.fill)
+                ),
+                (.init(b.1.x, b.1.y), (border.right, border.bottom, diameter), .init(1, 1), (color.rb, p.color.fill)),
             ]
             
             //  0   1           2   3
@@ -530,16 +582,10 @@ extension UI.Element
             // 
             //  8   9          10  11
             // 12  13          14  15
-            let triangles:[(Int, Int, Int)] = 
+            var triangles:[(Int, Int, Int)] = 
             [
-                ( 0,  4,  5),   // ◣
-                ( 0,  5,  1),   // ◥
-                
                 ( 1,  5,  6),   // ◣
                 ( 1,  6,  2),   // ◥
-                
-                ( 2,  6,  7),   // ◣
-                ( 2,  7,  3),   // ◥
                 
                 ( 4,  8,  9),   // ◣
                 ( 4,  9,  5),   // ◥
@@ -550,17 +596,27 @@ extension UI.Element
                 ( 6, 10, 11),   // ◣
                 ( 6, 11,  7),   // ◥
                 
-                ( 8, 12, 13),   // ◣
-                ( 8, 13,  9),   // ◥
-                
                 ( 9, 13, 14),   // ◣
                 ( 9, 14, 10),   // ◥
-                
-                (10, 14, 15),   // ◣
-                (10, 15, 11),   // ◥
-            ]
+            ] 
+            if !crease.lt 
+            {
+                triangles += [( 0,  4,  5), ( 0,  5,  1)] // ◣,◥
+            }
+            if !crease.rt 
+            {
+                triangles += [( 2,  6,  7), ( 2,  7,  3)] // ◣,◥
+            }
+            if !crease.lb 
+            {
+                triangles += [( 8, 12, 13), ( 8, 13,  9)] // ◣,◥
+            }
+            if !crease.rb 
+            {
+                triangles += [(10, 14, 15), (10, 15, 11)] // ◣,◥
+            }
             
-            geometry.append(.init(vertices: vertices, triangles: triangles, s0: self.s, r0: r))
+            geometry.append(.init(vertices: vertices, triangles: triangles, s0: self.s))
             
             for element:UI.Element in self.elements 
             {
@@ -600,21 +656,23 @@ extension UI.Element
         } */
         
         private 
-        func boundingBox(padding:UI.Style.Metrics, border:UI.Style.Metrics, radius:Int) 
-            -> (Vector2<Float>, Vector2<Float>, radius:Float) 
+        func boundingBox(padding:UI.Style.Metrics<Int>, border:UI.Style.Metrics<Int>, radius:Int) 
+            -> (Vector2<Int>, Vector2<Int>, diameter:Int) 
         {
             // outer edges of border box
-            let a:Vector2<Float>    = .cast(.init(-padding.left  - border.left,   -padding.top    - border.top)),
-                b:Vector2<Float>    = .cast(.init( padding.right + border.right,   padding.bottom + border.bottom) &+ self.size) 
-            let area:Vector2<Float> = b - a
-            let radius:Float        = min((min(area.x, area.y) / 2).rounded(.down), .init(radius))
-            return (a, b, radius)
+            let a:Vector2<Int>      = .init(-padding.left  - border.left,   -padding.top    - border.top),
+                b:Vector2<Int>      = .init( padding.right + border.right,   padding.bottom + border.bottom) &+ self.size
+            let area:Vector2<Int>   = b &- a
+            let diameter:Int        = min(area.x, area.y, radius * 2)
+            return (a, b, diameter)
         }
     }
     
     
     class Div:UI.Element.Block 
     {
+        var children:[UI.Element.Block]
+        
         private 
         var childConstraints:
         (
@@ -627,11 +685,17 @@ extension UI.Element
             []
         )
         
+        override 
+        var elements:[UI.Element] 
+        {
+            self.children as [UI.Element]
+        }
+        
         init(_ children:[UI.Element.Block], identifier:String? = nil, classes:Set<String> = [], 
             style:UI.Style.Rules = .init()) 
         {
+            self.children = children
             super.init(identifier: identifier, classes: classes, style: style)
-            self.elements = children
         }
         
         private 
@@ -728,7 +792,6 @@ extension UI.Element
         final override  
         func reconstrain() 
         {
-            let children:[Block] = self.elements.compactMap{ $0 as? Block }
             /* guard self.recomputeConstraints != .no 
             else 
             {
@@ -736,7 +799,7 @@ extension UI.Element
             } */
             
             // update soft layouts for children 
-            for block:Block in children
+            for block:Block in self.children
             {
                 block.reconstrain() 
             }
@@ -763,7 +826,7 @@ extension UI.Element
             
             var mains:[Region]                  = [], 
                 crosses:[[Region]]              = []
-            for block:Block in children
+            for block:Block in self.children
             {
                 let inner:(axis:UI.Style.Axis, min:(main:Int, cross:Int)) 
                 inner.axis = block.computedStyle.axis
@@ -850,14 +913,13 @@ extension UI.Element
         final override 
         func layout(max size:Vector2<Int>, fonts:UI.Styles.FontLibrary) 
         {
-            let children:[Block]   = self.elements.compactMap{ $0 as? Block }
             let axis:UI.Style.Axis = self.computedStyle.axis
             
             // add up total claims 
             let claims:(main:Float, cross:Float) = 
             (
-                max(1, children.reduce(0){ $0 + $1.computedStyle.grow }), 
-                children.reduce(1){    max($0,  $1.computedStyle.stretch) }
+                max(1, self.children.reduce(0){ $0 + $1.computedStyle.grow }), 
+                self.children.reduce(1){    max($0,  $1.computedStyle.stretch) }
             )
             var claimed:Float = 0
             
@@ -867,7 +929,7 @@ extension UI.Element
             var content:(main:Int, cross:[Int]) = (0, [])
                 content.main                   += self.childConstraints.emptyMain
             for (block, (_, emptyCross)):(Block, (offset:(main:Int, cross:Int), emptyCross:Int)) in 
-                zip(children, self.childConstraints.elements)
+                zip(self.children, self.childConstraints.elements)
             {
                 // believe it or not, the order of the repacking axes is irrelevant
                 let inner:(axis:UI.Style.Axis, min:(main:Int, cross:Int)) 
@@ -903,20 +965,11 @@ extension UI.Element
                 content.cross.append(size.cross + emptyCross)
             }
             
-            let size:(main:Int, cross:Int) 
-            // TODO: WHAT??
-            if (children.contains{ $0.identifier == "container" } )
-            {
-                size = area
-            }  
-            else 
-            {
-                size = 
-                (
-                    max(content.main,             area.main), 
-                    max(content.cross.max() ?? 0, area.cross)
-                )
-            }
+            let size:(main:Int, cross:Int) = 
+            (
+                max(content.main,             area.main), 
+                max(content.cross.max() ?? 0, area.cross)
+            )
             
             self.size = axis.pack(size)
         }
@@ -925,7 +978,6 @@ extension UI.Element
         func distribute(at base:Vector2<Float>) 
         {
             super.distribute(at: base)
-            let children:[Block] = self.elements.compactMap{ $0 as? Block }
             
             let axis:UI.Style.Axis = self.computedStyle.axis
             
@@ -933,7 +985,7 @@ extension UI.Element
             
             var free:(main:Int, cross:Int)
             free.main = size.main - self.childConstraints.emptyMain 
-            for block:Block in children 
+            for block:Block in self.children 
             {
                 let (main, _):(Int, Int) = axis.unpack(block.size)
                 free.main -= main 
@@ -941,7 +993,7 @@ extension UI.Element
             
             var advance:Int = 0
             for ((offset, emptyCross), (i, block)):((offset:(main:Int, cross:Int), emptyCross:Int), (Int, Block)) in 
-                zip(self.childConstraints.elements, children.enumerated())
+                zip(self.childConstraints.elements, self.children.enumerated())
             {
                 let (main, cross):(Int, Int) = axis.unpack(block.size)
                 
@@ -957,11 +1009,11 @@ extension UI.Element
                 case .center:
                     space.main = free.main / 2
                 case .spaceBetween:
-                    space.main = .init(Double.init(free.main) * Double.init(i) / Double.init(children.count - 1))
+                    space.main = .init(Double.init(free.main) * Double.init(i) / Double.init(self.children.count - 1))
                 case .spaceAround:
-                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 1) / Double.init(2 * children.count))
+                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 1) / Double.init(2 * self.children.count))
                 case .spaceEvenly:
-                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 2) / Double.init(2 * children.count + 2))
+                    space.main = .init(Double.init(free.main) * Double.init(i * 2 + 2) / Double.init(2 * self.children.count + 2))
                 }
                 switch (block.computedStyle.alignSelf, self.computedStyle.align) 
                 {
@@ -997,13 +1049,6 @@ extension UI.Element
         final 
         var click:Int = 0
         
-        init(label:String, identifier:String? = nil, classes:Set<String> = [], 
-            style:UI.Style.Rules = .init()) 
-        {
-            let label:UI.Element.P = .init([.init(label)])
-            super.init([label], identifier: identifier, classes: classes, style: style)
-        }
-        
         override 
         func action(_ action:UI.Event.Action)
         {
@@ -1029,9 +1074,12 @@ extension UI.Element
         var reshape:Bool = true 
         var text:String
         {
-            willSet 
+            willSet(new) 
             {
-                self.reshape = true
+                if new != self.text 
+                {
+                    self.reshape = true
+                }
             }
         }
         
@@ -1080,6 +1128,8 @@ extension UI.Element
     
     class P:UI.Element.Block
     {
+        var spans:[UI.Element.Span]
+        
         private 
         var reshape:Bool = true 
         var description:String 
@@ -1101,11 +1151,17 @@ extension UI.Element
             }
         }
         
+        override 
+        var elements:[UI.Element] 
+        {
+            self.spans as [UI.Element]
+        }
+        
         init(_ spans:[Span], identifier:String? = nil, classes:Set<String> = [], 
             style:UI.Style.Rules = .init()) 
         {
+            self.spans = spans 
             super.init(identifier: identifier, classes: classes, style: style)
-            self.elements = spans 
         }
         
         /* override 
@@ -1139,7 +1195,7 @@ extension UI.Element
             let texts:[String] = spans.map{ $0.text }
             let parameters:[HarfBuzz.ShapingParameters] = spans.map 
             {
-                let margin:UI.Style.Metrics = $0.computedStyle.margin
+                let margin:UI.Style.Metrics<Int> = $0.computedStyle.margin
                 let parameters:HarfBuzz.ShapingParameters = 
                     .init(
                         font: fonts[$0.computedStyle.font], 
