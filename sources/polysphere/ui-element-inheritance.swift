@@ -1,5 +1,17 @@
 extension UI 
 {
+    private static
+    func bbox(content:Vector2<Int>, padding:UI.Style.Metrics<Int>, border:UI.Style.Metrics<Int>, radius:Int) 
+        -> (Vector2<Int>, Vector2<Int>, diameter:Int) 
+    {
+        // outer edges of border box
+        let a:Vector2<Int>      = .init(-padding.left  - border.left,   -padding.top    - border.top),
+            b:Vector2<Int>      = .init( padding.right + border.right,   padding.bottom + border.bottom) &+ content
+        let area:Vector2<Int>   = b &- a
+        let diameter:Int        = min(area.x, area.y, radius * 2)
+        return (a, b, diameter)
+    }
+    
     enum DrawElement 
     {
         struct Text:RandomAccessCollection
@@ -124,6 +136,182 @@ extension UI
                     p: p, 
                     i: (i.x, i.y),
                     c: ((c.0.0.tuple, c.0.1.tuple), c.1.tuple))
+            }
+            
+            static 
+            func rectangle(color:(fill:Vector4<UInt8>, border:Vector4<UInt8>),
+                at s:Vector2<Float>,
+                content:Vector2<Int>,
+                padding:UI.Style.Metrics<Int>   = .zero, 
+                border:UI.Style.Metrics<Int>    = .zero, 
+                radius:Int                      = 0, 
+                crease:UI.Style.Metrics<Bool>   = .false) -> Self 
+            {
+                let crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool) = 
+                (
+                    crease.top,
+                    crease.right,
+                    crease.left,
+                    crease.bottom
+                )
+                let color:
+                (
+                    fill:Vector4<UInt8>,
+                    lt:(Vector4<UInt8>, Vector4<UInt8>), 
+                    rt:(Vector4<UInt8>, Vector4<UInt8>), 
+                    lb:(Vector4<UInt8>, Vector4<UInt8>), 
+                    rb:(Vector4<UInt8>, Vector4<UInt8>)
+                ) = 
+                (
+                    color.fill,
+                    (color.border, color.border),
+                    (color.border, color.border),
+                    (color.border, color.border),
+                    (color.border, color.border)
+                )
+                
+                return Self.rectangle(color: color, at: s, metrics: (content, padding, border), radius: radius, crease: crease)
+            }
+            
+            private static 
+            func rectangle(color:
+                (
+                    fill:Vector4<UInt8>,
+                    lt:(Vector4<UInt8>, Vector4<UInt8>), 
+                    rt:(Vector4<UInt8>, Vector4<UInt8>), 
+                    lb:(Vector4<UInt8>, Vector4<UInt8>), 
+                    rb:(Vector4<UInt8>, Vector4<UInt8>)
+                ),
+                at s:Vector2<Float>,
+                metrics:(content:Vector2<Int>, padding:UI.Style.Metrics<Int>, border:UI.Style.Metrics<Int>), 
+                radius:Int, 
+                crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool)) -> Self 
+            {
+                // outer edges of border box
+                let bounds:(Vector2<Int>, Vector2<Int>, diameter:Int) = 
+                    UI.bbox(content: metrics.content, padding: metrics.padding, border: metrics.border, radius: radius)
+                let a:(Vector2<Float>, Vector2<Float>), 
+                    b:(Vector2<Float>, Vector2<Float>)
+                
+                a.0 = .cast(bounds.0 &- 1)
+                b.1 = .cast(bounds.1 &+ 1)
+                
+                // perform UInt16 encoding 
+                let border:(top:UInt16, right:UInt16, bottom:UInt16, left:UInt16), 
+                    diameter:UInt16
+                border.top      = .init(clamping: metrics.border.top)
+                border.right    = .init(clamping: metrics.border.right)
+                border.bottom   = .init(clamping: metrics.border.bottom)
+                border.left     = .init(clamping: metrics.border.left)
+                diameter        = .init(clamping: bounds.diameter)
+                
+                // use `diameter / 2`, not `radius` because the diameter is constrained 
+                // to the size of the element
+                // also, add a 1px apron to accomodate fractional coordinates
+                let d:(top:Float, right:Float, bottom:Float, left:Float) = 
+                (
+                    1 + Swift.max(.init(diameter) / 2, .init(border.top)),
+                    1 + Swift.max(.init(diameter) / 2, .init(border.right)),
+                    1 + Swift.max(.init(diameter) / 2, .init(border.bottom)),
+                    1 + Swift.max(.init(diameter) / 2, .init(border.left))
+                )
+                // inset edges
+                a.1 = a.0 + .init(d.left,  d.top)
+                b.0 = b.1 - .init(d.right, d.bottom)
+                
+                let vertices:
+                [(
+                    s:Vector2<Float>, 
+                    p:(x:UInt16, y:UInt16, d:UInt16), 
+                    i:Vector2<UInt8>,
+                    c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>)
+                )] =
+                [
+                    (.init(a.0.x, a.0.y), (border.left,  border.top,    diameter), .init(1, 1), (color.lt, color.fill)),
+                    (
+                        crease.lt ? a.0                 : .init(a.1.x, a.0.y), 
+                                          (border.left,  border.top,    diameter), .init(0, 1), (color.lt, color.fill)
+                    ),
+                    (
+                        crease.rt ? .init(b.1.x, a.0.y) : .init(b.0.x, a.0.y), 
+                                          (border.right, border.top,    diameter), .init(0, 1), (color.rt, color.fill)
+                    ),
+                    (.init(b.1.x, a.0.y), (border.right, border.top,    diameter), .init(1, 1), (color.rt, color.fill)),
+                    
+                    (
+                        crease.lt ? a.0                 : .init(a.0.x, a.1.y), 
+                                          (border.left,  border.top,    diameter), .init(1, 0), (color.lt, color.fill)
+                    ),
+                    (.init(a.1.x, a.1.y), (border.left,  border.top,    diameter), .init(0, 0), (color.lt, color.fill)),
+                    (.init(b.0.x, a.1.y), (border.right, border.top,    diameter), .init(0, 0), (color.rt, color.fill)),
+                    (
+                        crease.rt ? .init(b.1.x, a.0.y) : .init(b.1.x, a.1.y), 
+                                          (border.right, border.top,    diameter), .init(1, 0), (color.rt, color.fill)
+                    ),
+                    
+                    (
+                        crease.lb ? .init(a.0.x, b.1.y) : .init(a.0.x, b.0.y), 
+                                          (border.left,  border.bottom, diameter), .init(1, 0), (color.lb, color.fill)
+                    ),
+                    (.init(a.1.x, b.0.y), (border.left,  border.bottom, diameter), .init(0, 0), (color.lb, color.fill)),
+                    (.init(b.0.x, b.0.y), (border.right, border.bottom, diameter), .init(0, 0), (color.rb, color.fill)),
+                    (
+                        crease.rb ? b.1                 : .init(b.1.x, b.0.y), 
+                                          (border.right, border.bottom, diameter), .init(1, 0), (color.rb, color.fill)
+                    ),
+                    
+                    (.init(a.0.x, b.1.y), (border.left,  border.bottom, diameter), .init(1, 1), (color.lb, color.fill)),
+                    (
+                        crease.lb ? .init(a.0.x, b.1.y) : .init(a.1.x, b.1.y), 
+                                          (border.left,  border.bottom, diameter), .init(0, 1), (color.lb, color.fill)
+                    ),
+                    (
+                        crease.rb ? b.1                 : .init(b.0.x, b.1.y), 
+                                          (border.right, border.bottom, diameter), .init(0, 1), (color.rb, color.fill)
+                    ),
+                    (.init(b.1.x, b.1.y), (border.right, border.bottom, diameter), .init(1, 1), (color.rb, color.fill)),
+                ]
+                
+                //  0   1           2   3
+                //  4   5           6   7
+                // 
+                //  8   9          10  11
+                // 12  13          14  15
+                var triangles:[(Int, Int, Int)] = 
+                [
+                    ( 1,  5,  6),   // ◣
+                    ( 1,  6,  2),   // ◥
+                    
+                    ( 4,  8,  9),   // ◣
+                    ( 4,  9,  5),   // ◥
+                    
+                    ( 5,  9, 10),   // ◣
+                    ( 5, 10,  6),   // ◥
+                    
+                    ( 6, 10, 11),   // ◣
+                    ( 6, 11,  7),   // ◥
+                    
+                    ( 9, 13, 14),   // ◣
+                    ( 9, 14, 10),   // ◥
+                ] 
+                if !crease.lt 
+                {
+                    triangles += [( 0,  4,  5), ( 0,  5,  1)] // ◣,◥
+                }
+                if !crease.rt 
+                {
+                    triangles += [( 2,  6,  7), ( 2,  7,  3)] // ◣,◥
+                }
+                if !crease.lb 
+                {
+                    triangles += [( 8, 12, 13), ( 8, 13,  9)] // ◣,◥
+                }
+                if !crease.rb 
+                {
+                    triangles += [(10, 14, 15), (10, 15, 11)] // ◣,◥
+                }
+                
+                return .init(vertices: vertices, triangles: triangles, s0: s)
             }
         }
     }
@@ -323,9 +511,10 @@ extension UI.Element
             
             let l:Vector2<Float> = point - self.s
             let bounds:(Vector2<Int>, Vector2<Int>, diameter:Int) = 
-                self.boundingBox(  padding: self.computedStyle.padding, 
-                                    border: self.computedStyle.border, 
-                                    radius: self.computedStyle.borderRadius)
+                UI.bbox(content: self.size, 
+                        padding: self.computedStyle.padding, 
+                        border: self.computedStyle.border, 
+                        radius: self.computedStyle.borderRadius)
             let (a, b, r):(Vector2<Float>, Vector2<Float>, Float) =
             (
                 .cast(bounds.0), 
@@ -453,170 +642,17 @@ extension UI.Element
             text    :inout [UI.DrawElement.Text], 
             geometry:inout [UI.DrawElement.Geometry], 
             s      _:Vector2<Float>) 
-        {    
-            // let r:Vector3<Float>         = self.computedStyle.trace
-            let p:
-            (
-                color:(fill:Vector4<UInt8>, border:Vector4<UInt8>),
-                crease:UI.Style.Metrics<Bool>, 
-                padding:UI.Style.Metrics<Int>, 
-                border:UI.Style.Metrics<Int>, 
-                radius:Int
-            ) = 
-            (
-                (self.computedStyle.backgroundColor, self.computedStyle.borderColor),
-                self.computedStyle.crease,
-                self.computedStyle.padding,
-                self.computedStyle.border,
-                self.computedStyle.borderRadius
-            )
+        {
+            let shape:UI.DrawElement.Geometry = .rectangle(
+                color:  (self.computedStyle.backgroundColor, self.computedStyle.borderColor),
+                at:      self.s,
+                content: self.size,
+                padding: self.computedStyle.padding, 
+                border:  self.computedStyle.border, 
+                radius:  self.computedStyle.borderRadius, 
+                crease:  self.computedStyle.crease)
             
-            let crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool) = 
-            (
-                p.crease.top,
-                p.crease.right,
-                p.crease.left,
-                p.crease.bottom
-            )
-            
-            let color:
-            (
-                lt:(Vector4<UInt8>, Vector4<UInt8>), 
-                rt:(Vector4<UInt8>, Vector4<UInt8>), 
-                lb:(Vector4<UInt8>, Vector4<UInt8>), 
-                rb:(Vector4<UInt8>, Vector4<UInt8>)
-            ) = 
-            (
-                (p.color.border, p.color.border),
-                (p.color.border, p.color.border),
-                (p.color.border, p.color.border),
-                (p.color.border, p.color.border)
-            )
-            
-            // outer edges of border box
-            let bounds:(Vector2<Int>, Vector2<Int>, diameter:Int) = 
-                self.boundingBox(padding: p.padding, border: p.border, radius: p.radius)
-            let a:(Vector2<Float>, Vector2<Float>), 
-                b:(Vector2<Float>, Vector2<Float>)
-            
-            a.0 = .cast(bounds.0)
-            b.1 = .cast(bounds.1)
-            
-            // perform UInt16 encoding 
-            let border:(top:UInt16, right:UInt16, bottom:UInt16, left:UInt16), 
-                diameter:UInt16
-            border.top      = .init(clamping: p.border.top)
-            border.right    = .init(clamping: p.border.right)
-            border.bottom   = .init(clamping: p.border.bottom)
-            border.left     = .init(clamping: p.border.left)
-            diameter        = .init(clamping: bounds.diameter)
-            
-            // use `diameter / 2`, not `radius` because the diameter is constrained 
-            // to the size of the element
-            let d:(top:Float, right:Float, bottom:Float, left:Float) = 
-            (
-                max(.init(diameter) / 2, .init(border.top)),
-                max(.init(diameter) / 2, .init(border.right)),
-                max(.init(diameter) / 2, .init(border.bottom)),
-                max(.init(diameter) / 2, .init(border.left))
-            )
-            // inset edges
-            a.1 = a.0 + .init(d.left,  d.top)
-            b.0 = b.1 - .init(d.right, d.bottom)
-            
-            let vertices:
-            [(
-                s:Vector2<Float>, 
-                p:(x:UInt16, y:UInt16, d:UInt16), 
-                i:Vector2<UInt8>,
-                c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>)
-            )] =
-            [
-                (.init(a.0.x, a.0.y), (border.left,  border.top,    diameter), .init(1, 1), (color.lt, p.color.fill)),
-                (
-                    crease.lt ? a.0                 : .init(a.1.x, a.0.y), 
-                                      (border.left,  border.top,    diameter), .init(0, 1), (color.lt, p.color.fill)
-                ),
-                (
-                    crease.rt ? .init(b.1.x, a.0.y) : .init(b.0.x, a.0.y), 
-                                      (border.right, border.top,    diameter), .init(0, 1), (color.rt, p.color.fill)
-                ),
-                (.init(b.1.x, a.0.y), (border.right, border.top,    diameter), .init(1, 1), (color.rt, p.color.fill)),
-                
-                (
-                    crease.lt ? a.0                 : .init(a.0.x, a.1.y), 
-                                      (border.left,  border.top,    diameter), .init(1, 0), (color.lt, p.color.fill)
-                ),
-                (.init(a.1.x, a.1.y), (border.left,  border.top,    diameter), .init(0, 0), (color.lt, p.color.fill)),
-                (.init(b.0.x, a.1.y), (border.right, border.top,    diameter), .init(0, 0), (color.rt, p.color.fill)),
-                (
-                    crease.rt ? .init(b.1.x, a.0.y) : .init(b.1.x, a.1.y), 
-                                      (border.right, border.top,    diameter), .init(1, 0), (color.rt, p.color.fill)
-                ),
-                
-                (
-                    crease.lb ? .init(a.0.x, b.1.y) : .init(a.0.x, b.0.y), 
-                                      (border.left,  border.bottom, diameter), .init(1, 0), (color.lb, p.color.fill)
-                ),
-                (.init(a.1.x, b.0.y), (border.left,  border.bottom, diameter), .init(0, 0), (color.lb, p.color.fill)),
-                (.init(b.0.x, b.0.y), (border.right, border.bottom, diameter), .init(0, 0), (color.rb, p.color.fill)),
-                (
-                    crease.rb ? b.1                 : .init(b.1.x, b.0.y), 
-                                      (border.right, border.bottom, diameter), .init(1, 0), (color.rb, p.color.fill)
-                ),
-                
-                (.init(a.0.x, b.1.y), (border.left,  border.bottom, diameter), .init(1, 1), (color.lb, p.color.fill)),
-                (
-                    crease.lb ? .init(a.0.x, b.1.y) : .init(a.1.x, b.1.y), 
-                                      (border.left,  border.bottom, diameter), .init(0, 1), (color.lb, p.color.fill)
-                ),
-                (
-                    crease.rb ? b.1                 : .init(b.0.x, b.1.y), 
-                                      (border.right, border.bottom, diameter), .init(0, 1), (color.rb, p.color.fill)
-                ),
-                (.init(b.1.x, b.1.y), (border.right, border.bottom, diameter), .init(1, 1), (color.rb, p.color.fill)),
-            ]
-            
-            //  0   1           2   3
-            //  4   5           6   7
-            // 
-            //  8   9          10  11
-            // 12  13          14  15
-            var triangles:[(Int, Int, Int)] = 
-            [
-                ( 1,  5,  6),   // ◣
-                ( 1,  6,  2),   // ◥
-                
-                ( 4,  8,  9),   // ◣
-                ( 4,  9,  5),   // ◥
-                
-                ( 5,  9, 10),   // ◣
-                ( 5, 10,  6),   // ◥
-                
-                ( 6, 10, 11),   // ◣
-                ( 6, 11,  7),   // ◥
-                
-                ( 9, 13, 14),   // ◣
-                ( 9, 14, 10),   // ◥
-            ] 
-            if !crease.lt 
-            {
-                triangles += [( 0,  4,  5), ( 0,  5,  1)] // ◣,◥
-            }
-            if !crease.rt 
-            {
-                triangles += [( 2,  6,  7), ( 2,  7,  3)] // ◣,◥
-            }
-            if !crease.lb 
-            {
-                triangles += [( 8, 12, 13), ( 8, 13,  9)] // ◣,◥
-            }
-            if !crease.rb 
-            {
-                triangles += [(10, 14, 15), (10, 15, 11)] // ◣,◥
-            }
-            
-            geometry.append(.init(vertices: vertices, triangles: triangles, s0: self.s))
+            geometry.append(shape)
             
             for element:UI.Element in self.elements 
             {
@@ -654,18 +690,7 @@ extension UI.Element
                 return nil 
             }
         } */
-        
-        private 
-        func boundingBox(padding:UI.Style.Metrics<Int>, border:UI.Style.Metrics<Int>, radius:Int) 
-            -> (Vector2<Int>, Vector2<Int>, diameter:Int) 
-        {
-            // outer edges of border box
-            let a:Vector2<Int>      = .init(-padding.left  - border.left,   -padding.top    - border.top),
-                b:Vector2<Int>      = .init( padding.right + border.right,   padding.bottom + border.bottom) &+ self.size
-            let area:Vector2<Int>   = b &- a
-            let diameter:Int        = min(area.x, area.y, radius * 2)
-            return (a, b, diameter)
-        }
+
     }
     
     

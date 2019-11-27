@@ -54,7 +54,7 @@ float signed_distance_line(const vec2 line, const vec2 i)
 void main()
 {
     vec2 range      = max(vertex.border, vertex.radius);
-    vec2 i          = vertex.i * range;
+    vec2 i          = vertex.i * (1 + range);
     
     float mask_z    = smoothstep(-0.5, 0.5, signed_distance_line(vertex.border, vec2(vertex.radius) - i));
     

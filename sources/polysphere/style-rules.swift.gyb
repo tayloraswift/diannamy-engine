@@ -317,7 +317,7 @@ extension UI.Style
     properties = (
         ('color',           'text color',           'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
         ('backgroundColor', 'background color',     'Vector4<UInt8>',   '.init(0, 0, 0, 0)'), 
-        ('borderColor',     'border color',         'Vector4<UInt8>',   '.init(0, 0, 0, .max)'), 
+        ('borderColor',     'border color',         'Vector4<UInt8>',   '.init(0, 0, 0, 0)'), 
         ('trace',           '3D tracing center',    'Vector3<Float>',   '.init(.nan, .nan, .nan)'), 
         ('offset',          '2D offset',            'Vector2<Float>',   '.init(0, 0)'), 
         
