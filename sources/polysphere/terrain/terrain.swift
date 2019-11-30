@@ -53,4 +53,52 @@ enum Terrain
             root[keyPath: `return`] = cubemap
         }
     }
+    
+    static 
+    func background<Root>(cylindrical filepath:String, _ root:Root, 
+        progress:WritableKeyPath<Root, Double?>, 
+        return:WritableKeyPath<Root, Array2D<Vector4<UInt8>>?>) 
+        where Root:AnyObject
+    {
+        DispatchQueue.global(qos: .userInitiated).async 
+        {
+            [weak root] in 
+            
+            guard var root:Root = root 
+            else 
+            {
+                return 
+            }
+            
+            let (pixels, (x, y)):([PNG.RGBA<UInt8>], (Int, Int)) = 
+                try! PNG.rgba(path: filepath, of: UInt8.self)
+            
+            let d:Int     = 1024 
+            let count:Int = 6 * d * d
+            var j:Int     = 0
+            let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: d) 
+            {
+                defer 
+                {
+                    j += 1
+                    if j & 0xff == 0 
+                    {
+                        let percent:Double = .init(j) / .init(count)
+                        root[keyPath: progress] = percent
+                    }
+                }
+                
+                let l:Spherical2<Double> = .init(cartesian: $0)
+                
+                let i:Int = .init(l.colatitude /     .pi  * .init(y)), 
+                    j:Int = .init(l.longitude / (2 * .pi) * .init(x))
+                
+                let c:PNG.RGBA<UInt8> = pixels[i * x + j]
+                return .init(c.r, c.g, c.b, .max)
+                // return .extend(.cast(128 + 127 * $0), .max)
+            }
+            
+            root[keyPath: `return`] = cubemap
+        }
+    }
 }

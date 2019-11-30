@@ -5,6 +5,7 @@ let package = Package(
     name: "polysphere",
     products: 
     [
+        .executable(name: "atmospheric-scattering", targets: ["atmospheric-scattering"])
 //        .executable(name: "generator", targets: ["generator"])
     ],
     dependencies: 
@@ -16,6 +17,7 @@ let package = Package(
     targets: 
     [
 //        .target(name: "generator" , dependencies: ["XML"], path: "sources/generator"), 
+        .target(name: "atmospheric-scattering" , dependencies: ["PNG"], path: "sources/atmospheric-scattering"), 
         .systemLibrary(name: "FreeType", path: "sources/c/freetype", pkgConfig: "freetype2"), 
         .systemLibrary(name: "HarfBuzz", path: "sources/c/harfbuzz", pkgConfig: "harfbuzz"), 
         .target(name: "GLFW", path: "sources/c/glfw"), 

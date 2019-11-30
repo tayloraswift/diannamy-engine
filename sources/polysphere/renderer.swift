@@ -2519,18 +2519,21 @@ class Renderer
             
             blendMode:Command.BlendMode,
             depthTest:Command.DepthTest, 
-            cull:Bool 
+            cull:Bool, 
+            multisample:Bool 
         )
         
+        OpenGL.glDisable(OpenGL.MULTISAMPLE)
         OpenGL.glEnable(OpenGL.BLEND)
         OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
         OpenGL.glBlendEquation(OpenGL.FUNC_ADD)
         
-        state.program   = nil 
-        state.arguments = [:] 
-        state.blendMode = .mix 
-        state.depthTest = .off 
-        state.cull      = false 
+        state.program       = nil 
+        state.arguments     = [:] 
+        state.blendMode     = .mix 
+        state.depthTest     = .off 
+        state.cull          = false 
+        state.multisample   = false 
         for command:Command in commands 
         {
             switch command 
@@ -2622,6 +2625,18 @@ class Renderer
                         OpenGL.glDisable(OpenGL.CULL_FACE)
                     }
                     state.cull = command.cull 
+                }
+                if command.multisample != state.multisample 
+                {
+                    if command.multisample 
+                    {
+                        OpenGL.glEnable(OpenGL.MULTISAMPLE)
+                    }
+                    else 
+                    {
+                        OpenGL.glDisable(OpenGL.MULTISAMPLE)
+                    }
+                    state.multisample = command.multisample 
                 }
                 
                 // push command binds the program, even if the update is empty. 
@@ -2777,6 +2792,7 @@ extension Renderer
             let blend:BlendMode
             let depth:DepthTest 
             let cull:Bool
+            let multisample:Bool
         }
         
         case draw(Draw)
@@ -2790,6 +2806,7 @@ extension Renderer
             blendMode:BlendMode = .mix, 
             depthTest:DepthTest = .greaterEqual, 
             cull:Bool           = true, 
+            multisample:Bool    = false, 
             
             using program:GPU.Program,
             _ arguments:[String: GPU.Program.Constant]) -> Self
@@ -2806,7 +2823,8 @@ extension Renderer
                 
                 blend: blendMode, 
                 depth: depthTest, 
-                cull: cull 
+                cull: cull, 
+                multisample: multisample 
                 )
             return .draw(draw)
         }
@@ -2818,6 +2836,7 @@ extension Renderer
             blendMode:BlendMode = .mix, 
             depthTest:DepthTest = .greaterEqual, 
             cull:Bool           = true, 
+            multisample:Bool    = false, 
             
             using program:GPU.Program,
             _ arguments:[String: GPU.Program.Constant]) -> Self
@@ -2834,7 +2853,8 @@ extension Renderer
                 
                 blend: blendMode, 
                 depth: depthTest, 
-                cull: cull 
+                cull: cull, 
+                multisample: multisample 
                 )
             return .draw(draw)
         }

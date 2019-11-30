@@ -51,7 +51,6 @@ extension FloatingPoint
 
 
 % for N in 2, 3, 4:
-
 struct Vector${N}<Scalar>:Hashable, Codable, CustomStringConvertible where Scalar:SIMDScalar 
 {
     var storage:SIMD${N}<Scalar>
@@ -146,6 +145,20 @@ struct Vector${N}<Scalar>:Hashable, Codable, CustomStringConvertible where Scala
         % for c in C[:N]:
         try serialized.encode(self.${c}, forKey: .${c})
         % end 
+    }
+}
+
+extension Vector${N} where Scalar:Comparable 
+{
+    static 
+    func min(_ a:Self, _ b:Self) -> Self 
+    {
+        .init(${ ', '.join('Swift.min(a.{0}, b.{0})'.format(c) for c in C[:N]) })  
+    }
+    static 
+    func max(_ a:Self, _ b:Self) -> Self 
+    {
+        .init(${ ', '.join('Swift.max(a.{0}, b.{0})'.format(c) for c in C[:N]) })  
     }
 }
 

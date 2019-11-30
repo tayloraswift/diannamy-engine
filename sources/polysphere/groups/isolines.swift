@@ -7,12 +7,27 @@ extension Editor
         var model:Algorithm.Isolines, 
             view:View 
         
+        // UI 
+        private 
+        var indicator:
+        (
+            selected:UI.DrawElement.Geometry,
+            preselected:UI.DrawElement.Geometry
+        )
+        
         private(set)
         var selected:(Int, Int)?            = nil, 
             preselected:(Int, Int)?         = nil
         private 
-        var projected:[[Vector2<Float>]]    = [], 
-            viewport:Vector2<Float>         = .zero 
+        var viewport:Vector2<Float>         = .zero 
+        private 
+        var projected:[[Vector2<Float>?]]   = []
+        {
+            willSet 
+            {
+                self.lookup = nil
+            }
+        }
         
         // place to cache the lookups done by self.contains(_:) so we don’t 
         // have to do another search on a .hover event 
@@ -26,16 +41,36 @@ extension Editor
         {
             self.model = .init(filename: filename)
             self.view  = .init()
+            
+            self.indicator = 
+            (
+                .rectangle(at: .zero, 
+                    padding: .init(7),
+                    radius: 100, 
+                    color: (fill: .init(repeating: .max), border: .init(repeating: .max))),
+                .rectangle(at: .zero, 
+                    padding: .init(5), 
+                    border: .init(2), 
+                    radius: 100, 
+                    color: (fill: .init(.max, .max, .max, 0), border: .init(repeating: .max)))
+            )
         }
         
         // should be called after self.update(_:style:viewport:frame) for the same renderframe
-        func update(projection U:Matrix4<Float>) 
+        func update(projection U:Matrix4<Float>, camera:Vector3<Float>, center:Vector3<Float>) 
         {
             self.projected = self.model.isolines.map 
             {
                 $0.points.map 
                 {
-                    let p:Vector4<Float> = U >< .extend(.cast($0), 1), 
+                    let node:Vector3<Float> = .cast($0)
+                    guard (camera - node) <> (node - center) >= 0 
+                    else 
+                    {
+                        return nil 
+                    } 
+                    
+                    let p:Vector4<Float> = U >< .extend(node, 1), 
                         n:Vector2<Float> = p.xy / p.w * .init(1, -1)
                     return (n * 0.5 + 0.5) * self.viewport
                 }
@@ -46,6 +81,29 @@ extension Editor
         {
             self.view.render(self.model)
             return (self.view.vertices, self.view.indices)
+        }
+        
+        func contribute(
+            text    :inout [UI.DrawElement.Text], 
+            geometry:inout [UI.DrawElement.Geometry])
+        {
+            if  let index:(Int, Int)        = self.selected, 
+                let facing:Vector2<Float>   = self.projected[index.0][index.1]
+            {
+                self.indicator.selected.s0 = facing 
+                geometry.append(self.indicator.selected)
+            }
+            if  let index:(Int, Int)        = self.preselected, 
+                let facing:Vector2<Float>   = self.projected[index.0][index.1]
+            {
+                if  let selected:(Int, Int) = self.selected, 
+                        selected == index 
+                {
+                    return 
+                }
+                self.indicator.preselected.s0 = facing
+                geometry.append(self.indicator.preselected)
+            }
         }
     }
 }
@@ -104,11 +162,17 @@ extension Editor.Isolines:UI.Group
             return lookup.index 
         }
         
-        for (i, isoline):(Int, [Vector2<Float>]) in self.projected.enumerated()
+        for (i, isoline):(Int, [Vector2<Float>?]) in self.projected.enumerated()
         {
-            for (j, node):(Int, Vector2<Float>) in isoline.enumerated()
+            for (j, node):(Int, Vector2<Float>?) in isoline.enumerated()
             {
-                if (s - node) <> (s - node) < 10 * 10
+                guard let node:Vector2<Float> = node 
+                else 
+                {
+                    continue 
+                }
+                
+                if (s - node) <> (s - node) < 7 * 7
                 {
                     self.lookup = (s, (i, j))
                     return (i, j)

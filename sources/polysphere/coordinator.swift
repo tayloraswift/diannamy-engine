@@ -229,14 +229,25 @@ class Controller//:LayerController
     let buttons:
     (
         renormalize:UI.Element.Button,
+        background:UI.Element.Button, 
         bake:UI.Element.Button, 
         
         labels:
         (
             renormalize:UI.Element.P,
+            background:UI.Element.P,
             bake:UI.Element.P
         )
     )
+    private 
+    var allButtons:[UI.Element.Button] 
+    {
+        [
+            self.buttons.renormalize,
+            self.buttons.background,
+            self.buttons.bake,
+        ]
+    }
     //
     
     private 
@@ -279,14 +290,16 @@ class Controller//:LayerController
     {
         // ui elements 
         self.buttons.labels.renormalize = .init([.init("Renormalize")])
+        self.buttons.labels.background  = .init([.init("Background")])
         self.buttons.labels.bake        = .init([.init("Bake")])
         
         self.buttons.renormalize    = .init([self.buttons.labels.renormalize])
+        self.buttons.background     = .init([self.buttons.labels.background])
         self.buttons.bake           = .init([self.buttons.labels.bake])
         
         do 
         {
-            let toolbar:UI.Element.Div   = .init([self.buttons.0, self.buttons.1], identifier: "toolbar")
+            let toolbar:UI.Element.Div   = .init([self.buttons.0, self.buttons.1, self.buttons.2], identifier: "toolbar")
             let container:UI.Element.Div = .init([toolbar], identifier: "container")
             self.ui = UI.Element.Div.init([container])
         }
@@ -377,8 +390,10 @@ class Controller//:LayerController
     func event(_ event:UI.Event) -> UI.State 
     {
         // clear buttons 
-        self.buttons.0.click = 0
-        self.buttons.1.click = 0
+        self.allButtons.forEach 
+        {
+            $0.click = 0
+        }
         
         if let focus:UI.Group = self.focus 
         {
@@ -439,13 +454,20 @@ class Controller//:LayerController
             }
         }
         
-        if self.buttons.0.click > 0 
+        background:
+        if self.buttons.background.click > 0 
         {
-            Log.print("button 0 clicked")
-        }
-        if self.buttons.1.click > 0 
-        {
-            Log.print("button 1 clicked")
+            guard self.depot.cubemap.progress == nil 
+            else 
+            {
+                self.buttons.background.click = 0
+                break background
+            }
+            
+            self.depot.cubemap.progress = 0
+            Terrain.background(cylindrical: "assets/textures/blue-marble-cylindrical.png", self, 
+                progress:   \.depot.cubemap.progress, 
+                return:     \.depot.cubemap.value)
         }
         bake:
         if self.buttons.bake.click > 0 
@@ -453,6 +475,7 @@ class Controller//:LayerController
             guard self.depot.cubemap.progress == nil 
             else 
             {
+                self.buttons.bake.click = 0
                 break bake
             }
             
@@ -560,7 +583,7 @@ class Controller//:LayerController
             .matrix3(matrices.F), 
             .float32x4(.extend(matrices.position, 0)))
         
-        self.isolines.update(projection: matrices.U)
+        self.isolines.update(projection: matrices.U, camera: matrices.position, center: .zero)
         // self.ui.process(delta) 
         // self.plane.process(delta)
         
@@ -590,6 +613,7 @@ class Controller//:LayerController
     {
         var text:[UI.DrawElement.Text]         = []
         var geometry:[UI.DrawElement.Geometry] = []
+        self.isolines.contribute(text: &text, geometry: &geometry)
         self.ui.contribute(text: &text, geometry: &geometry, s: .zero) 
         
         return (text, geometry)
@@ -633,6 +657,7 @@ class Controller//:LayerController
                 ]), 
             .draw(elements: 0..., of: self.isolineVertices, as: .linesAdjacency, 
                 depthTest: .off, 
+                multisample: true, 
                 using: context.shaders.colorLines,
                 [
                     "Display"   : .block(context.display),

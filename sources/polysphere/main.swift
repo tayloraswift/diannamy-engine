@@ -268,7 +268,7 @@ func main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE)
     glfwWindowHint(GLFW_RESIZABLE, 1)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1)
-    // glfwWindowHint(GLFW_SAMPLES, 4)
+    glfwWindowHint(GLFW_SAMPLES, 4)
     
     guard let window:OpaquePointer = 
         glfwCreateWindow(1200, 600, "<anonymous>", nil, nil)

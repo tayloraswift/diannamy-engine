@@ -75,7 +75,7 @@ extension Editor.Plane3D:UI.Group
 {
     var cursor:(inactive:UI.Cursor, active:UI.Cursor) 
     {
-        (.crosshair, .hand)
+        (.crosshair, .crosshair)
     }
     
     func contains(_:Vector2<Float>) -> UI.Group?

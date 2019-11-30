@@ -110,7 +110,7 @@ extension UI
                 c:((Vector4<UInt8>, Vector4<UInt8>), Vector4<UInt8>)
             )] 
             let triangles:[Triangle]
-            let s0:Vector2<Float>//, 
+            var s0:Vector2<Float>//, 
             //    r0:Vector3<Float> 
             
             var startIndex:Int 
@@ -139,13 +139,14 @@ extension UI
             }
             
             static 
-            func rectangle(color:(fill:Vector4<UInt8>, border:Vector4<UInt8>),
+            func rectangle(
                 at s:Vector2<Float>,
-                content:Vector2<Int>,
+                content:Vector2<Int>            = .zero,
                 padding:UI.Style.Metrics<Int>   = .zero, 
                 border:UI.Style.Metrics<Int>    = .zero, 
                 radius:Int                      = 0, 
-                crease:UI.Style.Metrics<Bool>   = .false) -> Self 
+                crease:UI.Style.Metrics<Bool>   = .false, 
+                color:(fill:Vector4<UInt8>, border:Vector4<UInt8>)) -> Self 
             {
                 let crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool) = 
                 (
@@ -170,22 +171,23 @@ extension UI
                     (color.border, color.border)
                 )
                 
-                return Self.rectangle(color: color, at: s, metrics: (content, padding, border), radius: radius, crease: crease)
+                return Self.rectangle(at: s, metrics: (content, padding, border), radius: radius, crease: crease, color: color)
             }
             
             private static 
-            func rectangle(color:
+            func rectangle(
+                at s:Vector2<Float>,
+                metrics:(content:Vector2<Int>, padding:UI.Style.Metrics<Int>, border:UI.Style.Metrics<Int>), 
+                radius:Int, 
+                crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool), 
+                color:
                 (
                     fill:Vector4<UInt8>,
                     lt:(Vector4<UInt8>, Vector4<UInt8>), 
                     rt:(Vector4<UInt8>, Vector4<UInt8>), 
                     lb:(Vector4<UInt8>, Vector4<UInt8>), 
                     rb:(Vector4<UInt8>, Vector4<UInt8>)
-                ),
-                at s:Vector2<Float>,
-                metrics:(content:Vector2<Int>, padding:UI.Style.Metrics<Int>, border:UI.Style.Metrics<Int>), 
-                radius:Int, 
-                crease:(lt:Bool, rt:Bool, lb:Bool, rb:Bool)) -> Self 
+                )) -> Self 
             {
                 // outer edges of border box
                 let bounds:(Vector2<Int>, Vector2<Int>, diameter:Int) = 
@@ -644,13 +646,13 @@ extension UI.Element
             s      _:Vector2<Float>) 
         {
             let shape:UI.DrawElement.Geometry = .rectangle(
-                color:  (self.computedStyle.backgroundColor, self.computedStyle.borderColor),
                 at:      self.s,
                 content: self.size,
                 padding: self.computedStyle.padding, 
                 border:  self.computedStyle.border, 
                 radius:  self.computedStyle.borderRadius, 
-                crease:  self.computedStyle.crease)
+                crease:  self.computedStyle.crease, 
+                color:  (self.computedStyle.backgroundColor, self.computedStyle.borderColor))
             
             geometry.append(shape)
             
