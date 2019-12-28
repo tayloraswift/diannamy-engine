@@ -14,7 +14,9 @@ func Rφ<F>(_ ν:F) -> F where F:SwiftFloatingPoint
 }
 func Mφ<F>(_ ν:F, g:F) -> F where F:SwiftFloatingPoint 
 {
-    let k:F = (3 * (1 - g * g) as F) / ((2 + g * g) * (8 * .pi) as F)
+    // let k:F = (3 * (1 - g * g) as F) / ((2 + g * g) * (8 * .pi) as F)
+    // this version seems to have better precision for some reason
+    let k:F = (3 as F) / (8 * .pi as F) * (1 - g * g as F) / (2 + g * g as F)
     return k * (1 + ν * ν as F) / F.power((1 + g * g as F) - (2 * g * ν as F), to: 1.5)
 }
 
@@ -101,6 +103,14 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         return r * r * (μ * μ - 1 as F) + h * h
     }
     
+    // this version seems to have less precision issues when used in 
+    // `scatteringTextureCoordinate(r:μ:μs:ν:intersectsGround:)` for some reason
+    private static 
+    func discriminant(r:F, rμ:F, h:F) -> F 
+    {
+        return (rμ * rμ as F) - (r * r as F) + (h * h as F) 
+    }
+    
     func distanceToTop(r:F, μ:F) -> F 
     {
         Swift.assert(r <= self.radius.top)
@@ -124,6 +134,12 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         Swift.assert(r >= self.radius.bottom)
         Swift.assert(-1 ... 1 ~= μ)
         return μ < 0 && Self.discriminant(r: r, μ: μ, h: self.radius.bottom) >= 0
+    }
+    
+    // clamp to boundaries 
+    func clamp(r:F) -> F 
+    {
+        return max(self.radius.bottom, min(r, self.radius.top))
     }
     
     // optical length to top of the atmosphere 
@@ -181,16 +197,16 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
     
     // texture coordinate transforms 
     private static 
-    func textureCoordinate(parameter x:F, resolution:Int) -> F
+    func textureCoordinate(_ parameter:F, resolution:Int) -> F
     {
         let n:F = .init(resolution)
-        return (0.5 / n as F) + x * (1 - 1 / n as F)
+        return (0.5 / n as F) + parameter * (1 - 1 / n as F)
     }
     private static 
-    func textureParameter(coordinate u:F, resolution:Int) -> F
+    func textureParameter(_ coordinate:F, resolution:Int) -> F
     {
         let n:F = .init(resolution)
-        return (u - 0.5 / n as F) / (1 - 1 / n as F)
+        return (coordinate - 0.5 / n as F) / (1 - 1 / n as F)
     }
     
     func transmittanceTextureCoordinate(r:F, μ:F) -> Vector2<F>
@@ -210,21 +226,19 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
             (d.0 - d.min) / (d.max - d.min)
         )
         
-        let u:F = Self.textureCoordinate(parameter: x.μ, 
-            resolution: self.resolution.transmittance.x)
-        let v:F = Self.textureCoordinate(parameter: x.r, 
-            resolution: self.resolution.transmittance.y)
+        let u:F = Self.textureCoordinate(x.μ, resolution: self.resolution.transmittance.x), 
+            v:F = Self.textureCoordinate(x.r, resolution: self.resolution.transmittance.y)
         return .init(u, v)
     }
     
-    func transmittanceTextureParameter(_ t:Vector2<F>) -> (r:F, μ:F) 
+    func transmittanceTextureParameter(_ coordinate:Vector2<F>) -> (r:F, μ:F) 
     {
-        Swift.assert(-1 ... 1 ~= t.x)
-        Swift.assert(-1 ... 1 ~= t.y)
+        Swift.assert(0 ... 1 ~= coordinate.x)
+        Swift.assert(0 ... 1 ~= coordinate.y)
         let x:(r:F, μ:F) = 
         (
-            Self.textureParameter(coordinate: t.y, resolution: self.resolution.transmittance.y),
-            Self.textureParameter(coordinate: t.x, resolution: self.resolution.transmittance.x)
+            Self.textureParameter(coordinate.y, resolution: self.resolution.transmittance.y),
+            Self.textureParameter(coordinate.x, resolution: self.resolution.transmittance.x)
         )
         let H:F = self.H
         let ρ:F = H * x.r
@@ -254,10 +268,10 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         let H:F = self.H
         let ρ:F = F.sqrt(max(0, r * r - self.radius.bottom * self.radius.bottom))
         let u:(r:F, μ:F, μs:F, ν:F)
-        u.r = Self.textureCoordinate(parameter: ρ / H, 
-            resolution: self.resolution.scattering4.R)
+        u.r = Self.textureCoordinate(ρ / H, resolution: self.resolution.scattering4.R)
         
-        let discriminant:F = Self.discriminant(r: r, μ: μ, h: self.radius.bottom)
+        // better precision when using this variant
+        let discriminant:F = Self.discriminant(r: r, rμ: r * μ, h: self.radius.bottom)
         if intersectsGround 
         {
             let d:(F, min:F, max:F) = 
@@ -267,8 +281,7 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
                 max: ρ
             )
             let x:F = d.min == d.max ? 0 : (d.0 - d.min) / (d.max - d.min)
-            u.μ = 0.5 - 0.5 * Self.textureCoordinate(parameter: x, 
-                resolution: self.resolution.scattering4.M / 2)
+            u.μ = 0.5 - 0.5 * Self.textureCoordinate(x, resolution: self.resolution.scattering4.M / 2)
         }
         else 
         {
@@ -279,8 +292,7 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
                 max: H + ρ
             )
             let x:F = (d.0 - d.min) / (d.max - d.min)
-            u.μ = 0.5 + 0.5 * Self.textureCoordinate(parameter: x, 
-                resolution: self.resolution.scattering4.M / 2)
+            u.μ = 0.5 + 0.5 * Self.textureCoordinate(x, resolution: self.resolution.scattering4.M / 2)
         }
         
         let d:(F, min:F, max:F) = 
@@ -291,10 +303,113 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         )
         let x:F = (d.0 - d.min) / (d.max - d.min)
         let A:F = -2 * self.μsmin * self.radius.bottom / (d.max - d.min)
-        u.μs    = Self.textureCoordinate(parameter: max(0, 1 - x / A) / (1 + x), 
+        u.μs    = Self.textureCoordinate(max(0, 1 - x / A) / (1 + x), 
             resolution: self.resolution.scattering4.MS)
         u.ν     = (ν + 1) / 2
         return .init(u.ν, u.μs, u.μ, u.r)
+    }
+    
+    func scatteringTextureParameter(_ coordinate:Vector4<F>) 
+        -> (r:F, μ:F, μs:F, ν:F, intersectsGround:Bool)
+    {
+        Swift.assert(0 ... 1 ~= coordinate.x)
+        Swift.assert(0 ... 1 ~= coordinate.y)
+        Swift.assert(0 ... 1 ~= coordinate.z)
+        Swift.assert(0 ... 1 ~= coordinate.w)
+        
+        let x:(r:F, μ:F, μs:F)
+        x.r  = Self.textureParameter(coordinate.w, resolution: self.resolution.scattering4.R)
+        x.μs = Self.textureParameter(coordinate.y, resolution: self.resolution.scattering4.MS)
+        let H:F = self.H, 
+            ρ:F = H * x.r, 
+            r:F = F.sqrt(ρ * ρ + self.radius.bottom * self.radius.bottom)
+        
+        let μ:F, 
+            intersectsGround:Bool = coordinate.z < 0.5 
+        if intersectsGround
+        {
+            x.μ = Self.textureParameter(1 - 2 * coordinate.z, resolution: self.resolution.scattering4.M / 2)
+            let d:(F, min:F, max:F)
+            d.min = r - self.radius.bottom 
+            d.max = ρ 
+            d.0   = d.min + x.μ * (d.max - d.min) 
+            
+            μ = d.0 == 0 ? -1 : max(-1, min(-(ρ * ρ + d.0 * d.0 as F) / (2 * r * d.0 as F), 1))
+        }
+        else 
+        {
+            x.μ = Self.textureParameter(2 * coordinate.z - 1, resolution: self.resolution.scattering4.M / 2)
+            let d:(F, min:F, max:F)
+            d.min = self.radius.top - r 
+            d.max = H + ρ 
+            d.0   = d.min + x.μ * (d.max - d.min)
+            
+            μ = d.0 == 0 ? 1 : max(-1, min((H * H - ρ * ρ - d.0 * d.0 as F) / (2 * r * d.0 as F), 1))
+        }
+        
+        let d:(F, min:F, max:F) 
+        d.min   = self.radius.top - self.radius.bottom
+        d.max   = H
+        let A:F = -2 * self.μsmin * self.radius.bottom / (d.max - d.min), 
+            a:F = (A - x.μs * A) / (1 + x.μs * A)
+        d.0     = d.min + min(a, A) * (d.max - d.min)
+        
+        let μs:F = d.0 == 0 ? 1 : 
+            max(-1, min((H * H - d.0 * d.0 as F) / (2 * self.radius.bottom * d.0 as F), 1))
+        let ν:F = max(-1, min(coordinate.x * 2 - 1, 1))
+        
+        return (r, μ, μs, ν, intersectsGround)
+    }
+    
+    func scatteringTextureParameter(texel:Vector3<F>)
+        -> (r:F, μ:F, μs:F, ν:F, intersectsGround:Bool)
+    {
+        let size:Vector4<F> = .cast(.init(
+            self.resolution.scattering4.N - 1, 
+            self.resolution.scattering4.MS,
+            self.resolution.scattering4.M,
+            self.resolution.scattering4.R))
+        
+        let MS:F = .init(self.resolution.scattering4.MS)
+        let texel:Vector4<F> = .init(
+            (texel.x / MS).rounded(.towardZero), 
+            texel.x.truncatingRemainder(dividingBy: MS), 
+            texel.y, 
+            texel.z)
+        let (r, μ, μs, ν, intersectsGround):(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool) = 
+            self.scatteringTextureParameter(texel / size)
+        let d:F              = F.sqrt((1 - μ * μ) * (1 - μs * μs))
+        let n:(min:F, max:F) = (μ * μs - d, μ * μs + d)
+        return (r: r, μ: μ, μs: μs, ν: max(n.min, min(ν, n.max)), intersectsGround)
+    }
+    
+    func irradianceTextureCoordinate(r:F, μs:F) -> Vector2<F> 
+    {
+        self.assert(r: r, μ: μs)
+        
+        let x:(r:F, μs:F) = 
+        (
+            (r - self.radius.bottom) / (self.radius.top - self.radius.bottom), 
+            (μs * 0.5 + 0.5)
+        )
+        
+        let u:F = Self.textureCoordinate(x.μs, resolution: self.resolution.irradiance.x), 
+            v:F = Self.textureCoordinate(x.r,  resolution: self.resolution.irradiance.y)
+        return .init(u, v)
+    }
+    
+    func irradianceTextureParameter(_ coordinate:Vector2<F>) -> (r:F, μs:F) 
+    {
+        Swift.assert(0 ... 1 ~= coordinate.x)
+        Swift.assert(0 ... 1 ~= coordinate.y)
+        let x:(r:F, μs:F) = 
+        (
+            Self.textureParameter(coordinate.y, resolution: self.resolution.irradiance.y),
+            Self.textureParameter(coordinate.x, resolution: self.resolution.irradiance.x)
+        )
+        
+        let r:F = self.radius.bottom + x.r * (self.radius.top - self.radius.bottom)
+        return (r, max(-1, min(2 * x.μs - 1, 1)))
     }
     
     func transmittance(texel:Vector2<F>) -> Vector3<F>
@@ -352,7 +467,7 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         mie.H       = 1200
         
         let ground:F    = 0.1 // ground albedo
-        let smax:F      = 120 / 180 * .pi // max sun zenith angle
+        let smax:F      = 102 / 180 * .pi // max sun zenith angle
         
         // atmosphere layers 
         rayleigh.layer  = .init(coefficients: (1, 0, 0), H: rayleigh.H)
@@ -365,7 +480,7 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         {
             let count:Int = 48 
             Swift.assert(table.count == count)
-            let x:F = (l - λ.min as F) / ((λ.max - λ.min) / .init(count) as F) - 0.5
+            let x:F = (l - λ.min as F) / ((λ.max - λ.min) / .init(count) as F) // - 0.5
             let i:(Int, Int)
             i.0 = max(0, min(.init(x), count - 1))
             i.1 =        min(i.0 + 1,  count - 1)
@@ -422,17 +537,15 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
                 resolution.irradiance
             ))
     }
-    
-    func textures() throws
-    {
-
-    }
 }
 
 protocol Table 
 {
-    typealias D2 = _TableD2
+    typealias D2            = _TableD2
+    typealias D3            = _TableD3
     typealias Transmittance = _TableTransmittance
+    typealias Scattering    = _TableScattering
+    typealias Irradiance    = _TableIrradiance
     
     associatedtype F:SwiftFloatingPoint
     associatedtype Element
@@ -470,7 +583,7 @@ extension Table.D2
     static 
     func mapIndices<R>(size:Vector2<Int>, transform:(Vector2<Int>) throws -> R) rethrows -> [R]
     {
-        return try .init(unsafeUninitializedCapacity: size.x * size.y) 
+        return try .init(unsafeUninitializedCapacity: size.wrappingVolume) 
         {
             for j:Int in 0 ..< size.y 
             {
@@ -479,42 +592,54 @@ extension Table.D2
                     $0[j * size.x + i] = try transform(.init(i, j))
                 }
             }
-            $1 = size.x * size.y
+            $1 = size.wrappingVolume
+        }
+    }
+}
+protocol _TableD3:Table
+{
+    var size:Vector3<Int> 
+    {
+        get 
+    }
+}
+extension Table.D3
+{
+    subscript(z z:Int, y y:Int, x x:Int) -> Element
+    {
+        get 
+        {
+            self.buffer[(z * self.size.y + y) * self.size.x + x]
+        }
+        set(value)
+        {
+            self.buffer[(z * self.size.y + y) * self.size.x + x] = value
+        }
+    }
+    
+    static 
+    func mapIndices<R>(size:Vector3<Int>, transform:(Vector3<Int>) throws -> R) rethrows -> [R]
+    {
+        return try .init(unsafeUninitializedCapacity: size.wrappingVolume) 
+        {
+            for k:Int in 0 ..< size.z 
+            {
+                for j:Int in 0 ..< size.y 
+                {
+                    for i:Int in 0 ..< size.x 
+                    {
+                        $0[(k * size.y + j) * size.x + i] = try transform(.init(i, j, k))
+                    }
+                }
+            }
+            $1 = size.wrappingVolume
         }
     }
 }
 
-struct _TableTransmittance<F>:Table.D2 where F:SwiftFloatingPoint
+// bilinear interpolation
+extension Table.D2 where Element == Vector3<F>
 {
-    let atmosphere:Atmosphere<F>
-    let size:Vector2<Int>
-    var buffer:[Vector3<F>]
-
-    init(_ atmosphere:Atmosphere<F>, output:String? = nil) throws 
-    {
-        self.size                = atmosphere.resolution.transmittance
-        let texture:[Vector3<F>] = Self.mapIndices(size: self.size) 
-        {
-            return atmosphere.transmittance(texel: .cast($0) + 0.5)
-        }
-        self.atmosphere = atmosphere
-        self.buffer     = texture
-        
-        if let path:String = output 
-        {
-            let rgba:[PNG.RGBA<UInt8>] = texture.map 
-            {
-                let r:UInt8 = .init((.init(UInt8.max) * max(0, min($0.x, 1))).rounded()),
-                    g:UInt8 = .init((.init(UInt8.max) * max(0, min($0.y, 1))).rounded()),
-                    b:UInt8 = .init((.init(UInt8.max) * max(0, min($0.z, 1))).rounded())
-                return .init(r, g, b, .max)
-            }
-            
-            try PNG.encode(rgba: rgba, size: (self.size.x, self.size.y), as: .rgb8, path: path)
-        }
-    }
-    
-    // bilinear interpolation
     subscript(t:Vector2<F>) -> Vector3<F> 
     {
         // subtract 0.5 because output of `transmittanceTextureCoordinate(r:μ:)`
@@ -535,6 +660,61 @@ struct _TableTransmittance<F>:Table.D2 where F:SwiftFloatingPoint
             self[y: j.1, x: i.0] * (1 - u) + self[y: j.1, x: i.1] * u
         )
         return y.0 * (1 - v) + y.1 * v
+    }
+}
+// trilinear interpolation
+extension Table.D3 where Element == Vector3<F>
+{
+    subscript(t:Vector3<F>) -> Vector3<F> 
+    {
+        // subtract 0.5 because output of `transmittanceTextureCoordinate(r:μ:)`
+        // gives coordinates bounded by pixel centers. doing this makes it so 
+        // the minimum output of that function maps to [0] and the maximum maps 
+        // to [n - 1]
+        let T:Vector3<F> = t * .cast(self.size) - 0.5
+        let i:(Int, Int), 
+            j:(Int, Int),
+            k:(Int, Int)
+        i.0 = max(0, min(.init(T.x), self.size.x - 1))
+        i.1 =        min(i.0 + 1,    self.size.x - 1)
+        j.0 = max(0, min(.init(T.y), self.size.y - 1))
+        j.1 =        min(j.0 + 1,    self.size.y - 1)
+        k.0 = max(0, min(.init(T.z), self.size.z - 1))
+        k.1 =        min(k.0 + 1,    self.size.z - 1)
+        let u:(F, F, F) = 
+        (
+            T.x - T.x.rounded(.down), 
+            T.y - T.y.rounded(.down),
+            T.z - T.z.rounded(.down)
+        )
+        let y:((Vector3<F>, Vector3<F>), (Vector3<F>, Vector3<F>)) = 
+        (
+            (
+                self[z: k.0, y: j.0, x: i.0] * (1 - u.0) + self[z: k.0, y: j.0, x: i.1] * u.0,
+                self[z: k.0, y: j.1, x: i.0] * (1 - u.0) + self[z: k.0, y: j.1, x: i.1] * u.0
+            ),
+            (
+                self[z: k.1, y: j.0, x: i.0] * (1 - u.0) + self[z: k.1, y: j.0, x: i.1] * u.0,
+                self[z: k.1, y: j.1, x: i.0] * (1 - u.0) + self[z: k.1, y: j.1, x: i.1] * u.0
+            )
+        )
+        let z:(Vector3<F>, Vector3<F>) = 
+        (
+            y.0.0 * (1 - u.1) + y.0.1 * u.1,
+            y.1.0 * (1 - u.1) + y.1.1 * u.1
+        )
+        return z.0 * (1 - u.2) + z.1 * u.2
+    }
+}
+
+struct _TableTransmittance<F>:Table.D2 where F:SwiftFloatingPoint
+{
+    let atmosphere:Atmosphere<F>
+    var buffer:[Vector3<F>]
+    
+    var size:Vector2<Int>
+    {
+        self.atmosphere.resolution.transmittance
     }
     
     // transmittance to top 
@@ -571,14 +751,18 @@ struct _TableTransmittance<F>:Table.D2 where F:SwiftFloatingPoint
             return self.table.top[r: r, μ: μs] * smoothstep(-sin * α, sin * α, t: μs - cos)
         }
     }
-    
+}
+
+// single scattering 
+extension Table.Transmittance 
+{
     subscript(r r:F, μ μ:F, d d:F, intersectsGround intersectsGround:Bool) -> Vector3<F> 
     {
         self.atmosphere.assert(r: r, μ: μ)
         Swift.assert(d >= 0)
         
         let q:F   = (d * d as F) + (2 * r * μ * d as F) + (r * r as F)
-        let rd:F  = max(self.atmosphere.radius.bottom, min(F.sqrt(q), self.atmosphere.radius.top))
+        let rd:F  = self.atmosphere.clamp(r: F.sqrt(q))
         let μd:F  = max(-1, min((r * μ + d) / rd, 1))
         if intersectsGround 
         {
@@ -591,19 +775,15 @@ struct _TableTransmittance<F>:Table.D2 where F:SwiftFloatingPoint
             return .min(transmittance, .init(repeating: 1))
         }
     }
-}
-
-// single scattering 
-extension Table.Transmittance 
-{
+    
     func singleScatteringIntegrand(r:F, μ:F, μs:F, ν:F, d:F, intersectsGround:Bool) 
         -> (rayleigh:Vector3<F>, mie:Vector3<F>)
     {
         let q:F   = (d * d as F) + (2 * r * μ * d as F) + (r * r as F)
-        let rd:F  = max(self.atmosphere.radius.bottom, min(F.sqrt(q), self.atmosphere.radius.top))
+        let rd:F  = self.atmosphere.clamp(r: F.sqrt(q))
         let μsd:F = max(-1, min((r * μs + d * ν) / rd, 1))
         let transmittance:Vector3<F> = 
-            self[r: r, μ: μ, d: d, intersectsGround: intersectsGround] * self.sun[r: r, μs: μsd] 
+            self[r: r, μ: μ, d: d, intersectsGround: intersectsGround] * self.sun[r: rd, μs: μsd] 
         return 
             (
             transmittance * self.atmosphere.rayleigh.density[altitude: rd - self.atmosphere.radius.bottom], 
@@ -612,7 +792,7 @@ extension Table.Transmittance
     }
     
     // integral 
-    func singleScattering(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool, samples:Int = 500)
+    func singleScattering(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool, samples:Int = 50)
         -> (rayleigh:Vector3<F>, mie:Vector3<F>)
     {
         self.atmosphere.assert(r: r, μ: μ)
@@ -639,7 +819,443 @@ extension Table.Transmittance
             sum.mie      * Δx * self.atmosphere.irradiance * self.atmosphere.mie.scattering
             )
     }
+    
+    func singleScattering(texel:Vector3<F>) -> (rayleigh:Vector3<F>, mie:Vector3<F>) 
+    {
+        let (r, μ, μs, ν, intersectsGround):(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool) = 
+            self.atmosphere.scatteringTextureParameter(texel: texel)
+        return self.singleScattering(r: r, μ: μ, μs: μs, ν: ν, intersectsGround: intersectsGround)
+    }
 }
+
+struct _TableScattering<F>:Table.D3 where F:SwiftFloatingPoint
+{
+    let atmosphere:Atmosphere<F>
+    var buffer:[Vector3<F>]
+    
+    var size:Vector3<Int>
+    {
+        self.atmosphere.resolution.scattering
+    }
+}
+
+extension Table.Scattering 
+{    
+    subscript(r r:F, μ μ:F, μs μs:F, ν ν:F, intersectsGround intersectsGround:Bool) -> Vector3<F> 
+    {
+        let t:Vector4<F> = self.atmosphere.scatteringTextureCoordinate(r: r, μ: μ, μs: μs, ν: ν, 
+            intersectsGround: intersectsGround)
+        let x:F = t.x * .init(self.atmosphere.resolution.scattering4.N - 1) 
+        let i:F = x.rounded(.down)
+        let t3:(Vector3<F>, Vector3<F>) = 
+        (
+            .init((i     + t.y) / .init(self.atmosphere.resolution.scattering4.N), t.z, t.w), 
+            .init((i + 1 + t.y) / .init(self.atmosphere.resolution.scattering4.N), t.z, t.w)
+        )
+        let u:F = x - i
+        return self[t3.0] * (1 - u) + self[t3.1] * u
+    }
+    
+    // called on multiple scattering texture
+    // TODO: may not be the best place to define convenience function 
+    subscript(r r:F, μ μ:F, μs μs:F, ν ν:F, intersectsGround intersectsGround:Bool, 
+        n n:Int, rayleigh rayleigh:Self, mie mie:Self) -> Vector3<F> 
+    {
+        if n == 1
+        {
+            let rayleigh:Vector3<F> = 
+                rayleigh[r: r, μ: μ, μs: μs, ν: ν, intersectsGround: intersectsGround]
+            let mie:Vector3<F> = 
+                mie     [r: r, μ: μ, μs: μs, ν: ν, intersectsGround: intersectsGround]
+            return rayleigh * Rφ(ν) + mie * Mφ(ν, g: self.atmosphere.mie.g)
+        }
+        else 
+        {
+            return self[r: r, μ: μ, μs: μs, ν: ν, intersectsGround: intersectsGround]
+        }
+    }
+    
+    func density(r:F, μ:F, μs:F, ν:F, n:Int, samples:Int = 16, 
+        transmittance:Table.Transmittance<F>, rayleigh:Self, mie:Self, irradiance:Table.Irradiance<F>) 
+        -> Vector3<F>
+    {
+        self.atmosphere.assert(r: r, μ: μ)
+        Atmosphere.assert(μs: μs, ν: ν)
+        Swift.assert(n > 1)
+        
+        let zenith:Vector3<F> = .init(0, 0, 1)
+        // view direction 
+        let ω:Vector3<F>    = .init(F.sqrt(1 - μ * μ), 0, μ)
+        let sun:(x:F, y:F) 
+        sun.x               = ω.x == 0 ? 0 : (ν - μ * μs) / ω.x
+        sun.y               = F.sqrt(max(0, 1 - sun.x * sun.x - μs * μs))
+        let ωs:Vector3<F>   = .init(sun.x, sun.y, μs)
+        
+        let Δφ:F = .pi / .init(samples),
+            Δθ:F = .pi / .init(samples)
+        
+        var combined:Vector3<F> = .zero
+        for l:Int in 0 ..< samples
+        {
+            let θ:F = (.init(l) + 0.5) * Δθ
+            var cos:(θ:F, φ:F), 
+                sin:(θ:F, φ:F)
+            
+            // only theta-dependent
+            cos.θ   = F.cos(θ)
+            sin.θ   = F.sin(θ)
+            let intersectsGround:Bool   = self.atmosphere.intersectsGround(r: r, μ: cos.θ)
+            var ground:(distance:F, albedo:Vector3<F>, transmittance:Vector3<F>, irradiance:Vector3<F>)
+            if intersectsGround 
+            {
+                ground.distance         = self.atmosphere.distanceToBottom(r: r, μ: cos.θ)
+                ground.albedo           = self.atmosphere.ground
+                ground.transmittance    = transmittance[r: r, μ: cos.θ, d: ground.distance, intersectsGround: true]
+            }
+            else 
+            {
+                ground.distance         = 0
+                ground.albedo           = .zero
+                ground.transmittance    = .zero
+            }
+            
+            for m:Int in 0 ..< samples * 2
+            {
+                let φ:F             = (.init(m) + 0.5) * Δφ
+                
+                cos.φ               = F.cos(φ)
+                sin.φ               = F.sin(φ)
+                let ωi:Vector3<F>   = .init(cos.φ * sin.θ, sin.φ * sin.θ, cos.θ)
+                let Δωi:F           = Δθ * Δφ * sin.θ
+                
+                let νs:F            = ωs <> ωi
+                let scattering:Vector3<F> = 
+                    self[r: r, μ: ωi.z, μs: μs, ν: νs, intersectsGround: intersectsGround, 
+                        n: n - 1, rayleigh: rayleigh, mie: mie]
+                
+                // ground normal 
+                let g:Vector3<F>    = (zenith * r + ωi * ground.distance).normalized()
+                ground.irradiance   = irradiance[r: atmosphere.radius.bottom, μs: g <> ωs]
+                
+                // incident radiance 
+                let incident:Vector3<F> = 
+                    scattering + ground.albedo * ground.transmittance * ground.irradiance / .pi
+                
+                let νω:F            = ω <> ωi
+                let density:(rayleigh:F, mie:F) = 
+                (
+                    self.atmosphere.rayleigh.density[altitude: r - self.atmosphere.radius.bottom],
+                    self.atmosphere.mie.density     [altitude: r - self.atmosphere.radius.bottom]
+                )
+                let anisotropic:(rayleigh:Vector3<F>, mie:Vector3<F>) = 
+                (
+                    density.rayleigh * Rφ(νω)                           * self.atmosphere.rayleigh.scattering,
+                    density.mie      * Mφ(νω, g: self.atmosphere.mie.g) * self.atmosphere.mie.scattering
+                )
+                
+                combined += Δωi * incident * (anisotropic.rayleigh + anisotropic.mie)
+            }
+        }
+        return combined
+    }
+    
+    // integral, only call on a scattering density table
+    func multipleScattering(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool, samples:Int = 50, 
+        transmittance:Table.Transmittance<F>)
+        -> Vector3<F>
+    {
+        self.atmosphere.assert(r: r, μ: μ)
+        Atmosphere.assert(μs: μs, ν: ν)
+        
+        let l:F  = self.atmosphere.distanceToBoundary(r: r, μ: μ, intersectsGround: intersectsGround), 
+            Δx:F = l / .init(samples)
+        // perform integral
+        var sum:Vector3<F> = .zero
+        for i:Int in 0 ... samples // inclusive range because trapezoidal rule
+        {
+            let d:F     = .init(i) * Δx
+            
+            let q:F     = (d * d as F) + (2 * r * μ * d as F) + (r * r as F)
+            let rd:F    = self.atmosphere.clamp(r: F.sqrt(q))
+            let μd:F    = max(-1, min((r * μ  + d)     / rd, 1))
+            let μsd:F   = max(-1, min((r * μs + d * ν) / rd, 1))
+            
+            let Ss:Vector3<F> = Δx * self[r: rd, μ: μd, μs: μsd, ν: ν, intersectsGround: intersectsGround] * 
+                            transmittance[r: r,  μ: μ, d: d,           intersectsGround: intersectsGround]
+            // trapezoidal rule 
+            let w:F = i == 0 || i == samples ? 0.5 : 1
+            sum += Ss * w
+        }
+        
+        return sum
+    }
+    
+    
+    func density(texel:Vector3<F>, n:Int, 
+        transmittance:Table.Transmittance<F>, rayleigh:Self, mie:Self, irradiance:Table.Irradiance<F>) 
+        -> Vector3<F> 
+    {
+        let (r, μ, μs, ν, _):(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool) = 
+            self.atmosphere.scatteringTextureParameter(texel: texel)
+        return self.density(r: r, μ: μ, μs: μs, ν: ν, n: n, 
+            transmittance: transmittance, rayleigh: rayleigh, mie: mie, irradiance: irradiance)
+    }
+    
+    func multipleScattering(texel:Vector3<F>, transmittance:Table.Transmittance<F>)
+        -> (radiance:Vector3<F>, ν:F)
+    {
+        let (r, μ, μs, ν, intersectsGround):(r:F, μ:F, μs:F, ν:F, intersectsGround:Bool) = 
+            self.atmosphere.scatteringTextureParameter(texel: texel)
+        let radiance:Vector3<F> = self.multipleScattering(r: r, μ: μ, μs: μs, ν: ν, 
+            intersectsGround: intersectsGround, transmittance: transmittance)
+        return (radiance, ν)
+    }
+}
+
+extension Table.Transmittance 
+{
+    func directIrradiance(r:F, μs:F) -> Vector3<F> 
+    {
+        self.atmosphere.assert(r: r, μ: μs)
+        
+        let αs:F = self.atmosphere.radius.sun 
+        let average:F 
+        if      μs <= -αs 
+        {
+            average = 0
+        }
+        else if μs <   αs 
+        {
+            let β:F = μs + αs
+            average = β * β / (4 * αs)
+        }
+        else 
+        {
+            average = μs
+        }
+        
+        return average * self.atmosphere.irradiance * self.top[r: r, μ: μs]
+    }
+    
+    func directIrradiance(texel:Vector2<F>) -> Vector3<F> 
+    {
+        let size:Vector2<F>     = .cast(self.atmosphere.resolution.irradiance)
+        let (r, μs):(r:F, μs:F) = self.atmosphere.irradianceTextureParameter(texel / size)
+        return self.directIrradiance(r: r, μs: μs)
+    }
+}
+extension Table.Scattering // multiple scattering table 
+{
+    func indirectIrradiance(r:F, μs:F, n:Int, samples:Int = 32, rayleigh:Self, mie:Self) -> Vector3<F>
+    {
+        self.atmosphere.assert(r: r, μ: μs)
+        Swift.assert(n >= 1)
+        
+        let Δφ:F = .pi / .init(samples),
+            Δθ:F = .pi / .init(samples)
+        let ωs:Vector3<F>   = .init(F.sqrt(1 - μs * μs), 0, μs)
+        var sum:Vector3<F>  = .zero
+        for l:Int in 0 ..< samples / 2 
+        {
+            let θ:F = (.init(l) + 0.5) * Δθ
+            
+            var cos:(θ:F, φ:F), 
+                sin:(θ:F, φ:F)
+            
+            // only theta-dependent
+            cos.θ   = F.cos(θ)
+            sin.θ   = F.sin(θ)
+            for m:Int in 0 ..< samples * 2 
+            {
+                let φ:F = (.init(m) + 0.5) * Δφ
+                cos.φ   = F.cos(φ)
+                sin.φ   = F.sin(φ)
+                
+                let ω:Vector3<F> = .init(cos.φ * sin.θ, sin.φ * sin.θ, cos.θ)
+                let Δω:F         = Δθ * Δφ * sin.θ
+                
+                let ν:F = ω <> ωs
+                sum    += Δω * ω.z * self[r: r, μ: ω.z, μs: μs, ν: ν, intersectsGround: false, 
+                    n: n, rayleigh: rayleigh, mie: mie]
+            }
+        }
+        
+        return sum
+    }
+    
+    func indirectIrradiance(texel:Vector2<F>, n:Int, rayleigh:Self, mie:Self) -> Vector3<F>
+    {
+        let size:Vector2<F>     = .cast(self.atmosphere.resolution.irradiance)
+        let (r, μs):(r:F, μs:F) = self.atmosphere.irradianceTextureParameter(texel / size)
+        return self.indirectIrradiance(r: r, μs: μs, n: n, rayleigh: rayleigh, mie: mie)
+    }
+}
+
+struct _TableIrradiance<F>:Table.D2 where F:SwiftFloatingPoint
+{
+    let atmosphere:Atmosphere<F>
+    var buffer:[Vector3<F>]
+    
+    var size:Vector2<Int>
+    {
+        self.atmosphere.resolution.irradiance
+    }
+}
+extension Table.Irradiance 
+{
+    subscript(r r:F, μs μs:F) -> Vector3<F> 
+    {
+        let t:Vector2<F> = self.atmosphere.irradianceTextureCoordinate(r: r, μs: μs)
+        return self[t]
+    }
+}
+
+
+extension Atmosphere
+{
+    func tables(N:Int = 4) 
+        -> 
+        (
+            transmittance:Table.Transmittance<F>, 
+            mie:Table.Scattering<F>, 
+            scattering:Table.Scattering<F>, 
+            irradiance:Table.Irradiance<F>
+        )
+    {
+        let texture:
+        (
+            irradiance:[Vector3<F>], 
+            scattering:[(rayleigh:Vector3<F>, mie:Vector3<F>)], 
+            transmittance:[Vector3<F>]
+        ) 
+        // transmittance
+        texture.transmittance   = Table.Transmittance<F>.mapIndices(size: self.resolution.transmittance) 
+        {
+            self.transmittance(texel: .cast($0) + 0.5)
+        }
+        let transmittance:Table.Transmittance = .init(atmosphere: self, buffer: texture.transmittance)
+        
+        // direct irradiance 
+        texture.irradiance      = Table.Irradiance<F>.mapIndices(size: self.resolution.irradiance)
+        {
+            transmittance.directIrradiance(texel: .cast($0) + 0.5)
+        }
+        // single scattering
+        texture.scattering      = Table.Scattering<F>.mapIndices(size: self.resolution.scattering) 
+        {
+            transmittance.singleScattering(texel: .cast($0) + 0.5)
+        }
+        
+        var Δirradiance:Table.Irradiance = .init(atmosphere: self, buffer: texture.irradiance)
+        let Δrayleigh:Table.Scattering   = .init(atmosphere: self, buffer: texture.scattering.map(\.rayleigh)),
+            Δmie:Table.Scattering        = .init(atmosphere: self, buffer: texture.scattering.map(\.mie))
+        
+        // compute successive scattering orders 
+        // for `n == 2`, `buffer` is never read anyway
+        var Δscattering:Table.Scattering = .init(atmosphere: self, 
+            buffer: .init(repeating: .zero, count: self.resolution.scattering.wrappingVolume))
+        
+        // do not include direct irradiance in indirect irradiance accumulator
+        var scattering:[Vector3<F>] = Δrayleigh.buffer, 
+            irradiance:[Vector3<F>] = .init(repeating: .zero, count: self.resolution.irradiance.wrappingVolume)
+        for n:Int in 2 ... N 
+        {
+            print("n = \(n)")
+            let texture:(irradiance:[Vector3<F>], density:[Vector3<F>], scattering:[(Vector3<F>, ν:F)]) 
+            
+            texture.irradiance = Table.Irradiance<F>.mapIndices(size: self.resolution.irradiance) 
+            {
+                Δscattering.indirectIrradiance(texel: .cast($0) + 0.5, n: n - 1, 
+                    rayleigh: Δrayleigh, mie: Δmie)
+            }
+            texture.density = Table.Scattering<F>.mapIndices(size: self.resolution.scattering) 
+            {
+                Δscattering.density(texel: .cast($0) + 0.5, n: n, transmittance: transmittance, 
+                    rayleigh: Δrayleigh, mie: Δmie, irradiance: Δirradiance)
+            }
+            
+            // multiple scattering 
+            let density:Table.Scattering = .init(atmosphere: self, buffer: texture.density)
+            texture.scattering = Table.Scattering<F>.mapIndices(size: self.resolution.scattering) 
+            {
+                density.multipleScattering(texel: .cast($0) + 0.5, transmittance: transmittance)
+            }
+            
+            // update and accumulate 
+            for i:Int in texture.scattering.indices 
+            {
+                let (Δ, ν):(Vector3<F>, F)  = texture.scattering[i]
+                Δscattering.buffer[i]       = Δ
+                scattering[i]              += Δ / Rφ(ν)
+            }
+            for i:Int in texture.irradiance.indices 
+            {
+                let Δ:Vector3<F>            = texture.irradiance[i]
+                Δirradiance.buffer[i]       = Δ
+                irradiance[i]              += Δ
+            }
+        }
+        
+        return 
+            (
+            transmittance:  transmittance, 
+            mie:            Δmie, 
+            scattering:     .init(atmosphere: self, buffer: scattering), 
+            irradiance:     .init(atmosphere: self, buffer: irradiance)
+            )
+    }
+    
+    func tables(N:Int = 4, transmittance:String, mie:String, scattering:String, irradiance:String) throws 
+        -> 
+        (
+            transmittance:Table.Transmittance<F>, 
+            mie:Table.Scattering<F>, 
+            scattering:Table.Scattering<F>, 
+            irradiance:Table.Irradiance<F>
+        )
+    {
+        func converter(β:(F, F)) -> (Vector3<F>) -> PNG.RGBA<UInt8> 
+        {
+            return 
+                {
+                    let c:Vector3<F> = .max(.zero, .min(β.1 * $0 + β.0, .init(repeating: 1))), 
+                        C:Vector3<F> = (.init(UInt8.max) * c).rounded(.down)
+                    let r:UInt8      = .init(C.x),
+                        g:UInt8      = .init(C.y),
+                        b:UInt8      = .init(C.z)
+                    return .init(r, g, b, .max)
+                }
+        }
+        
+        let tables:
+        (
+            transmittance:Table.Transmittance<F>, 
+            mie:Table.Scattering<F>, 
+            scattering:Table.Scattering<F>, 
+            irradiance:Table.Irradiance<F>
+        )
+        
+        tables = self.tables(N: N)
+        try PNG.encode(rgba: tables.transmittance.buffer.map(converter(β: (0, 1))), 
+            size:   (self.resolution.transmittance.x, self.resolution.transmittance.y), 
+            as:     .rgb8, 
+            path:   transmittance)
+        try PNG.encode(rgba: tables.mie.buffer.map(converter(β: (0, 0.5))), 
+            size:   (self.resolution.scattering.x, self.resolution.scattering.y * self.resolution.scattering.z), 
+            as:     .rgb8, 
+            path:   mie)
+        try PNG.encode(rgba: tables.scattering.buffer.map(converter(β: (0, 0.5))), 
+            size:   (self.resolution.scattering.x, self.resolution.scattering.y * self.resolution.scattering.z), 
+            as:     .rgb8, 
+            path:   scattering)
+        try PNG.encode(rgba: tables.irradiance.buffer.map(converter(β: (0, 10))), 
+            size:   (self.resolution.irradiance.x, self.resolution.irradiance.y), 
+            as:     .rgb8, 
+            path:   irradiance)
+        return tables
+    }
+}
+
 
 // debug descriptions 
 extension Atmosphere:CustomStringConvertible 
@@ -652,12 +1268,12 @@ extension Atmosphere:CustomStringConvertible
             atmosphere: \(self.radius.bottom) ... \(self.radius.top) m
             sun size:   \(self.radius.sun * 180 / .pi)°
             
-            Rs:         \(Highlight.swatch(self.rayleigh.scattering)) 
-            Ms:         \(Highlight.swatch(self.mie.scattering)) 
-            Me:         \(Highlight.swatch(self.mie.extinction)) 
-            Ae:         \(Highlight.swatch(self.absorption.extinction)) 
-            irradiance: \(Highlight.swatch(self.irradiance)) 
-            ground:     \(Highlight.swatch(self.ground)) 
+            Rs:         \(Highlight.swatch(self.rayleigh.scattering)    ) \(self.rayleigh.scattering)
+            Ms:         \(Highlight.swatch(self.mie.scattering)         ) \(self.mie.scattering)
+            Me:         \(Highlight.swatch(self.mie.extinction)         ) \(self.mie.extinction)
+            Ae:         \(Highlight.swatch(self.absorption.extinction)  ) \(self.absorption.extinction)
+            irradiance: \(Highlight.swatch(self.irradiance)             ) \(self.irradiance)
+            ground:     \(Highlight.swatch(self.ground)                 ) \(self.ground)
             
             μsmin:      \(self.μsmin)
         }
@@ -674,21 +1290,108 @@ extension Table.Transmittance:CustomStringConvertible
         \((0 ..< self.size.y).map
         { 
             (y:Int) in 
-            
-            "    [\(y)]:\n\((0 ..< self.size.x).map{ (x:Int) in "        [\(Highlight.pad("\(x)", left: 3))]: \(Highlight.swatch(self.buffer[y * self.size.x + x]))"}.joined(separator: "\n"))"
+            return """
+                [\(y)]:
+            \((0 ..< self.size.x).map
+            { 
+                (x:Int) in 
+                
+                let color:Vector3<F> = self.buffer[y * self.size.x + x]
+                return """
+                        [\(Highlight.pad("\(x)", left: 3))]: \(Highlight.swatch(color)) \(color)
+                """
+            }.joined(separator: "\n"))
+            """
+        }.joined(separator: "\n"))
+        }
+        """
+    }
+}
+extension Table.Scattering:CustomStringConvertible 
+{
+    var description:String 
+    {
+        """
+        Scattering table [\(self.size.x), \(self.size.y), \(self.size.z)]
+        {
+        \((0 ..< self.size.z).map
+        {
+            (z:Int) in 
+            return """
+            \((0 ..< self.size.y).map
+            { 
+                (y:Int) in 
+                return """
+                    [\(z), \(y)]:
+                \((0 ..< self.size.x).map
+                { 
+                    (x:Int) in 
+                    let color:Vector3<F> = self.buffer[(z * self.size.y + y) * self.size.x + x]
+                    return """
+                            [\(Highlight.pad("\(x)", left: 3))]: \(Highlight.swatch(color)) \(color)
+                    """
+                }.joined(separator: "\n"))
+                """
+            }.joined(separator: "\n"))
+            """
+        }.joined(separator: "\n"))
+        """
+    }
+}
+extension Table.Irradiance:CustomStringConvertible 
+{
+    var description:String 
+    {
+        """
+        Irradiance table [\(self.size.x), \(self.size.y)]
+        {
+        \((0 ..< self.size.y).map
+        { 
+            (y:Int) in 
+            return """
+                [\(y)]:
+            \((0 ..< self.size.x).map
+            { 
+                (x:Int) in 
+                
+                let color:Vector3<F> = self.buffer[y * self.size.x + x]
+                return """
+                        [\(Highlight.pad("\(x)", left: 3))]: \(Highlight.swatch(color)) \(color)
+                """
+            }.joined(separator: "\n"))
+            """
         }.joined(separator: "\n"))
         }
         """
     }
 }
 
-let atmosphere:Atmosphere<Float> = .earth(resolutions: 
+let atmosphere:Atmosphere<Double> = .earth(resolutions: 
     (
+        // transmittance: .init(64, 16), 
+        // scattering:    .init(4, 4, 4, 4), 
+        // irradiance:    .init(16, 4)
         transmittance: .init(256, 64), 
         scattering:    .init(32, 128, 32, 8), 
         irradiance:    .init(64, 16)
     ))
 print(atmosphere)
-let table:Table.Transmittance<Float> = try .init(atmosphere, output: "transmittance.png")
-print(table)
-try atmosphere.textures()
+
+let (transmittance, mie, scattering, irradiance):
+(
+    transmittance:Table.Transmittance<Double>, 
+    mie:Table.Scattering<Double>, 
+    scattering:Table.Scattering<Double>, 
+    irradiance:Table.Irradiance<Double>
+) 
+= 
+try atmosphere.tables(
+    transmittance:  "transmittance.png", 
+    mie:            "scattering-single-mie.png", 
+    scattering:     "scattering.png", 
+    irradiance:     "irradiance.png")
+
+print(transmittance)
+print(mie)
+print(scattering)
+print(irradiance)
