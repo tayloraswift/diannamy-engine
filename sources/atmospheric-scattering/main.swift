@@ -1,4 +1,7 @@
 import PNG
+import Commander
+
+import enum File.File
 
 typealias SwiftFloatingPoint = BinaryFloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar
 
@@ -480,7 +483,7 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         {
             let count:Int = 48 
             Swift.assert(table.count == count)
-            let x:F = (l - λ.min as F) / ((λ.max - λ.min) / .init(count) as F) // - 0.5
+            let x:F = (l - λ.min as F) / ((λ.max - λ.min) / .init(count) as F) - 0.5
             let i:(Int, Int)
             i.0 = max(0, min(.init(x), count - 1))
             i.1 =        min(i.0 + 1,  count - 1)
@@ -1366,32 +1369,91 @@ extension Table.Irradiance:CustomStringConvertible
     }
 }
 
-let atmosphere:Atmosphere<Double> = .earth(resolutions: 
+let main:CommandType = command(
+    Option<Int>("detail", 
+        default: 3, 
+        description: "the level of detail to generate the precomputed tables at. (minimum 0, maximum 5)")) 
+{
+    (detail:Int) in
+    
+    guard 0 ... 5 ~= detail 
+    else 
+    {
+        if detail < 0
+        {
+            print("error: detail level (\(detail)) must be at least 0.")
+        }
+        else 
+        {
+            print("error: detail level (\(detail)) would take unreasonably long to compute.")
+        }
+        return
+    }
+    
+    func filename(_ name:String) -> String 
+    {
+        "atmospheric-table-\(name)-\(detail)x.png"
+    }
+    
+    let atmosphere:Atmosphere<Double> = .earth(resolutions: 
+        (
+            transmittance: .init(32, 8)       &<< (detail as Int), 
+            scattering:    .init(4, 16, 4, 1) &<< (detail as Int), 
+            irradiance:    .init(8, 2)        &<< (detail as Int)
+        ))
+    
+    print(atmosphere)
+
+    let (transmittance, mie, scattering, irradiance):
     (
-        // transmittance: .init(64, 16), 
-        // scattering:    .init(4, 4, 4, 4), 
-        // irradiance:    .init(16, 4)
-        transmittance: .init(256, 64), 
-        scattering:    .init(32, 128, 32, 8), 
-        irradiance:    .init(64, 16)
-    ))
-print(atmosphere)
+        transmittance:Table.Transmittance<Double>, 
+        mie:Table.Scattering<Double>, 
+        scattering:Table.Scattering<Double>, 
+        irradiance:Table.Irradiance<Double>
+    ) 
+    = 
+    try atmosphere.tables(
+        transmittance:  filename("transmittance"), 
+        mie:            filename("scattering-single-mie"), 
+        scattering:     filename("scattering"), 
+        irradiance:     filename("irradiance"))
 
-let (transmittance, mie, scattering, irradiance):
-(
-    transmittance:Table.Transmittance<Double>, 
-    mie:Table.Scattering<Double>, 
-    scattering:Table.Scattering<Double>, 
-    irradiance:Table.Irradiance<Double>
-) 
-= 
-try atmosphere.tables(
-    transmittance:  "transmittance.png", 
-    mie:            "scattering-single-mie.png", 
-    scattering:     "scattering.png", 
-    irradiance:     "irradiance.png")
+    print(transmittance)
+    print(mie)
+    print(scattering)
+    print(irradiance)
+    
+    
+    
+    try File.can(scattering.buffer.map{ .init(.init($0.x), .init($0.y), .init($0.z), 0) }, size: atmosphere.resolution.scattering.tuple, to: "scattering.float32", overwrite: true)
+    let _uncanned:[Vector3<Float>], 
+        _size:(x:Int, y:Int, z:Int)
+    switch try File.uncan(from: "scattering.float32") 
+    {
+    case .float32x4D3(let samples, x: let x, y: let y, z: let z):
+        _uncanned = samples.map{ .init($0.x, $0.y, $0.z) }
+        _size = (x, y, z)
+    default:
+        fatalError("")
+    }
+    
+    func _converter(β:(Float, Float)) -> (Vector3<Float>) -> PNG.RGBA<UInt8> 
+    {
+        return 
+            {
+                let c:Vector3<Float> = .max(.zero, .min(β.1 * $0 + β.0, .init(repeating: 1))), 
+                    C:Vector3<Float> = (.init(UInt8.max) * c).rounded(.down)
+                let r:UInt8      = .init(C.x),
+                    g:UInt8      = .init(C.y),
+                    b:UInt8      = .init(C.z)
+                return .init(r, g, b, .max)
+            }
+    }
+    
+    try PNG.encode(rgba: _uncanned.map(_converter(β: (0, 0.5))), 
+        size:   (_size.x, _size.y * _size.z), 
+        as:     .rgb8, 
+        path:   "scattering.float32.png")
+}
 
-print(transmittance)
-print(mie)
-print(scattering)
-print(irradiance)
+main.run()

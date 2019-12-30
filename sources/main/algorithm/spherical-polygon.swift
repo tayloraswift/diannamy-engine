@@ -2,6 +2,8 @@ import struct Foundation.Data
 import class Foundation.JSONDecoder
 import class Foundation.JSONEncoder
 
+import enum File.File
+
 extension Algorithm 
 {
     // resolution in radians
@@ -89,7 +91,7 @@ extension Algorithm
         {
             do 
             {
-                let data:Foundation.Data            = .init(try File.read(filename))
+                let data:Foundation.Data            = .init(try File.read(from: filename))
                 let decoder:Foundation.JSONDecoder  = .init()
                 self = try decoder.decode(Self.self, from: data)
             }

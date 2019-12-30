@@ -1,3 +1,5 @@
+import protocol Error.RecursiveError
+
 import func Glibc.fopen
 import func Glibc.fseek
 import func Glibc.ftell
@@ -13,16 +15,12 @@ import var Glibc.SEEK_SET
 
 import typealias Glibc.FILE
 
+public 
 enum File 
 {
+    public 
     enum Error:RecursiveError
     {
-        static 
-        var namespace:String 
-        {
-            "file error"
-        }
-        
         case fopen(path:String, code:Int32)
         case fseek(path:String, code:Int32)
         case ftell(path:String, code:Int32)
@@ -30,7 +28,16 @@ enum File
         case fwrite(path:String, code:Int32)
         case fclose(path:String, code:Int32)
         
-        func unpack() -> (String, Swift.Error?)
+        case can(path:String, message:String)
+        case uncan(path:String, message:String)
+        
+        public static 
+        var namespace:String 
+        {
+            "file error"
+        }
+        public 
+        var message:String
         {
             let thrower:String
             switch self 
@@ -47,6 +54,11 @@ enum File
                 thrower = "fwrite"
             case .fclose:
                 thrower = "fclose"
+                
+            case .can(path: let path, message: let message):
+                return "canning '\(path)': \(message)"
+            case .uncan(path: let path, message: let message):
+                return "uncanning '\(path)': \(message)"
             }
             
             switch self 
@@ -58,13 +70,21 @@ enum File
                     .fwrite(path: let path, code: let code),
                     .fclose(path: let path, code: let code):
                 let message:String = .init(cString: strerror(code))
-                return ("\(thrower) '\(path)': \(message)", nil)
+                return "\(thrower) '\(path)': \(message)"
+            
+            default:
+                fatalError("unreachable")
             }
+        }
+        public 
+        var next:Swift.Error? 
+        {
+            nil 
         }
     }
     
-    static 
-    func read(_ path:String) throws -> [UInt8]
+    public static 
+    func read(from path:String) throws -> [UInt8]
     {
         guard let descriptor:UnsafeMutablePointer<FILE> = fopen(path, "rb")
         else
@@ -111,7 +131,7 @@ enum File
         return data
     }
     
-    static 
+    public static 
     func write(_ data:[UInt8], to path:String, overwrite:Bool = false) throws 
     {
         guard let descriptor:UnsafeMutablePointer<FILE> = 

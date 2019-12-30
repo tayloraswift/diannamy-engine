@@ -1,28 +1,4 @@
-protocol RecursiveError:Swift.Error 
-{
-    func unpack() -> (String, Swift.Error?)
-    
-    static 
-    var namespace:String 
-    {
-        get 
-    }
-}
-extension Swift.Error 
-{
-    static 
-    var description:String 
-    {
-        if let type:RecursiveError.Type = Self.self as? RecursiveError.Type
-        {
-            return type.namespace
-        }
-        else 
-        {
-            return .init(reflecting: Self.self)
-        }
-    }
-}
+import protocol Error.RecursiveError
 
 enum Log 
 {
@@ -197,32 +173,34 @@ enum Log
     static 
     func trace(error:Swift.Error) 
     {
-        var stack:[(type:Swift.Error.Type, message:String)] = []
+        var stack:[(namespace:String, message:String)] = []
         var error:Swift.Error = error 
         while true 
         {
             switch error 
             {
             case let recursive as RecursiveError:
-                let (string, next):(String, Swift.Error?) = recursive.unpack()
-                stack.append((type(of: recursive), string))
-                if let next:Swift.Error = next 
+                guard let next:Swift.Error = recursive.next
+                else 
                 {
-                    error = next 
-                    continue 
+                    break 
                 }
+                
+                stack.append((type(of: recursive).namespace, recursive.message))
+                error = next 
+                continue 
             
             default:
-                stack.append((type(of: error), String.init(describing: error)))
+                stack.append((String.init(reflecting: type(of: error)), String.init(describing: error)))
             }
             
             break
         }
         
-        for (i, (type, message)):(Int, (type:Swift.Error.Type, message:String)) in 
+        for (i, (namespace, message)):(Int, (namespace:String, message:String)) in 
             stack.reversed().enumerated()
         {
-            Self.print("\(Highlight.bold)[\(i)]: \(Highlight.fg(.red))\(type.description)\(Highlight.reset)")
+            Self.print("\(Highlight.bold)[\(i)]: \(Highlight.fg(.red))\(namespace)\(Highlight.reset)")
             Self.print(message)
         }
     }

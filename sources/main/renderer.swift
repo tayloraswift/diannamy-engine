@@ -1,3 +1,6 @@
+import protocol Error.RecursiveError
+import enum File.File
+
 protocol ContiguousCollection:RandomAccessCollection 
 {
     func withUnsafeBufferPointer<R>(_ body:(UnsafeBufferPointer<Element>) throws -> R) rethrows -> R
@@ -1112,23 +1115,32 @@ enum GPU
     {
         enum Error:RecursiveError 
         {
+            case shader(name:String, error:Swift.Error)
+            case linking(name:String, info:String)
+            
             static 
             var namespace:String 
             {
                 "program error"
             }
-            
-            case shader(name:String, error:Swift.Error)
-            case linking(name:String, info:String)
-            
-            func unpack() -> (String, Swift.Error?)
+            var message:String 
             {
                 switch self 
                 {
-                case .shader(name: let name, error: let error):
-                    return ("failed to compile shader in program '\(name)'", error)
+                case .shader(name: let name, error: _):
+                    return "failed to compile shader in program '\(name)'"
                 case .linking(name: let name, info: let message):
-                    return ("failed to link program '\(name)' \n\(message)", nil)
+                    return "failed to link program '\(name)' \n\(message)"
+                }
+            }
+            var next:Swift.Error?
+            {
+                switch self 
+                {
+                case .shader(name: _, error: let error):
+                    return error
+                case .linking(name: _, info: _):
+                    return nil
                 }
             }
         }
@@ -1139,23 +1151,32 @@ enum GPU
             
             enum Error:RecursiveError
             {
+                case source(type:Shader, name:String, error:Swift.Error)
+                case compilation(type:Shader, name:String, info:String)
+                
                 static 
                 var namespace:String 
                 {
                     "shader error"
                 }
-                
-                case source(type:Shader, name:String, error:Swift.Error)
-                case compilation(type:Shader, name:String, info:String)
-                
-                func unpack() -> (String, Swift.Error?)
+                var message:String
                 {
                     switch self 
                     {
-                    case .source(type: let type, name: let name, error: let error):
-                        return ("failed to load source(s) for \(String.init(describing: type)) shader '\(name)'", error)
+                    case .source(type: let type, name: let name, error: _):
+                        return "failed to load source(s) for \(String.init(describing: type)) shader '\(name)'"
                     case .compilation(type: let type, name: let name, info: let message):
-                        return ("failed to compile \(String.init(describing: type)) shader '\(name)' \n\(message)", nil)
+                        return "failed to compile \(String.init(describing: type)) shader '\(name)' \n\(message)"
+                    }
+                }
+                var next:Swift.Error?
+                {
+                    switch self 
+                    {
+                    case .source(type: _, name: _, error: let error):
+                        return error
+                    case .compilation(type: _, name: _, info: _):
+                        return nil
                     }
                 }
             }
@@ -1812,7 +1833,7 @@ enum GPU
                 let (type, path):(Shader, String) = $0 
                 do 
                 {
-                    return (type, try File.read(path), path)
+                    return (type, try File.read(from: path), path)
                 }
                 catch 
                 {

@@ -1,3 +1,6 @@
+import protocol Error.RecursiveError
+import enum File.File
+
 protocol _UIStyleSheetEnumeration:Hashable
 {
     static 
@@ -25,21 +28,20 @@ extension UI.Style
         {
             typealias Location = (line:Int, column:Int)
             
+            case source(name:String, error:Swift.Error?)
+            case syntax(name:String, source:String, error:Swift.Error)
+            
             static 
             var namespace:String 
             {
                 "stylesheet error"
             }
-            
-            case source(name:String, error:Swift.Error?)
-            case syntax(name:String, source:String, error:Swift.Error)
-            
-            func unpack() -> (String, Swift.Error?)
+            var message:String
             {
                 switch self 
                 {
-                case .source(name: let name, error: let error):
-                    return ("failed to load source(s) for stylesheet '\(name)'", error)
+                case .source(name: let name, error: _):
+                    return "failed to load source(s) for stylesheet '\(name)'"
                 
                 case .syntax(name: let name, source: let source, error: let error):
                     switch error 
@@ -47,7 +49,7 @@ extension UI.Style
                     case let error as Lex.Error:
                         let location:Location = Self.location(of: error.index, in: source)
                         let snippet:String = Self.snippet((location, location), in: source)
-                        return ("\(name):\(location.line + 1):\(location.column + 1): syntax error\n\(snippet)", error)
+                        return "\(name):\(location.line + 1):\(location.column + 1): syntax error\n\(snippet)"
                     
                     case let error as Parse.Error:
                         let indices:Range<String.Index> = error.indices 
@@ -57,11 +59,22 @@ extension UI.Style
                             Self.location(of: indices.upperBound, in: source)
                         )
                         let snippet:String = Self.snippet(range, in: source)
-                        return ("\(name):\(range.0.line + 1):\(range.0.column + 1): syntax error\n\(snippet)", error)
+                        return "\(name):\(range.0.line + 1):\(range.0.column + 1): syntax error\n\(snippet)"
                     
                     default:
-                        return ("\(name): parser error", error)
+                        return "\(name): parser error"
                     }
+                }
+            }
+            var next:Swift.Error?
+            {
+                switch self 
+                {
+                case    .source(name:_,             error: nil):
+                    return nil
+                case    .source(name: _,            error: let error?), 
+                        .syntax(name: _, source: _, error: let error):
+                    return error
                 }
             }
             
@@ -132,21 +145,20 @@ extension UI.Style
             
             enum Error:RecursiveError 
             {
+                case unexpected(Character, at:String.Index)
+                case cast(String, from:Literal, to:[Any.Type], at:String.Index)
+                
                 static 
                 var namespace:String 
                 {
                     "stylesheet lexing error"
                 }
-                
-                case unexpected(Character, at:String.Index)
-                case cast(String, from:Literal, to:[Any.Type], at:String.Index)
-                
-                func unpack() -> (String, Swift.Error?)
+                var message:String
                 {
                     switch self 
                     {
                     case .unexpected(let character, at: _):
-                        return ("unexpected character '\(character)'", nil)
+                        return "unexpected character '\(character)'"
                     case .cast(let literal, from: let source, to: let types, at: _):
                         let destination:String 
                         switch types.count 
@@ -160,8 +172,13 @@ extension UI.Style
                         case _:
                             destination = "\(types.dropLast().map{ "\($0)" }.joined(separator: ", ")), or \(types[types.endIndex - 1])"
                         }
-                        return ("cannot convert \(source.prosaicDescription) literal '\(literal)' to \(destination)", nil)
+                        return "cannot convert \(source.prosaicDescription) literal '\(literal)' to \(destination)"
                     }
+                }
+                
+                var next:Swift.Error?
+                {
+                    nil
                 }
                 
                 var index:String.Index 
@@ -827,12 +844,6 @@ extension UI.Style
             
             enum Error:RecursiveError 
             {
-                static 
-                var namespace:String 
-                {
-                    "stylesheet parsing error"
-                }
-                
                 case undefined(Expression.Keyword, String, in:Expression, range:Range<String.Index>)
                 case duplicate(Lex.Lexeme, in:Expression, range:Range<String.Index>)
                 case unexpected(Lex.Lexeme?, in:Expression, range:Range<String.Index>)
@@ -840,30 +851,39 @@ extension UI.Style
                 case overflow(Int, as:Any.Type, in:Expression, range:Range<String.Index>)
                 case other(String, range:Range<String.Index>)
                 
-                func unpack() -> (String, Swift.Error?)
+                static 
+                var namespace:String 
+                {
+                    "stylesheet parsing error"
+                }
+                var message:String
                 {
                     switch self 
                     {
                     case .undefined(let type, let identifier, in: let expression, range: _):
-                        return ("'\(identifier)' is not a valid \(type.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                        return "'\(identifier)' is not a valid \(type.prosaicDescription) in \(expression.prosaicDescription)"
                     
                     case .duplicate(let lexeme,     in: let expression, range: _):
-                        return ("duplicate \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                        return "duplicate \(lexeme.prosaicDescription) in \(expression.prosaicDescription)"
                     
                     case .unexpected(let lexeme?,   in: let expression, range: _):
-                        return ("unexpected \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                        return "unexpected \(lexeme.prosaicDescription) in \(expression.prosaicDescription)"
                     case .unexpected(nil,           in: let expression, range: _):
-                        return ("unexpected end of stylesheet while parsing \(expression.prosaicDescription)", nil)
+                        return "unexpected end of stylesheet while parsing \(expression.prosaicDescription)"
                     
                     case .missing(let expected, before: let lexeme, in: let expression, range: _):
-                        return ("missing \(expected.prosaicDescription) before \(lexeme.prosaicDescription) in \(expression.prosaicDescription)", nil)
+                        return "missing \(expected.prosaicDescription) before \(lexeme.prosaicDescription) in \(expression.prosaicDescription)"
                     
                     case .overflow(let original, as: let target, in: let expression, range: _):
-                        return ("integer literal \(original) overflows destination type '\(target)' in \(expression.prosaicDescription)", nil)
+                        return "integer literal \(original) overflows destination type '\(target)' in \(expression.prosaicDescription)"
                     
                     case .other(let message, range: _):
-                        return (message, nil)
+                        return message
                     }
+                }
+                var next:Swift.Error? 
+                {
+                    nil
                 }
                 
                 var indices:Range<String.Index> 
@@ -1595,7 +1615,7 @@ extension UI.Style
             let source:String
             do 
             {
-                source = .init(decoding: try File.read(path), as: Unicode.UTF8.self)
+                source = .init(decoding: try File.read(from: path), as: Unicode.UTF8.self)
             }
             catch
             {
