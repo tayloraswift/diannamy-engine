@@ -11,9 +11,8 @@ layout(std140) uniform Camera
 } camera;
 
 uniform vec3 origin;
-uniform float scale;
 
 void main()
 {
-    gl_Position  = camera.U * vec4(position.xyz * scale + origin, 1);
+    gl_Position  = camera.U * vec4(position.xyz + origin, 1);
 }

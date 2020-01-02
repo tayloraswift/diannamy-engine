@@ -880,6 +880,7 @@ enum GPU
         enum Layout
         {
             case r8, rg8, rgb8, rgba8, bgra8, argb32atomic
+            case rgba32f
             
             fileprivate 
             var storage:OpenGL.Enum 
@@ -892,6 +893,10 @@ enum GPU
                     return OpenGL.RG8
                 case .rgb8, .rgba8, .bgra8, .argb32atomic:
                     return OpenGL.RGBA8
+                // case .rgba16f:
+                //     return OpenGL.RGBA16F
+                case .rgba32f:
+                    return OpenGL.RGBA32F
                 }
             }
             
@@ -906,7 +911,7 @@ enum GPU
                     return OpenGL.RG 
                 case .rgb8:
                     return OpenGL.RGB 
-                case .rgba8:
+                case .rgba8, .rgba32f:
                     return OpenGL.RGBA 
                 case .bgra8, .argb32atomic:
                     return OpenGL.BGRA
@@ -922,6 +927,8 @@ enum GPU
                     return OpenGL.UNSIGNED_BYTE
                 case .argb32atomic:
                     return OpenGL.UNSIGNED_INT_8_8_8_8
+                case .rgba32f:
+                    return OpenGL.FLOAT
                 }
             }
         }
@@ -2544,6 +2551,7 @@ class Renderer
             multisample:Bool 
         )
         
+        OpenGL.glDisable(OpenGL.DEPTH_TEST)
         OpenGL.glDisable(OpenGL.MULTISAMPLE)
         OpenGL.glEnable(OpenGL.BLEND)
         OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)

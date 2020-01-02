@@ -180,13 +180,13 @@ enum Log
             switch error 
             {
             case let recursive as RecursiveError:
+                stack.append((type(of: recursive).namespace, recursive.message))
                 guard let next:Swift.Error = recursive.next
                 else 
                 {
                     break 
                 }
                 
-                stack.append((type(of: recursive).namespace, recursive.message))
                 error = next 
                 continue 
             

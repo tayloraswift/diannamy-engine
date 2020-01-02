@@ -1,3 +1,5 @@
+import enum File.File
+
 /* @propertyWrapper 
 final 
 class State<Value>
@@ -248,20 +250,31 @@ class Controller//:LayerController
             self.buttons.bake,
         ]
     }
-    //
     
+    // GPU resources
     private 
-    let cameraBuffer:GPU.Buffer.Uniform<UInt8>
-    
-    private 
-    let cube: 
+    let ubo:
     (
-        vao:GPU.Vertex.Array<Mesh.Vertex, UInt8>, 
-        texture:GPU.Texture.Cube<Vector4<UInt8>>
+        camera:GPU.Buffer.Uniform<UInt8>,
+        atmosphere:GPU.Buffer.Uniform<UInt8>
     )
     private 
-    let points:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>,
-        isolineVertices:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>
+    let vao: 
+    (
+        hull:GPU.Vertex.Array<Mesh.Vertex, UInt8>, 
+        points:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>,
+        isolines:GPU.Vertex.Array<Mesh.ColorVertex, UInt32>
+    )
+    private 
+    let texture:
+    (
+        globeAlbedo:GPU.Texture.Cube<Vector4<UInt8>>, 
+        globeTransmittance:GPU.Texture.D2<Vector4<Float>>,
+        globeScattering:GPU.Texture.D3<Vector4<Float>>,
+        globeIrradiance:GPU.Texture.D2<Vector4<Float>>
+    )
+    
+    
     private 
     var sphere:Algorithm.FibonacciSphere<Double>
     //var fluid:Algorithm.Fluid<Double>
@@ -288,65 +301,33 @@ class Controller//:LayerController
     
     init() 
     {
-        // ui elements 
-        self.buttons.labels.renormalize = .init([.init("Renormalize")])
-        self.buttons.labels.background  = .init([.init("Background")])
-        self.buttons.labels.bake        = .init([.init("Bake")])
-        
-        self.buttons.renormalize    = .init([self.buttons.labels.renormalize])
-        self.buttons.background     = .init([self.buttons.labels.background])
-        self.buttons.bake           = .init([self.buttons.labels.bake])
-        
-        do 
-        {
-            let toolbar:UI.Element.Div   = .init([self.buttons.0, self.buttons.1, self.buttons.2], identifier: "toolbar")
-            let container:UI.Element.Div = .init([toolbar], identifier: "container")
-            self.ui = UI.Element.Div.init([container])
-        }
-        
         let plane:Editor.Plane3D = .init(.init(
             center:         .zero, 
             orientation:    .identity, 
             distance:       6))
         
-        self.cameraBuffer       = .init(hint: .dynamic, debugName: "ubo/camera")
-        self.plane              = plane
-        // cube 
-        self.cube.vao = Mesh.Preset.cube()
-        /* let checkerboard:Array2D<Vector4<UInt8>> = .init(size: .init(16, 16)) 
-        {
-            return .init(repeating: (($0.x &+ $0.y) & 1) == 1 ? 80 : 40)
-        } */
-        self.cube.texture = .init(layout: .rgba8, magnification: .linear, minification: .linear)
+        self.ubo.camera                 = .init(hint: .dynamic, debugName: "ubo/camera")
+        self.ubo.atmosphere             = .init(hint: .static,  debugName: "ubo/atmosphere")
+        self.plane                      = plane
         
+        // ui elements 
+        self.buttons.labels.renormalize = .init([.init("Renormalize")])
+        self.buttons.labels.background  = .init([.init("Background")])
+        self.buttons.labels.bake        = .init([.init("Bake")])
         
-        let vertices:GPU.Buffer.Array<Mesh.ColorVertex>  = .init(hint: .static)
-        let triangulation:GPU.Buffer.IndexArray<UInt32>  = .init(hint: .static)
+        self.buttons.renormalize        = .init([self.buttons.labels.renormalize])
+        self.buttons.background         = .init([self.buttons.labels.background])
+        self.buttons.bake               = .init([self.buttons.labels.bake])
         
-        //let fluid:Algorithm.Fluid<Double> = .init(count: 1 << 8)
-        let sphere:Algorithm.FibonacciSphere<Double> = .init(count: 1 << 8)
-        // delaunay 
-        let triangles:[UInt32] = sphere.triangulation.flatMap 
-        {
-            [.init($0.0), .init($0.1), .init($0.2)]
-        }
+        let toolbar:UI.Element.Div      = .init([self.buttons.0, self.buttons.1, self.buttons.2], identifier: "toolbar")
+        let container:UI.Element.Div    = .init([toolbar], identifier: "container")
+        self.ui = UI.Element.Div.init([container])
         
-        // compute elevations 
-        
-        // let (pixels, n):([UInt8], (x:Int, y:Int)) = try! PNG.v(path: "/home/klossy/downloads/earth.png", of: UInt8.self)
-        // var samples:[[UInt8]] = .init(repeating: [], count: sphere.points.count)
-        // for y:Int in 0 ..< n.y 
-        // {
-        //     for x:Int in 0 ..< n.x 
-        //     {
-        //         let theta:Double =     .pi * (.init(y) + 0.5) / .init(n.y), 
-        //             phi:Double   = 2 * .pi * (.init(x) + 0.5) / .init(n.x)
-        //         let index:Int    = sphere.nearest(to: .init(spherical: .init(theta, phi)))
-        //         samples[index].append(pixels[y * n.x + x])
-        //     }
-        // }
-        
-        let points:[Mesh.ColorVertex] = sphere.points.map // zip(samples, sphere.points).map 
+        // geometry 
+        // generate sphere with 256 fibonacci points, and its delaunay triangulation
+        self.sphere = .init(count: 1 << 8)
+        let points:(vertices:[Mesh.ColorVertex], indices:[UInt32]) 
+        points.vertices = self.sphere.points.map // zip(samples, sphere.points).map 
         {
             // let (cell, position):([UInt8], Vector3<Double>) = $0
             // let height:UInt8 = .init(cell.map(Double.init(_:)).reduce(0, +) / .init(cell.count))
@@ -355,22 +336,118 @@ class Controller//:LayerController
                 g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
                 b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
              */
-            return .init(.cast($0), color: .init(0, 0, 0, .max))
+            .init(.cast($0), color: .init(0, 0, 0, .max))
         }
-        vertices.assign(points)
-        triangulation.assign(triangles) 
-        //self.fluid = fluid
-        self.sphere = sphere
-        self.points = .init(vertices: vertices, indices: triangulation)
+        points.indices = self.sphere.triangulation.flatMap 
+        {
+            [.init($0.0), .init($0.1), .init($0.2)]
+        }
         
-        self.isolines           = .init(filename: "map.json")
-        self.isolineVertices    = .init(vertices: .init(hint: .dynamic), indices: .init(hint: .dynamic))
+        // load and compute isolines 
+        self.isolines = .init(filename: "map.json")
+        let isolines:(vertices:[Mesh.ColorVertex], indices:[UInt32]) = self.isolines.render()
         
+        // GPU resources 
+        self.vao.hull       = Mesh.Preset.icosahedron(inscribedRadius: 1 + 1/64)
+        
+        self.vao.points     = .init(vertices: .init(hint: .static),  indices: .init(hint: .static))
+        self.vao.points.buffers.vertex.assign(points.vertices)
+        self.vao.points.buffers.index.assign(points.indices)
+        
+        self.vao.isolines   = .init(vertices: .init(hint: .dynamic), indices: .init(hint: .dynamic))
+        
+        self.vao.isolines.buffers.vertex.assign(isolines.vertices)
+        self.vao.isolines.buffers.index.assign(isolines.indices)
+        
+        self.texture.globeAlbedo        = .init(layout: .rgba8,   magnification: .linear, minification: .linear, mipmap: .linear)
+        self.texture.globeTransmittance = .init(layout: .rgba32f, magnification: .linear, minification: .linear, mipmap: nil)
+        self.texture.globeScattering    = .init(layout: .rgba32f, magnification: .linear, minification: .linear, mipmap: nil)
+        self.texture.globeIrradiance    = .init(layout: .rgba32f, magnification: .linear, minification: .linear, mipmap: nil)
+        
+        // load precomputed scattering textures and parameters 
         do 
         {
-            let (vertices, indices):([Mesh.ColorVertex], [UInt32]) = self.isolines.render()
-            self.isolineVertices.buffers.vertex.assign(vertices)
-            self.isolineVertices.buffers.index.assign (indices)
+            switch try File.uncan(from: "assets/tables/atmospheric-scattering/earth-atmosphere-parameters-3x.float32")
+            {
+            case .float32(let data):
+                guard data.count == 22 
+                else 
+                {
+                    Log.error("failed to load atmospheric parameters, expected 22 `Float`s, found \(data.count)")
+                    break 
+                }
+                
+                let radius:(bottom:Float, top:Float, sun:Float) = (data[0], data[1], data[2])
+                let μsmin:Float                                 =  data[3]
+                
+                let rayleigh:Vector3<Float>                     = .init(data[4], data[5], data[6])
+                let mie:Vector3<Float>                          = .init(data[7], data[8], data[9])
+                let g:Float                                     = data[10]
+                
+                let resolution:
+                (
+                    transmittance:Vector2<Float>, 
+                    scattering:(Float, Float, Float, Float), 
+                    irradiance:Vector2<Float>
+                ) = 
+                (
+                    .init(data[11], data[12]),
+                    (data[13], data[14], data[15], data[16]),
+                    .init(data[17], data[18])
+                )
+                
+                let irradiance:Vector3<Float>                   = .init(data[19], data[20], data[21])
+                
+                self.ubo.atmosphere.assign(std140:
+                    .float32(radius.bottom),
+                    .float32(radius.top),
+                    .float32(radius.sun),
+                    .float32(μsmin),
+                    
+                    .float32x4(.extend(rayleigh, 0)),
+                    .float32x4(.extend(mie, g)),
+                    
+                    .float32x2(resolution.transmittance),
+                    .float32(resolution.scattering.0), 
+                    .float32(resolution.scattering.1), 
+                    .float32(resolution.scattering.2), 
+                    .float32(resolution.scattering.3), 
+                    .float32x2(resolution.irradiance),
+                    
+                    .float32x4(.extend(irradiance, 0)))
+            
+            default:
+                Log.error("failed to load atmospheric parameters")
+            }
+            
+            switch try File.uncan(from: "assets/tables/atmospheric-scattering/earth-transmittance-3x.float32") 
+            {
+            case .float32x4D2(let data, x: let x, y: let y):
+                let table:Array2D<Vector4<Float>> = .init(data.map(Vector4<Float>.init(_:)), size: .init(x, y))
+                self.texture.globeTransmittance.assign(table)
+            default:
+                Log.error("failed to load atmospheric transmittance table")
+            }
+            switch try File.uncan(from: "assets/tables/atmospheric-scattering/earth-scattering-combined-3x.float32") 
+            {
+            case .float32x4D3(let data, x: let x, y: let y, z: let z):
+                let table:Array3D<Vector4<Float>> = .init(data.map(Vector4<Float>.init(_:)), size: .init(x, y, z))
+                self.texture.globeScattering.assign(table)
+            default:
+                Log.error("failed to load atmospheric scattering table")
+            }
+            switch try File.uncan(from: "assets/tables/atmospheric-scattering/earth-irradiance-3x.float32") 
+            {
+            case .float32x4D2(let data, x: let x, y: let y):
+                let table:Array2D<Vector4<Float>> = .init(data.map(Vector4<Float>.init(_:)), size: .init(x, y))
+                self.texture.globeIrradiance.assign(table)
+            default:
+                Log.error("failed to load atmospheric irradiance table")
+            }
+        }
+        catch 
+        {
+            Log.trace(error: error)
         }
     }
     
@@ -488,71 +565,6 @@ class Controller//:LayerController
         let cursor:UI.Cursor = self.focus?.cursor.active ?? self.hover?.cursor.inactive ?? .arrow
         return .init(cursor: cursor)
     }
-    /* mutating 
-    func event(_ event:UI.Event) -> UI.Event.Response
-    {
-        for button:UI.Element.Button in self.buttons 
-        {
-        //    button.click =
-        }
-        switch event 
-        {
-        case .cursor(let s):
-            if let preselection:UI.Entity = self.ui.find(s)
-            {
-                self.preselection = .element(preselection)
-            }
-            else 
-            {
-                self.preselection = .plane(s)
-            }
-        case .action(let a):
-            switch self.preselection 
-            {
-            case .element(let element):
-                break
-            }
-        }
-        var event:(l:UI.Event, r:UI.Event) = (event, event.reflect(self.viewport.size.y)) 
-        
-        for pass:Int in 0 ... 2
-        {
-            if self.ui.event(event.l, pass: pass) 
-            {
-                event = (.leave, .leave) 
-            }
-            
-            switch event.r 
-            {
-                case    .primary    (_, let s, doubled: _), 
-                        .secondary  (_, let s, doubled: _), 
-                        .cursor     (   let s):
-                    let point:Vector3<Float> = self.plane.project(s, on: .zero, radius: 1)
-                    
-                    let dpoint:Vector3<Double> = .cast(point)
-                    self._active         = self.sphere.nearest(to: dpoint)
-                    self._activeTriangle = self.sphere.triangle(containing: dpoint)
-                    
-                default: 
-                    break 
-            }
-            
-            if self.plane.event(event.r, pass: pass) 
-            {
-                event = (.leave, .leave) 
-            }
-        }
-        
-        for (i, button):(Int, UI.Element.Button) in self.buttons.enumerated() 
-        {
-            if button.click > 0 
-            {
-                print("click \(i)")
-            }
-        }
-        //return .init(cursor: report.handcursor ? .hand : .crosshair)
-        return .init(cursor: .hand)
-    } */
     
     func process(_ delta:Int, styles:UI.Styles, viewport:Vector2<Int>, frame:Rectangle<Int>)
     {
@@ -564,7 +576,7 @@ class Controller//:LayerController
         }
         if let new:Array2D<Vector4<UInt8>> = self.depot.cubemap.value
         {
-            self.cube.texture.assign(cubemap: new)
+            self.texture.globeAlbedo.assign(cubemap: new)
             self.depot.cubemap.value    = nil 
             self.depot.cubemap.progress = nil 
             
@@ -577,7 +589,7 @@ class Controller//:LayerController
         }
         
         let matrices:Camera<Float>.Matrices = self.plane.matrices
-        self.cameraBuffer.assign(std140: 
+        self.ubo.camera.assign(std140: 
             .matrix4(matrices.U), 
             .matrix4(matrices.V), 
             .matrix3(matrices.F), 
@@ -622,46 +634,52 @@ class Controller//:LayerController
     func draw(_ context:Coordinator.Context) -> [Renderer.Command] 
     {
         [
-            .draw(elements: 0..., of: self.cube.vao, as: .triangles, 
+            .draw(elements: 0..., of: self.vao.hull, as: .triangles, 
                 depthTest: .off,
                 using: context.shaders.implicitSphere,
                 [
                     // "Display"   : .block(context.display),
-                    "Camera"    : .block(self.cameraBuffer),
+                    "Camera"    : .block(self.ubo.camera),
+                    "Atmosphere": .block(self.ubo.atmosphere),
+                    
                     "origin"    : .float32x3(.init(repeating: 0.0)),
                     "scale"     : .float32(1.0),
             
-                    "globetex"  : .textureCube(self.cube.texture),
+                    "globetex"  : .textureCube(self.texture.globeAlbedo),
+                    
+                    "transmittance_table"   : .texture2(self.texture.globeTransmittance),
+                    "scattering_table"      : .texture3(self.texture.globeScattering),
+                    "irradiance_table"      : .texture2(self.texture.globeIrradiance),
                 ]), 
-            // .draw(elements: 0..., of: self.points, as: .triangles, 
+            // .draw(elements: 0..., of: self.vao.points, as: .triangles, 
             //     depthTest: .off, 
             //     using: context.shaders.colorTriangles,
             //     [
-            //         "Camera"    : .block(self.cameraBuffer),
+            //         "Camera"    : .block(self.ubo.camera),
             //     ]), 
-            // .draw(0..., of: self.points, as: .points, 
+            // .draw(0..., of: self.vao.points, as: .points, 
             //     depthTest: .off, 
             //     using: context.shaders.colorPoints,
             //     [
             //         "Display"   : .block(context.display),
-            //         "Camera"    : .block(self.cameraBuffer),
+            //         "Camera"    : .block(self.ubo.camera),
             //         "radius"    : .float32(4),
             //     ]),
-            .draw(self._active ... self._active, of: self.points, as: .points, 
+            .draw(self._active ... self._active, of: self.vao.points, as: .points, 
                 depthTest: .off, 
                 using: context.shaders.colorPoints,
                 [
                     "Display"   : .block(context.display),
-                    "Camera"    : .block(self.cameraBuffer),
+                    "Camera"    : .block(self.ubo.camera),
                     "radius"    : .float32(8),
                 ]), 
-            .draw(elements: 0..., of: self.isolineVertices, as: .linesAdjacency, 
+            .draw(elements: 0..., of: self.vao.isolines, as: .linesAdjacency, 
                 depthTest: .off, 
                 multisample: true, 
                 using: context.shaders.colorLines,
                 [
                     "Display"   : .block(context.display),
-                    "Camera"    : .block(self.cameraBuffer),
+                    "Camera"    : .block(self.ubo.camera),
                     "thickness" : .float32(1),
                 ]) 
         ]

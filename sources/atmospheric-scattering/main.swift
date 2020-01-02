@@ -93,6 +93,42 @@ struct Atmosphere<F> where F:SwiftFloatingPoint
         irradiance:Vector2<Int>
     )
     
+    // serialized parameters for glsl shader 
+    var serialized:[F] 
+    {
+        [
+            self.radius.bottom,
+            self.radius.top,
+            self.radius.sun,
+            
+            self.μsmin,
+            
+            self.rayleigh.scattering.x,
+            self.rayleigh.scattering.y,
+            self.rayleigh.scattering.z,
+            
+            self.mie.scattering.x,
+            self.mie.scattering.y,
+            self.mie.scattering.z,
+            self.mie.g, 
+            
+            .init(self.resolution.transmittance.x),
+            .init(self.resolution.transmittance.y),
+            
+            .init(self.resolution.scattering4.R),
+            .init(self.resolution.scattering4.M),
+            .init(self.resolution.scattering4.MS),
+            .init(self.resolution.scattering4.N),
+            
+            .init(self.resolution.irradiance.x),
+            .init(self.resolution.irradiance.y),
+            
+            self.irradiance.x,
+            self.irradiance.y,
+            self.irradiance.z,
+        ]
+    }
+    
     // cap radius between bottom and top of atmosphere
     private 
     var H:F 
@@ -1345,7 +1381,7 @@ let main:CommandType = command(
     
     func filename(_ name:String) -> String 
     {
-        "\(output)/atmospheric-table-earth-\(name)-\(detail)x"
+        "\(output)/earth-\(name)-\(detail)x"
     }
     
     let atmosphere:Atmosphere<Double> = .earth(resolutions: 
@@ -1356,6 +1392,10 @@ let main:CommandType = command(
         ))
     
     print(atmosphere)
+    // serialize atmosphere 
+    try File.can(atmosphere.serialized.map(Float.init(_:)), 
+        to: "\(filename("atmosphere-parameters")).float32", 
+        overwrite: true)
 
     let (transmittance, mie, scattering, irradiance):
     (

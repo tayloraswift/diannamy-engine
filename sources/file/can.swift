@@ -107,13 +107,14 @@ extension File
 {
     // can format:
     // [ 0...3 ]: checksum (of everything that follows, including size information)
-    // [ 4...7 ]: dimension count (2 or 3)
+    // [ 4...7 ]: dimension count (0, 2 or 3)
     // [ 8...11]: x
-    // [12...15]: y
+    // [12...15]: y (optional)
     // [16...19]: z (optional)
     // [20...  ]: data (big-endian)
     enum Typed 
     {
+        case float32([Float])
         case float32x4D2([SIMD4<Float>], x:Int, y:Int)
         case float32x4D3([SIMD4<Float>], x:Int, y:Int, z:Int)
     }
@@ -149,6 +150,11 @@ extension File
     }
     
     static 
+    func can(_ data:[Float], to path:String, overwrite:Bool = false) throws
+    {
+        try Self.can(.float32(data), to: path, overwrite: overwrite)
+    }
+    static 
     func can(_ data:[SIMD4<Float>], size:(x:Int, y:Int), to path:String, overwrite:Bool = false) throws
     {
         try Self.can(.float32x4D2(data, x: size.x, y: size.y), to: path, overwrite: overwrite)
@@ -161,9 +167,19 @@ extension File
     static 
     func can(_ typed:Typed, to path:String, overwrite:Bool = false) throws 
     {
+        let w:Int = MemoryLayout<UInt32>.stride
         var buffer:[UInt8] = [0, 0, 0, 0] 
         switch typed 
         {
+        case .float32(let data):
+            buffer.reserveCapacity(w * 3 + MemoryLayout<Float>.stride * data.count)
+            buffer.append(0, asBigEndian: UInt32.self)
+            buffer.append(data.count, asBigEndian: UInt32.self)
+            for f:Float in data 
+            {
+                buffer.append(f.bitPattern, asBigEndian: UInt32.self)
+            }
+            
         case .float32x4D2(let data, x: let x, y: let y):
             guard x * y == data.count 
             else 
@@ -171,10 +187,7 @@ extension File
                 throw Error.can(path: path, message: "expected \(x) × \(y) = \(x * y) elements, but buffer is of size \(data.count)")
             }
             
-            buffer.reserveCapacity(
-                MemoryLayout<UInt32>.stride + 
-                MemoryLayout<Int>.stride * 3 + 
-                MemoryLayout<SIMD4<Float>>.stride * data.count)
+            buffer.reserveCapacity(w * 4 + MemoryLayout<SIMD4<Float>>.stride * data.count)
             buffer.append(2, asBigEndian: UInt32.self)
             buffer.append(x, asBigEndian: UInt32.self)
             buffer.append(y, asBigEndian: UInt32.self)
@@ -192,10 +205,7 @@ extension File
                 throw Error.can(path: path, message: "expected \(x) × \(y) × \(z) = \(x * y * z) elements, but buffer is of size \(data.count)")
             }
             
-            buffer.reserveCapacity(
-                MemoryLayout<UInt32>.stride + 
-                MemoryLayout<Int>.stride * 4 + 
-                MemoryLayout<SIMD4<Float>>.stride * data.count)
+            buffer.reserveCapacity(w * 5 + MemoryLayout<SIMD4<Float>>.stride * data.count)
             buffer.append(3, asBigEndian: UInt32.self)
             buffer.append(x, asBigEndian: UInt32.self)
             buffer.append(y, asBigEndian: UInt32.self)
@@ -209,7 +219,7 @@ extension File
             }
         }
         
-        let checksum:UInt32 = Self.checksum(buffer[MemoryLayout<UInt32>.stride...])
+        let checksum:UInt32 = Self.checksum(buffer[w...])
         buffer.store(checksum, asBigEndian: UInt32.self, at: 0)
         
         try Self.write(buffer, to: path, overwrite: overwrite)
@@ -218,9 +228,10 @@ extension File
     static 
     func uncan(from path:String) throws -> Typed 
     {
+        let w:Int = MemoryLayout<UInt32>.stride
         let buffer:[UInt8] = try Self.read(from: path)
         
-        guard buffer.count >= MemoryLayout<UInt32>.stride * 2 
+        guard buffer.count >= w * 2 
         else 
         {
             throw Error.uncan(path: path, message: "unexpected end-of-file (offset +\(buffer.count))")
@@ -229,7 +240,7 @@ extension File
         // validate checksum 
         let checksum:(declared:UInt32, computed:UInt32)
         checksum.declared = buffer.load(bigEndian: UInt32.self, as: UInt32.self, at: 0)
-        checksum.computed = Self.checksum(buffer[MemoryLayout<UInt32>.stride...])
+        checksum.computed = Self.checksum(buffer[w...])
         
         guard checksum.declared == checksum.computed 
         else
@@ -237,9 +248,27 @@ extension File
             throw Error.uncan(path: path, message: "invalid checksum (declared \(checksum.declared), computed \(checksum.computed))")
         }
         
-        func data(_ raw:ArraySlice<UInt8>, count:Int) throws -> [SIMD4<Float>] 
+        func loadFloat32(_ raw:ArraySlice<UInt8>) -> Float
         {
-            let expected:Int = count * MemoryLayout<SIMD4<Float>>.stride
+            let v:UInt32 = raw.load(bigEndian: UInt32.self, as: UInt32.self)
+            return .init(bitPattern: v)
+        }
+        func loadFloat32x4(_ raw:ArraySlice<UInt8>) -> SIMD4<Float> 
+        {
+            let p:Int   = raw.startIndex, 
+                Δp:Int  = MemoryLayout<Float>.stride
+            let v:(UInt32, UInt32, UInt32, UInt32) = 
+            (
+                raw[p          ..< p +     Δp].load(bigEndian: UInt32.self, as: UInt32.self),
+                raw[p +     Δp ..< p + 2 * Δp].load(bigEndian: UInt32.self, as: UInt32.self),
+                raw[p + 2 * Δp ..< p + 3 * Δp].load(bigEndian: UInt32.self, as: UInt32.self),
+                raw[p + 3 * Δp ..< p + 4 * Δp].load(bigEndian: UInt32.self, as: UInt32.self)
+            )
+            return .init(.init(bitPattern: v.0), .init(bitPattern: v.1), .init(bitPattern: v.2), .init(bitPattern: v.3))
+        }
+        func data<T>(_ raw:ArraySlice<UInt8>, count:Int, decoder:(ArraySlice<UInt8>) -> T) throws -> [T] 
+        {
+            let expected:Int = count * MemoryLayout<T>.stride
             guard raw.count == expected
             else 
             {
@@ -255,46 +284,57 @@ extension File
             
             return (0 ..< count).map 
             {
-                let p:Int = raw.startIndex + $0 * MemoryLayout<SIMD4<Float>>.stride 
-                let v:(UInt32, UInt32, UInt32, UInt32) = 
+                let p:(Int, Int) = 
                 (
-                    raw[p                                   ..< p +     MemoryLayout<Float>.stride].load(bigEndian: UInt32.self, as: UInt32.self),
-                    raw[p +     MemoryLayout<Float>.stride  ..< p + 2 * MemoryLayout<Float>.stride].load(bigEndian: UInt32.self, as: UInt32.self),
-                    raw[p + 2 * MemoryLayout<Float>.stride  ..< p + 3 * MemoryLayout<Float>.stride].load(bigEndian: UInt32.self, as: UInt32.self),
-                    raw[p + 3 * MemoryLayout<Float>.stride  ..< p + 4 * MemoryLayout<Float>.stride].load(bigEndian: UInt32.self, as: UInt32.self)
+                    raw.startIndex +  $0      * MemoryLayout<T>.stride,
+                    raw.startIndex + ($0 + 1) * MemoryLayout<T>.stride
                 )
-                return .init(.init(bitPattern: v.0), .init(bitPattern: v.1), .init(bitPattern: v.2), .init(bitPattern: v.3))
+                return decoder(raw[p.0 ..< p.1])
             }
         }
         
-        let tag:UInt32 = buffer.load(bigEndian: UInt32.self, as: UInt32.self, at: MemoryLayout<UInt32>.stride)
+        let tag:UInt32 = buffer.load(bigEndian: UInt32.self, as: UInt32.self, at: w)
         switch tag 
         {
-        case 2:
-            guard buffer.count >= 4 * MemoryLayout<UInt32>.stride 
+        case 0: // .float32 
+            guard buffer.count >= 3 * w
+            else 
+            {
+                throw Error.uncan(path: path, message: "unexpected end-of-file (offset +\(buffer.count))")
+            }
+            let count:Int               = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 2 * w)
+            
+            let tail:ArraySlice<UInt8>  = buffer[(3 * w)...]
+            let samples:[Float]         = try data(tail, count: count, decoder: loadFloat32(_:))
+            return .float32(samples)
+            
+        case 2: // .float32x4D2
+            guard buffer.count >= 4 * w
             else 
             {
                 throw Error.uncan(path: path, message: "unexpected end-of-file (offset +\(buffer.count))")
             }
             
-            let x:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 2 * MemoryLayout<UInt32>.stride),
-                y:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 3 * MemoryLayout<UInt32>.stride)
+            let x:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 2 * w),
+                y:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 3 * w)
             
-            let samples:[SIMD4<Float>] = try data(buffer[(4 * MemoryLayout<UInt32>.stride)...], count: x * y)
+            let tail:ArraySlice<UInt8> = buffer[(4 * w)...]
+            let samples:[SIMD4<Float>] = try data(tail, count: x * y, decoder: loadFloat32x4(_:))
             return .float32x4D2(samples, x: x, y: y)
         
-        case 3:
-            guard buffer.count >= 5 * MemoryLayout<UInt32>.stride 
+        case 3: // .float32x4D3
+            guard buffer.count >= 5 * w 
             else 
             {
                 throw Error.uncan(path: path, message: "unexpected end-of-file (offset +\(buffer.count))")
             }
             
-            let x:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 2 * MemoryLayout<UInt32>.stride),
-                y:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 3 * MemoryLayout<UInt32>.stride),
-                z:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 4 * MemoryLayout<UInt32>.stride) 
+            let x:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 2 * w),
+                y:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 3 * w),
+                z:Int = buffer.load(bigEndian: UInt32.self, as: Int.self, at: 4 * w) 
             
-            let samples:[SIMD4<Float>] = try data(buffer[(5 * MemoryLayout<UInt32>.stride)...], count: x * y * z)
+            let tail:ArraySlice<UInt8> = buffer[(5 * w)...]
+            let samples:[SIMD4<Float>] = try data(tail, count: x * y * z, decoder: loadFloat32x4(_:))
             return .float32x4D3(samples, x: x, y: y, z: z)
         
         default:
