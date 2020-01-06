@@ -46,33 +46,39 @@ struct UI
                                     | (multi   ? 1 : 0) << 3
                 }
                 
+                static 
+                var none:Self 
+                {
+                    .init(0)
+                }
+                
                 var shift:Bool 
                 {
-                    return self.bitfield & 1 != 0
+                    self.bitfield & 1 != 0
                 }
                 var control:Bool 
                 {
-                    return self.bitfield & 2 != 0
+                    self.bitfield & 2 != 0
                 }
                 var alt:Bool 
                 {
-                    return self.bitfield & 4 != 0
+                    self.bitfield & 4 != 0
                 }
                 var multi:Bool 
                 {
-                    return self.bitfield & 8 != 0
+                    self.bitfield & 8 != 0
                 }
                 
                 static 
                 func | (lhs:Self, rhs:Self) -> Self 
                 {
-                    return .init(lhs.bitfield | rhs.bitfield)
+                    .init(lhs.bitfield | rhs.bitfield)
                 }
                 
                 static 
                 func & (lhs:Self, rhs:Self) -> Self 
                 {
-                    return .init(lhs.bitfield & rhs.bitfield)
+                    .init(lhs.bitfield & rhs.bitfield)
                 }
             }
             
@@ -144,8 +150,8 @@ struct UI
         
         enum Action 
         {
-            case primary(Vector2<Float>) 
-            case secondary(Vector2<Float>)
+            case primary(Vector2<Float>, doubled:Bool) 
+            case secondary(Vector2<Float>, doubled:Bool)
             case drag(Vector2<Float>)
             case complete(Vector2<Float>)
             case hover(Vector2<Float>)
@@ -162,10 +168,10 @@ struct UI
             {
                 switch self 
                 {
-                case .primary(let s):
-                    return .primary(.init(s.x, h - s.y))
-                case .secondary(let s):
-                    return .secondary(.init(s.x, h - s.y))
+                case .primary(let s, let doubled):
+                    return .primary(.init(s.x, h - s.y), doubled: doubled)
+                case .secondary(let s, let doubled):
+                    return .secondary(.init(s.x, h - s.y), doubled: doubled)
                 case .drag(let s):
                     return .drag(.init(s.x, h - s.y))
                 case .complete(let s):

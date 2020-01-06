@@ -1,6 +1,4 @@
-// BinaryFloatingPoint, because we use float literals with math
-struct Quaternion<F>:Equatable, Interpolable 
-    where F:FloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar
+struct Quaternion<F>:Equatable, Interpolable where F:SwiftFloatingPoint
 {
     private 
     var q:Vector4<F> 

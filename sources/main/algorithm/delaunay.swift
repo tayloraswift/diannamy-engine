@@ -3,8 +3,7 @@ extension Algorithm
     enum Delaunay 
     {
         private 
-        struct Triangulation<F> 
-            where F:BinaryFloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar 
+        struct Triangulation<F> where F:SwiftFloatingPoint
         {
             struct Triangle 
             {
@@ -366,8 +365,7 @@ extension Algorithm
         }
         
         static 
-        func triangulate<F>(_ points:[Vector3<F>]) -> [(Int, Int, Int)] 
-            where F:BinaryFloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar 
+        func triangulate<F>(_ points:[Vector3<F>]) -> [(Int, Int, Int)] where F:SwiftFloatingPoint
         {
             let poles:(Int, Int, Int, Int, Int, Int)
             guard points.count >= 6 

@@ -1,16 +1,49 @@
-extension BinaryFloatingPoint 
-{
-    static 
-    var phi:Self 
-    {
-        (1 + (5 as Self).squareRoot()) / 2
-    }
-}
-
 enum Algorithm 
 {
-    struct FibonacciSphere<F> 
-        where F:SIMDScalar & ExpressibleByFloatLiteral & BinaryFloatingPoint & ElementaryFunctions
+    static 
+    func tangent<F>(normal:Vector3<F>) -> Vector3<F> 
+        where F:SwiftFloatingPoint
+    {
+        let tangent:Vector3<F>
+        if abs(normal.x) < abs(normal.y) 
+        {
+            if abs(normal.y) < abs(normal.z) 
+            {
+                // z is the longest component 
+                tangent = .init(normal.z, .zero, -normal.x)
+            }
+            else 
+            {
+                // y is longest component 
+                tangent = .init(.zero, -normal.z, normal.y)
+            }
+        }
+        else 
+        {
+            if abs(normal.x) < abs(normal.z) 
+            {
+                // z is the longest component 
+                tangent = .init(normal.z, .zero, -normal.x)
+            }
+            else 
+            {
+                // x is longest component 
+                tangent = .init(-normal.y, normal.x, .zero)
+            }
+        }
+        
+        return tangent.normalized()
+    }
+    static 
+    func tangents<F>(normal:Vector3<F>) -> (Vector3<F>, Vector3<F>) 
+        where F:SwiftFloatingPoint
+    {
+        let x:Vector3<F> = Self.tangent(normal: normal), 
+            y:Vector3<F> = normal >< x
+        return (x, y)
+    }
+    
+    struct FibonacciSphere<F> where F:SwiftFloatingPoint
     {
         struct Address 
         {

@@ -1,5 +1,29 @@
-struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & ElementaryFunctions & SIMDScalar
+struct Camera<F> where F:SwiftFloatingPoint
 {
+    struct Ray 
+    {
+        let source:Vector3<F>, 
+            vector:Vector3<F>
+    }
+    
+    struct Rayfilm 
+    {
+        let matrix:Matrix3<F>, 
+            source:Vector3<F>
+        
+        init(matrix:Matrix3<F>, source:Vector3<F>) 
+        {
+            self.matrix = matrix
+            self.source = source
+        }
+        
+        func cast(_ position:Vector2<F>) -> Ray
+        {
+            let vector:Vector3<F> = (self.matrix >< .extend(position, 1)).normalized()
+            return .init(source: self.source, vector: vector)
+        }
+    }
+    
     struct Matrices 
     {
         let U:Matrix4<F>, 
@@ -15,6 +39,11 @@ struct Camera<F> where F:FloatingPoint & ExpressibleByFloatLiteral & ElementaryF
         {
             return .init(U: .identity, V: .identity, F: .identity, 
                 position: .zero, frame: .zero, viewport: .zero)
+        }
+        
+        var rayfilm:Rayfilm 
+        {
+            .init(matrix: self.F, source: self.position)
         }
     }
     

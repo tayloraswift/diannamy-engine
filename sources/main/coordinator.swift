@@ -1,122 +1,8 @@
 import enum File.File
 
-/* @propertyWrapper 
-final 
-class State<Value>
-{
-    private(set)
-    var sequence:UInt = 0
-    var wrappedValue:Value 
-    {
-        didSet 
-        {
-            self.sequence &+= 1
-        }
-    }
-    var projectedValue:State
-    {
-        self 
-    }
-    
-    var binding:Binding 
-    {
-        .init(self)
-    }
-    
-    init(wrappedValue:Value) 
-    {
-        self.wrappedValue = wrappedValue
-    }
-    
-    @propertyWrapper 
-    struct Binding  
-    {
-        @State 
-        var wrappedValue:Value 
-        var projectedValue:Binding  
-        {
-            get 
-            {
-                self
-            }
-            set(binding)
-            {
-                self = binding
-            }
-        }
-        
-        private 
-        var sequence:UInt? 
-        
-        var mutated:Bool 
-        {
-            self.sequence.map{ $0 != self.$wrappedValue.sequence } ?? true
-        }
-        
-        fileprivate 
-        init(_ state:State<Value>)
-        {
-            self._wrappedValue  = state
-            self.sequence       = nil 
-        }
-        
-        mutating 
-        func update() 
-        {
-            self.sequence = self.$wrappedValue.sequence 
-        }
-        
-        mutating 
-        func reset() 
-        {
-            self.sequence = nil 
-        }
-    }
-} */
-
-
-
-/* protocol LayerController 
-{
-    func contribute(text:inout [UI.Text.DrawElement])
-    func contribute(geometry:inout [UI.Geometry.DrawElement])
-    
-    mutating 
-    func event(_ event:UI.Event, pass:UI.Event.Pass) -> Bool 
-    
-    mutating 
-    func process(delta:Int) -> Bool 
-    
-    mutating 
-    func viewport(_ viewport:Vector2<Float>)
-}
-extension LayerController 
-{
-    func contribute(text _:inout [UI.Text.DrawElement])
-    {
-    }
-    func contribute(geometry _:inout [UI.Geometry.DrawElement])
-    {
-    }
-    
-    func event(_:UI.Event, pass _:UI.Event.Pass) -> Bool 
-    {
-        return false 
-    }
-    
-    func process(delta _:Int) -> Bool 
-    {
-        return false 
-    }
-    
-    func viewport(_ viewport:Vector2<Float>) 
-    {
-    }
-} */
-
 // different view rects:
 //
-//                      window 
+//                    window 
 //            -1,1                             1,1
 //  +-----------+-------------------------------+
 //  |           |        frame                  |
@@ -345,7 +231,6 @@ class Controller//:LayerController
         
         // load and compute isolines 
         self.isolines = .init(filename: "map.json")
-        let isolines:(vertices:[Mesh.ColorVertex], indices:[UInt32]) = self.isolines.render()
         
         // GPU resources 
         self.vao.hull       = Mesh.Preset.icosahedron(inscribedRadius: 1 + 1/64)
@@ -355,9 +240,6 @@ class Controller//:LayerController
         self.vao.points.buffers.index.assign(points.indices)
         
         self.vao.isolines   = .init(vertices: .init(hint: .dynamic), indices: .init(hint: .dynamic))
-        
-        self.vao.isolines.buffers.vertex.assign(isolines.vertices)
-        self.vao.isolines.buffers.index.assign(isolines.indices)
         
         self.texture.globeAlbedo        = .init(layout: .rgba8,   magnification: .linear, minification: .linear, mipmap: .linear)
         self.texture.globeTransmittance = .init(layout: .rgba32f, magnification: .linear, minification: .linear, mipmap: nil)
@@ -498,15 +380,15 @@ class Controller//:LayerController
         {
             switch event 
             {
-            case    .primary(.down, let s, doubled: _):
+            case    .primary(.down, let s, doubled: let doubled):
                 self.focus  = self.hover
                 self.active = self.hover // self.collision(s)
-                self.active?.action(.primary(s))
+                self.active?.action(.primary(s, doubled: doubled))
                 
-            case    .secondary(.down, let s, doubled: _):
+            case    .secondary(.down, let s, doubled: let doubled):
                 self.focus  = self.hover
                 self.active = self.hover // self.collision(s)
-                self.active?.action(.secondary(s))
+                self.active?.action(.secondary(s, doubled: doubled))
                 
             case    .primary(.up, _, doubled: _), 
                     .secondary(.up, _, doubled: _):
@@ -589,53 +471,29 @@ class Controller//:LayerController
         }
         
         let matrices:Camera<Float>.Matrices = self.plane.matrices
+        self.isolines.update(matrices: matrices)
         self.ubo.camera.assign(std140: 
             .matrix4(matrices.U), 
             .matrix4(matrices.V), 
             .matrix3(matrices.F), 
             .float32x4(.extend(matrices.position, 0)))
         
-        self.isolines.update(projection: matrices.U, camera: matrices.position, center: .zero)
-        // self.ui.process(delta) 
-        // self.plane.process(delta)
-        
-        /* self._phase -= delta
-        if self._phase < 0 
+        // check if any graphics need to be refreshed 
+        if let (vertices, indices):([Mesh.ColorVertex], [UInt32]) = self.isolines.render()
         {
-            self._phase = 64
-            self.fluid.advect()
-            
-            let points:[Mesh.ColorVertex] = zip(self.fluid.sphere.points.indices, self.fluid.sphere.points).map  
-            {
-                /* let offset:Double = 0.75 * 255
-                let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))), 
-                    g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
-                    b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
-                */
-                let v:UInt8 = .init(clamping: Int.init(self.fluid[current: $0.0].mass * 24))
-                return .init(.cast($0.1), color: .init(v, v, v, .max))
-            }
-            self.points.buffers.vertex.assign(points)
-            self._mutated = true
-        } */
-        
+            self.vao.isolines.buffers.vertex.assign(vertices)
+            self.vao.isolines.buffers.index.assign(indices)
+        }
     }
     
-    func vector() -> (text:[UI.DrawElement.Text], geometry:[UI.DrawElement.Geometry]) 
+    func canvas(context:Coordinator.Context) -> UI.Canvas 
     {
-        var text:[UI.DrawElement.Text]         = []
-        var geometry:[UI.DrawElement.Geometry] = []
-        self.isolines.contribute(text: &text, geometry: &geometry)
-        self.ui.contribute(text: &text, geometry: &geometry, s: .zero) 
-        
-        return (text, geometry)
-    }
-    
-    func draw(_ context:Coordinator.Context) -> [Renderer.Command] 
-    {
+        let canvas:UI.Canvas = .init()
+        let commands:[Renderer.Command] = 
         [
             .draw(elements: 0..., of: self.vao.hull, as: .triangles, 
                 depthTest: .off,
+                depthMask: false,
                 using: context.shaders.implicitSphere,
                 [
                     // "Display"   : .block(context.display),
@@ -683,6 +541,10 @@ class Controller//:LayerController
                     "thickness" : .float32(1),
                 ]) 
         ]
+        canvas.push(layer: .overlay, commands: commands)
+        self.isolines.draw(canvas)
+        self.ui.draw(canvas, s: .zero) 
+        return canvas
     }
 } 
 
@@ -695,65 +557,131 @@ struct Coordinator
     )
     
     private 
-    let renderer:Renderer 
+    let window:GPU.FrameBuffer 
+    private 
+    let framebuffers:
+    (
+        (texture:GPU.Texture.Multisample, framebuffer:GPU.FrameBuffer),
+        (texture:GPU.Texture.D2<Void>,    framebuffer:GPU.FrameBuffer),
+        (texture:GPU.Texture.D2<Void>,    framebuffer:GPU.FrameBuffer)
+    )
+    private 
+    let vao:
+    (
+        text:GPU.Vertex.Array<UI.Canvas.Text.Vertex, UInt8>, 
+        geometry:GPU.Vertex.Array<UI.Canvas.Geometry.Vertex, UInt32>
+    )
+    private 
+    let quad:GPU.Vertex.Array<Mesh.Vertex, UInt8>
     
     private 
-    let context:Context
-    
-    let styles:UI.Styles
-    
-    private 
-    let text:GPU.Vertex.Array<UI.DrawElement.Text.Vertex, UInt8>, 
-        geometry:GPU.Vertex.Array<UI.DrawElement.Geometry.Vertex, UInt32>
+    let context:Context, 
+        styles:UI.Styles
     
     private 
     let controller:Controller 
     
     // window framebuffer size is distinct from viewport size, 
     // as multiple viewports can be tiled in the same window 
-    var window:Vector2<Int> = .zero 
+    var size:Vector2<Int> = .zero 
     {
         didSet 
         {
-            let viewport:Rectangle<Int> = .init(.zero, self.window)
+            // the window framebuffer is an empty dummy object, but we update its 
+            // size variable for consistency anyway
+            self.window.resize(self.size)
+            // the framebuffers will resize the textures for us, so we don’t need 
+            // to resize the texture handles 
+            self.framebuffers.0.framebuffer.resize(self.size)
+            self.framebuffers.1.framebuffer.resize(self.size)
+            self.framebuffers.2.framebuffer.resize(self.size)
             
-            self.context.display.assign(std140: .float32x2(.cast(self.window)))
-            self.renderer.viewport      = viewport
+            let viewport:Rectangle<Int> = .init(.zero, self.size)
+            // set the viewport variables so that `glViewport(_:_:_:_:)` gets 
+            // called with the right arguments in the rendering phase 
+            self.window.viewport                     = viewport 
+            self.framebuffers.0.framebuffer.viewport = viewport
+            self.framebuffers.1.framebuffer.viewport = viewport
+            self.framebuffers.2.framebuffer.viewport = viewport
+            
+            self.context.display.assign(std140: .float32x2(.cast(self.size)))
         }
     }
     
-    init()
+    private static 
+    func colorImage() -> GPU.Texture.D2<Void> 
     {
-        self.renderer           = .init() 
+        return .init(layout: .rgba8, magnification: .nearest, minification: .nearest, 
+            wrap: (.clamp, .clamp)) 
+    }
+    private static 
+    func colorImageMultisample(_ samples:Int) -> GPU.Texture.Multisample  
+    {
+        return .init(layout: .rgba8, samples: samples) 
+    }
+    private static 
+    func framebuffer(_ color:GPU.FrameBuffer.Image) -> GPU.FrameBuffer
+    {
+        let samples:Int 
+        switch color 
+        {
+        case .texture2(_):
+            samples = 0
+        case .texture2MS(let texture):
+            samples = texture.parameters.samples 
+        case .renderbuffer(let renderbuffer):
+            samples = renderbuffer.samples
+        }
+        let depth:GPU.RenderBuffer      = .init(layout: .depth32f, samples: samples)
+        let images:[(GPU.FrameBuffer.Attachment, GPU.FrameBuffer.Image)] = 
+        [
+            (.color, color),
+            (.depth, .renderbuffer(depth))
+        ]
+        return .init(images)
+    }
+    
+    init(multisampling samples:Int)
+    {
+        self.window         = .default
         
-        // display UBO 
-        self.context.display    = .init(hint: .dynamic, debugName: "ubo/display")
-        // compile shaders 
-        self.context.shaders    = Shader.programs()
+        self.framebuffers.0.texture     = Self.colorImageMultisample(samples) 
+        self.framebuffers.0.framebuffer = Self.framebuffer(.texture2MS(self.framebuffers.0.texture)) 
+        self.framebuffers.1.texture     = Self.colorImage() 
+        self.framebuffers.1.framebuffer = Self.framebuffer(.texture2(self.framebuffers.1.texture))
+        self.framebuffers.2.texture     = Self.colorImage() 
+        self.framebuffers.2.framebuffer = Self.framebuffer(.texture2(self.framebuffers.2.texture))
+        
+        self.vao.text       = .init(
+            vertices:   .init(hint: .streaming, debugName: "ui/text/buffers/vertex"), 
+            indices:    .init(hint: .static))
+        self.vao.geometry   = .init(
+            vertices:   .init(hint: .streaming, debugName: "ui/geometry/buffers/vertex"), 
+            indices:    .init(hint: .static,    debugName: "ui/geometry/buffers/index"))
+        
+        self.quad           = Mesh.Preset.square()
+        self.context        = 
+        (
+            // display UBO 
+            .init(hint: .dynamic, debugName: "ubo/display"), 
+            // compile shaders 
+            Shader.programs()
+        )
         
         // parse styles
         let stylesheet:[(selector:UI.Style.Selector, rules:UI.Style.Rules)]
         do 
         {
-            stylesheet = try UI.Style.Sheet.parse(path: "mapeditor")
+            stylesheet  = try UI.Style.Sheet.parse(path: "mapeditor")
         }
         catch 
         {
             Log.trace(error: error)
-            stylesheet = []
+            stylesheet  = []
         }
         
         // print(stylesheet.map{ "\($0.0)\n\($0.1)" }.joined(separator: "\n\n"))
-        self.styles = .init(stylesheet: stylesheet) 
-        
-        // UI layers 
-        self.text     = .init(
-            vertices:   .init(hint: .streaming, debugName: "ui/text/buffers/vertex"), 
-            indices:    .init(hint: .static))
-        self.geometry = .init(
-            vertices:   .init(hint: .streaming, debugName: "ui/geometry/buffers/vertex"), 
-            indices:    .init(hint: .static,    debugName: "ui/geometry/buffers/index"))
-        
+        self.styles     = .init(stylesheet: stylesheet) 
         self.controller = .init()
     }
     
@@ -765,70 +693,100 @@ struct Coordinator
     mutating 
     func process(_ delta:Int)  
     {
-        self.controller.process(delta, styles: self.styles, viewport: self.window, frame: .init(.zero, self.window)) 
+        self.controller.process(delta, styles: self.styles, 
+            viewport: self.size, frame: .init(.zero, self.size)) 
         
-        let (text, geometry):([UI.DrawElement.Text], [UI.DrawElement.Geometry]) = self.controller.vector()
-        var buffer:
-        (
-            text:[UI.DrawElement.Text.Vertex], 
-            geometry:
-            (
-                vertices:[UI.DrawElement.Geometry.Vertex], 
-                indices:[UInt32]
-            )
-        ) 
+        let canvas:UI.Canvas = self.controller.canvas(context: self.context)
+        canvas.flatten(assigning: self.vao, 
+            programs:  (text: self.context.shaders.text, geometry: self.context.shaders.xo), 
+            fontatlas:  self.styles.fonts.atlas.texture, 
+            display:    self.context.display)
         
-        buffer.geometry.indices  = []
-        buffer.geometry.indices.reserveCapacity(3 * geometry.map{ $0.triangles.count }.reduce(0, +))
-        var z:Float = -1
-        buffer.geometry.vertices = []
-        buffer.geometry.vertices.reserveCapacity(geometry.map{ $0.count }.reduce(0, +))
-        for element:UI.DrawElement.Geometry in geometry 
+        let layers:[([Renderer.Command], GPU.Program)] = canvas.layers.map 
         {
-            let base:Int = buffer.geometry.vertices.count
-            for triangle:(Int, Int, Int) in element.triangles 
+            let (layer, commands):(UI.Canvas.Layer, [Renderer.Command]) = $0
+            
+            let integrator:GPU.Program 
+            switch layer 
             {
-                buffer.geometry.indices.append(.init(triangle.0 + base))
-                buffer.geometry.indices.append(.init(triangle.1 + base))
-                buffer.geometry.indices.append(.init(triangle.2 + base))
+            case .frost:
+                fatalError()
+            case .overlay:
+                integrator = self.context.shaders.integrator.overlay
+            case .highlight:
+                integrator = self.context.shaders.integrator.highlight
             }
             
-            z = z.nextUp
-            buffer.geometry.vertices.append(contentsOf: element)
+            return (commands, integrator)
         }
-                
-        buffer.text = []
-        buffer.text.reserveCapacity(text.map{ $0.count }.reduce(0, +))
-        for element:UI.DrawElement.Text in text
+        
+        self.composite(layers)
+    }
+    
+    private 
+    func composite(_ layers:[([Renderer.Command], GPU.Program)])
+    {
+        var (foreground, background, destination):
+        (
+            (texture:GPU.Texture.Multisample, framebuffer:GPU.FrameBuffer), 
+            (texture:GPU.Texture.D2<Void>,    framebuffer:GPU.FrameBuffer),
+            
+            (texture:GPU.Texture.D2<Void>?,   framebuffer:GPU.FrameBuffer)
+        )
+        
+        foreground = self.framebuffers.0
+        background = self.framebuffers.1
+        if layers.count > 1 
         {
-            z = z.nextUp
-            buffer.text.append(contentsOf: element)
+            destination = (self.framebuffers.2.texture, self.framebuffers.2.framebuffer)
+        }
+        else 
+        {
+            destination = (nil, self.window)
         }
         
-        self.text.buffers.vertex.assign(buffer.text)
-        self.geometry.buffers.vertex.assign(buffer.geometry.vertices)
-        self.geometry.buffers.index.assign(buffer.geometry.indices)
-        
-        self.renderer.execute(
+        // initialize background background color
+        background.framebuffer.execute([])
+        for (i, (commands, integrator)):(Int, ([Renderer.Command], GPU.Program)) in 
+            layers.enumerated() 
+        {
+            foreground.framebuffer.execute(commands)
+            
+            let integration:[Renderer.Command] = 
             [
-                .clear(color: true, depth: true), 
-            ] as [Renderer.Command]
-            +
-            self.controller.draw(self.context) 
-            +
-            [
-                .clear(color: false, depth: true), 
-                .draw(elements: 0..., of: self.geometry, as: .triangles, 
-                    using: self.context.shaders.xo,
+                .draw(0..., of: self.quad, as: .triangles, 
+                    using: integrator,
                     [
-                        "Display"   : .block(self.context.display)
-                    ]), 
-                .draw(0..., of: self.text, as: .lines,
-                    using: self.context.shaders.text,  
-                    [
-                        "Display"   : .block(self.context.display), 
-                        "fontatlas" : .texture2(self.styles.fonts.atlas.texture)
+                        "background": .texture2(background.texture),
+                        "foreground": .texture2MS(foreground.texture), 
+                        "samples":    .int32(.init(foreground.texture.parameters.samples)), 
+                        "Display":    .block(self.context.display)
                     ])
-            ] as [Renderer.Command])
+            ]
+            
+            destination.framebuffer.execute(integration)
+            
+            if let combined:GPU.Texture.D2<Void> = destination.texture 
+            {
+                let next:GPU.FrameBuffer = destination.framebuffer
+                if (i == layers.count - 2)
+                {
+                    // i == N - 2
+                    destination = (nil,                self.window)
+                    background  = (combined,           next)
+                }
+                else 
+                {
+                    // i == 0 ..< N - 2
+                    destination = (background.texture, background.framebuffer)
+                    background  = (combined,           next)
+                }
+                
+            }
+            else 
+            {
+                break 
+            }
+        }
     }
 }

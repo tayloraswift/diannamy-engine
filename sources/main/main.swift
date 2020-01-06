@@ -57,8 +57,8 @@ class Context
             (context:OpaquePointer?, x:CInt, y:CInt) in
             
             let context:Context         = .reconstitute(from: context)
-            context.coordinator.window  = .cast(.init(x, y))
-        }
+            context.coordinator.size    = .cast(.init(x, y))
+        } 
 
         glfwSetCharCallback(self.backpointer)
         {
@@ -198,7 +198,7 @@ class Context
     {
         glfwSwapInterval(1)
         
-        self.coordinator.window = self.framebufferSize()
+        self.coordinator.size = self.framebufferSize()
         
         var t0:Double = glfwGetTime()
         while glfwWindowShouldClose(self.backpointer) == 0
@@ -268,7 +268,6 @@ func main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE)
     glfwWindowHint(GLFW_RESIZABLE, 1)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1)
-    glfwWindowHint(GLFW_SAMPLES, 4)
     
     guard let window:OpaquePointer = 
         glfwCreateWindow(1200, 600, "<anonymous>", nil, nil)
@@ -287,11 +286,8 @@ func main()
     typealias LoaderFunction    = (UnsafePointer<Int8>) -> UnsafeMutableRawPointer?
     let loader:LoaderFunction   = unsafeBitCast(glfwGetProcAddress, to: LoaderFunction.self)
     
-    Renderer.Backend.initialize(loader: loader, options: 
-        .debug, 
-        .clear(r: 0.1, g: 0.1, b: 0.1, a: 1), 
-        .clearDepth(-1))
-    let coordinator:Coordinator = .init()
+    Renderer.Backend.initialize(loader: loader, options: .debug)
+    let coordinator:Coordinator = .init(multisampling: 4)
     let context:Context         = .init(coordinator, backpointer: window)
     withExtendedLifetime(context)
     {

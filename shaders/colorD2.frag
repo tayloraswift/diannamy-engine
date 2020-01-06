@@ -65,4 +65,6 @@ void main()
     color           =   mask_z  * ((1 - mask_r.x) * vertex.color_inner + mask_r.x * vertex.color_outer_v) + 
                    (1 - mask_z) * ((1 - mask_r.x) * vertex.color_inner + mask_r.x * vertex.color_outer_h);
     color.a        *= 1 - mask_r.y;
+    // premultiply 
+    color.rgb      *= color.a;
 }

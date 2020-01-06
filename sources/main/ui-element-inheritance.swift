@@ -12,7 +12,8 @@ extension UI
         return (a, b, diameter)
     }
     
-    enum DrawElement 
+    final 
+    class Canvas 
     {
         struct Text:RandomAccessCollection
         {
@@ -316,6 +317,186 @@ extension UI
                 return .init(vertices: vertices, triangles: triangles, s0: s)
             }
         }
+        
+        enum Layer:CaseIterable 
+        {
+            case frost // stencil blur effect 
+            case overlay 
+            case highlight 
+        }
+        private(set)
+        var vector:[Layer: (text:[Text], geometry:[Geometry])], 
+            layers:[(Layer, [Renderer.Command])]
+        
+        func push(layer:Layer, commands:[Renderer.Command]) 
+        {
+            // merge indentical-adjacent layers to cut down the number of compositing passes
+            if  let last:Layer = self.layers.last?.0, 
+                last == layer 
+            {
+                self.layers[self.layers.endIndex - 1].1.append(.clear(color: false, depth: true))
+                self.layers[self.layers.endIndex - 1].1.append(contentsOf: commands)
+            }
+            else 
+            {
+                self.layers.append((layer, commands))
+            }
+        }
+        func text(_ text:Text, layer:Layer = .overlay) 
+        {
+            self.vector[layer, default: ([], [])].text.append(text)
+        }
+        func geometry(_ geometry:Geometry, layer:Layer = .overlay) 
+        {
+            self.vector[layer, default: ([], [])].geometry.append(geometry)
+        }
+        
+        init()
+        {
+            self.vector = [:]
+            self.layers = []
+        }
+        
+        private 
+        func capacities() -> (text:Int, geometry:(Int, indices:Int)) 
+        {
+            var capacity:(text:Int, geometry:(Int, indices:Int)) = (0, (0, 0))
+            for (text, geometry):([Text], [Geometry]) in self.vector.values 
+            {
+                for text:Text in text 
+                {
+                    capacity.text              += text.count 
+                }
+                for geometry:Geometry in geometry 
+                {
+                    capacity.geometry.0        += geometry.count 
+                    capacity.geometry.indices  += 3 * geometry.triangles.count
+                }
+            }
+            return capacity
+        }
+        private 
+        func assign(to vao:
+            (
+            text:GPU.Vertex.Array<UI.Canvas.Text.Vertex, UInt8>, 
+            geometry:GPU.Vertex.Array<UI.Canvas.Geometry.Vertex, UInt32>
+            )) 
+            -> [Layer: (text:Range<Int>, geometry:Range<Int>)]
+        {
+            var buffer:
+            (
+                text:[UI.Canvas.Text.Vertex], 
+                geometry:
+                (
+                    vertices:[UI.Canvas.Geometry.Vertex], 
+                    indices:[UInt32]
+                ) 
+            ) 
+            var ranges:[Layer: (text:Range<Int>, geometry:Range<Int>)] = [:]
+            
+            let capacity:(text:Int, geometry:(Int, indices:Int)) = self.capacities()
+            // fill geometry first so we can compute monotonically increasing z values
+            buffer.geometry.indices     = []
+            buffer.geometry.indices.reserveCapacity(capacity.geometry.indices)
+            buffer.geometry.vertices    = []
+            buffer.geometry.vertices.reserveCapacity(capacity.geometry.0)
+            
+            buffer.text                 = []
+            buffer.text.reserveCapacity(capacity.text)
+            for layer:Layer in Layer.allCases 
+            {
+                guard let (text, geometry):([Text], [Geometry]) = self.vector[layer]
+                else 
+                {
+                    continue 
+                }
+                
+                let base:(text:Int, geometry:Int) = 
+                (
+                    buffer.text.count, 
+                    buffer.geometry.indices.count 
+                )
+                var z:Float = -1
+                for element:UI.Canvas.Geometry in geometry 
+                {
+                    let base:Int = buffer.geometry.vertices.count
+                    for triangle:(Int, Int, Int) in element.triangles 
+                    {
+                        buffer.geometry.indices.append(.init(triangle.0 + base))
+                        buffer.geometry.indices.append(.init(triangle.1 + base))
+                        buffer.geometry.indices.append(.init(triangle.2 + base))
+                    }
+                    
+                    z = z.nextUp
+                    buffer.geometry.vertices.append(contentsOf: element)
+                }
+                        
+                for element:UI.Canvas.Text in text
+                {
+                    z = z.nextUp
+                    buffer.text.append(contentsOf: element)
+                }
+                
+                ranges[layer] = 
+                (
+                    text:       base.text     ..< buffer.text.count,
+                    geometry:   base.geometry ..< buffer.geometry.indices.count
+                )
+            }
+            
+            vao.text.buffers.vertex.assign(buffer.text)
+            vao.geometry.buffers.vertex.assign(buffer.geometry.vertices)
+            vao.geometry.buffers.index.assign(buffer.geometry.indices)
+            
+            return ranges
+        }
+        
+        func flatten(assigning vao:
+            (
+            text:GPU.Vertex.Array<UI.Canvas.Text.Vertex, UInt8>, 
+            geometry:GPU.Vertex.Array<UI.Canvas.Geometry.Vertex, UInt32>
+            ), 
+            programs:(text:GPU.Program, geometry:GPU.Program), 
+            fontatlas:GPU.Texture.D2<UInt8>, 
+            display:GPU.Buffer.Uniform<UInt8>)
+        {
+            let ranges:[Layer: (text:Range<Int>, geometry:Range<Int>)] = self.assign(to: vao)
+            for layer:Layer in Layer.allCases 
+            {
+                guard let (text, geometry):(Range<Int>, Range<Int>) = ranges[layer]
+                else 
+                {
+                    continue 
+                }
+                
+                var commands:[Renderer.Command] = []
+                if !geometry.isEmpty 
+                {
+                    commands.append(.draw(elements: geometry, 
+                        of: vao.geometry, 
+                        as: .triangles, 
+                        using: programs.geometry,
+                        [
+                            "Display"   : .block(display)
+                        ]))
+                }
+                if !text.isEmpty 
+                {
+                    commands.append(.draw(text, 
+                        of: vao.text, 
+                        as: .lines,
+                        using: programs.text,  
+                        [
+                            "Display"   : .block(display), 
+                            "fontatlas" : .texture2(fontatlas)
+                        ]))
+                }
+                self.push(layer: layer, commands: commands)
+            }
+            
+            // clear vector commands, since it has been merged into the normal layers 
+            self.vector = [:]
+        }
     }
 }
 
@@ -398,6 +579,24 @@ extension UI
         // Group conformance 
         final 
         var state:(focus:Bool, active:Bool, hover:Bool) = (false, false, false)
+        
+        var pseudoclasses:Set<UI.Style.PseudoClass> 
+        {
+            var pseudoclasses:Set<UI.Style.PseudoClass> = []
+            if self.state.hover 
+            {
+                pseudoclasses.insert(.hover)
+            }
+            if self.state.focus 
+            {
+                pseudoclasses.insert(.focus)
+            }
+            if self.state.active 
+            {
+                pseudoclasses.insert(.active)
+            }
+            return pseudoclasses
+        }
         //
         
         init(identifier:String?, classes:Set<String>, style:UI.Style.Rules)
@@ -440,10 +639,7 @@ extension UI
         {
         }
         
-        func contribute(
-            text     _:inout [UI.DrawElement.Text], 
-            geometry _:inout [UI.DrawElement.Geometry], 
-            s        _:Vector2<Float>) 
+        func draw(_:UI.Canvas, s _:Vector2<Float>) 
         {
         }
     }
@@ -640,12 +836,9 @@ extension UI.Element
         }
         
         final override
-        func contribute(
-            text    :inout [UI.DrawElement.Text], 
-            geometry:inout [UI.DrawElement.Geometry], 
-            s      _:Vector2<Float>) 
+        func draw(_ canvas:UI.Canvas, s _:Vector2<Float>) 
         {
-            let shape:UI.DrawElement.Geometry = .rectangle(
+            let shape:UI.Canvas.Geometry = .rectangle(
                 at:      self.s,
                 content: self.size,
                 padding: self.computedStyle.padding, 
@@ -654,17 +847,17 @@ extension UI.Element
                 crease:  self.computedStyle.crease, 
                 color:  (self.computedStyle.backgroundColor, self.computedStyle.borderColor))
             
-            geometry.append(shape)
+            canvas.geometry(shape)
             
             for element:UI.Element in self.elements 
             {
-                element.contribute(text: &text, geometry: &geometry, s: self.s)
+                element.draw(canvas, s: self.s)
             }
         }
         
         /* final 
         func frame(rectangle:Rectangle<Int>, definitions:inout UI.Styles) 
-            -> (text:[UI.DrawElement.Text], geometry:[UI.DrawElement.Geometry])?
+            -> (text:[UI.Canvas.Text], geometry:[UI.Canvas.Geometry])?
         {
             self.restyle(definitions: &definitions, prefix: .init())
             let _ = self.raiseFlags()
@@ -682,9 +875,9 @@ extension UI.Element
             }
             if recompute != .no 
             {
-                var text:[UI.DrawElement.Text]         = []
-                var geometry:[UI.DrawElement.Geometry] = []
-                self.contribute(text: &text, geometry: &geometry, s0: .cast(self.offset)) 
+                var text:[UI.Canvas.Text]         = []
+                var geometry:[UI.Canvas.Geometry] = []
+                self.draw(canvas, s0: .cast(self.offset)) 
                 return (text, geometry)
             }
             else 
@@ -1089,6 +1282,25 @@ extension UI.Element
             }
         }
     }
+    
+    class StickyButton:UI.Element.Button 
+    {
+        // indicator is purely cosmetic, it is the responsibility of the 
+        // button manager to keep it in sync with ground truth
+        final 
+        var indicator:Bool = false
+        
+        override
+        var pseudoclasses:Set<UI.Style.PseudoClass> 
+        {
+            var pseudoclasses:Set<UI.Style.PseudoClass> = super.pseudoclasses
+            if self.indicator 
+            {
+                pseudoclasses.insert(.indicating)
+            }
+            return pseudoclasses
+        }
+    }
 }
 
 
@@ -1138,14 +1350,11 @@ extension UI.Element
         }
         
         final override 
-        func contribute(
-            text    :inout [UI.DrawElement.Text], 
-            geometry:inout [UI.DrawElement.Geometry], 
-            s       :Vector2<Float>) 
+        func draw(_ canvas:UI.Canvas, s:Vector2<Float>) 
         {
-            super.contribute(text: &text, geometry: &geometry, s: s)
+            super.draw(canvas, s: s)
             
-            text.append(.init(
+            canvas.text(.init(
                 vertices:   self.vertices, 
                 s0:         self.computedStyle.offset + s, 
                 r0:         self.computedStyle.trace,

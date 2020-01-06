@@ -9,7 +9,13 @@ enum Shader
         
         colorPoints:    GPU.Program,
         colorLines:     GPU.Program,
-        colorTriangles: GPU.Program
+        colorTriangles: GPU.Program, 
+        
+        integrator:
+        (
+            overlay:GPU.Program,
+            highlight:GPU.Program
+        )
     )
     
     private static 
@@ -89,6 +95,25 @@ enum Shader
                 debugName: "diannamy://engine/shaders/color-vertex.triangles*")
         }
         
+        
+        programs.integrator.overlay = supervise 
+        {
+            return try .init(
+                [
+                    (.vertex,   "shaders/integrators/identity.vert"),
+                    (.fragment, "shaders/integrators/overlay.frag"),
+                ], 
+                debugName: "diannamy://engine/shaders/integrators/overlay*")
+        }
+        programs.integrator.highlight = supervise 
+        {
+            return try .init(
+                [
+                    (.vertex,   "shaders/integrators/identity.vert"),
+                    (.fragment, "shaders/integrators/highlight.frag"),
+                ], 
+                debugName: "diannamy://engine/shaders/integrators/highlight*")
+        }
         return programs
     }
 }

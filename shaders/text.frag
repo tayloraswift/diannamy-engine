@@ -17,5 +17,6 @@ out vec4 color;
 
 void main()
 {
-    color = vec4(vertex.color.rgb, vertex.color.a * texture(fontatlas, vertex.texture).r);
+    float h = texture(fontatlas, vertex.texture).r;
+    color   = vec4(vertex.color.rgb * vertex.color.a, vertex.color.a) * h;
 }

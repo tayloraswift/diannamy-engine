@@ -61,6 +61,27 @@ enum Mesh
     enum Preset 
     {
         static 
+        func square(_ k:Float = 1) -> GPU.Vertex.Array<Vertex, UInt8>
+        {
+            let vertices:[Vertex] = 
+            [
+                .init(.init( k,  k, 0, 0)),
+                .init(.init(-k,  k, 0, 0)),
+                .init(.init(-k, -k, 0, 0)),
+                
+                .init(.init(-k, -k, 0, 0)),
+                .init(.init( k, -k, 0, 0)), 
+                .init(.init( k,  k, 0, 0))
+            ]
+            
+            let vao:GPU.Vertex.Array<Vertex, UInt8> = .init(
+                vertices:   .init(hint: .static, debugName: "mesh/presets/square/buffers/vertex"), 
+                indices:    .init(hint: .static))
+            
+            vao.buffers.vertex.assign(vertices)
+            return vao
+        }
+        static 
         func cube(_ k:Float = 1) -> GPU.Vertex.Array<Vertex, UInt8>
         {
             let vertices:[Vertex] = 

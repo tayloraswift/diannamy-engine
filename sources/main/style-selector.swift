@@ -2,7 +2,7 @@ extension UI.Style
 {
     enum PseudoClass 
     {
-        case hover, focus, active 
+        case hover, focus, active, indicating
         
         init?(string:String) 
         {
@@ -14,6 +14,8 @@ extension UI.Style
                 self = .focus 
             case "active":
                 self = .active 
+            case "indicating":
+                self = .indicating 
             default:
                 return nil 
             }
@@ -147,19 +149,7 @@ extension UI.Style
                 self.element        = type(of: element) 
                 self.classes        = element.classes
                 self.identifier     = element.identifier
-                self.pseudoclasses  = []
-                if element.state.hover 
-                {
-                    self.pseudoclasses.insert(.hover)
-                }
-                if element.state.focus 
-                {
-                    self.pseudoclasses.insert(.focus)
-                }
-                if element.state.active 
-                {
-                    self.pseudoclasses.insert(.active)
-                }
+                self.pseudoclasses  = element.pseudoclasses
             }
             init(element:Any.Type, classes:Set<String>, identifier:String?, pseudoclasses:Set<PseudoClass>)  
             {

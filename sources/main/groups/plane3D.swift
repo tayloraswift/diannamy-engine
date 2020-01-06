@@ -22,34 +22,7 @@ extension Editor
             case orbit(  orientation:Quaternion<Float>,     // the original orientation of the trackball
                               radius:Float,                 // the original radius of the trackball
                               anchor:Vector3<Float>,        // the part of the trackball clicked 
-                             rayfilm:Rayfilm)               // the original configuration of the view plane
-        }
-        
-        
-        private 
-        struct Ray 
-        {
-            let source:Vector3<Float>, 
-                vector:Vector3<Float>
-        }
-        
-        private 
-        struct Rayfilm 
-        {
-            let matrix:Matrix3<Float>, 
-                source:Vector3<Float>
-            
-            init(matrix:Matrix3<Float>, source:Vector3<Float>) 
-            {
-                self.matrix = matrix
-                self.source = source
-            }
-            
-            func cast(_ position:Vector2<Float>) -> Ray
-            {
-                let vector:Vector3<Float> = (self.matrix >< .extend(position, 1)).normalized()
-                return .init(source: self.source, vector: vector)
-            }
+                             rayfilm:Camera<Float>.Rayfilm) // the original configuration of the view plane
         }
         
         // UI.Group 
@@ -102,10 +75,10 @@ extension Editor.Plane3D:UI.Group
         let action:UI.Event.Action = action.reflect(vertical: self.matrices.viewport.y)
         switch action 
         {
-        case .primary(let s):
+        case .primary(let s, doubled: _):
             self.move(.orbit(s))
         
-        case .secondary(_):
+        case .secondary(_, doubled: _):
             break 
         
         case .drag(let s):
@@ -117,7 +90,7 @@ extension Editor.Plane3D:UI.Group
             
             self.animation.charge(time: 64)
             {
-                let b:Vector3<Float>    = Self.project(ray: rayfilm.cast(s), on: $0.center, radius: radius), 
+                let b:Vector3<Float>    = Algorithm.project(ray: rayfilm.cast(s), onSphere: ($0.center, radius)), 
                     q:Quaternion<Float> = .init(from: anchor, to: (b - $0.center).normalized())
                 $0.orientation = q.inverse >< orientation
             } 
@@ -162,9 +135,9 @@ extension Editor.Plane3D
     }
     
     private 
-    var rayfilm:Rayfilm 
+    var rayfilm:Camera<Float>.Rayfilm 
     {
-        return .init(matrix: self.matrices.F, source: self.matrices.position)
+        self.matrices.rayfilm
     }
     
     // project a point into 2D (normalized 0 ... 1 x 0 ... 1 coordinates )
@@ -173,13 +146,6 @@ extension Editor.Plane3D
         let h:Vector4<Float>    = self.matrices.U >< .extend(point, 1), 
             clip:Vector2<Float> = .init(h.x, h.y) / h.w
         return 0.5 + 0.5 * clip
-    }
-    
-    func project(_ position:Vector2<Float>, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
-    {
-        let ray:Ray             = self.rayfilm.cast(position), 
-            p:Vector3<Float>    = Self.project(ray: ray, on: center, radius: r)
-        return p
     }
     
     private  
@@ -191,12 +157,12 @@ extension Editor.Plane3D
             self.animation.stop()
             let rig:Camera<Float>.Rig = self.animation.current 
             // save the current rayfilm
-            let rayfilm:Rayfilm  = self.rayfilm, 
-                ray:Ray          = rayfilm.cast(s), 
-                c:Vector3<Float> = rig.center - ray.source, 
+            let rayfilm:Camera<Float>.Rayfilm = self.rayfilm,
+                ray:Camera<Float>.Ray         = rayfilm.cast(s)
+            let c:Vector3<Float> = rig.center - ray.source, 
                 l:Float          = c <> ray.vector, 
                 r:Float          = max(1, (c <> c - l * l).squareRoot()), 
-                a:Vector3<Float> = Self.project(ray: ray, on: rig.center, radius: r)
+                a:Vector3<Float> = Algorithm.project(ray: ray, onSphere: (rig.center, r))
             self.action = .orbit(orientation: rig.orientation, 
                                       radius: r, 
                                       anchor: (a - rig.center).normalized(), 
@@ -247,45 +213,5 @@ extension Editor.Plane3D
         }
         
         self.animation.charge(time: 256, transform: body)
-    }
-    
-    private static 
-    func project(ray:Ray, on center:Vector3<Float>, radius r:Float) -> Vector3<Float>
-    {
-        // need to deal with case of sphere not centered at origin
-        let c:Vector3<Float>    = center - ray.source, 
-            l:Float             = c <> ray.vector
-        
-        let a:Float 
-        
-        let c2:Float            = c <> c
-        let discriminant:Float  = r * r + l * l - c2
-        if discriminant < 0 
-        {
-            // sin(C - B - A)   = sin C cos -B cos -A + sin -B cos -A cos C + sin -A cos C cos -B - sin C sin -B sin -A
-            //                  = sin C cos B cos A - sin B cos A cos C - sin A cos C cos B - sin C sin B sin A
-            // sin(π - B - A)   = sin π cos B cos A - sin B cos A cos π - sin A cos π cos B - sin π sin B sin A
-            //                  = sin B cos A + sin A cos B
-            //            sin C = sin B cos A + sin A cos B
-            //                  = sqrt(1 - cos^2 B) cos A + sqrt(1 - cos^2 A) cos B
-            
-            //            sin A = h / c 
-            //                  = sqrt(c^2 - r^2) / c
-            //                a = c sin A / sin C
-            //                  = c sin A / (sin B cos A + sin A cos B)
-            // 
-            // this is numerically stable for A, B >> 0, which will be satisfied so long 
-            // as the camera is not too far from the planet that the disk reduces to a point.
-            let h:Float  = (c2 - r * r).squareRoot(), 
-                g:Float  = c.normalized() <> ray.vector
-                
-            a = c2.squareRoot() * h / (r * (1 - g * g).squareRoot() + g * h)
-        }
-        else 
-        {
-            a = l - discriminant.squareRoot()
-        }
-        
-        return ray.source + a * ray.vector
     }
 }

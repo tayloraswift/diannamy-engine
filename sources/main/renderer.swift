@@ -163,6 +163,11 @@ protocol _GPUAnyTextureTarget
     {
         get 
     }
+    
+    var parameters:[(key:OpenGL.Enum, value:OpenGL.Enum)]
+    {
+        get
+    }
 }
 
 protocol _GPUAnyTextureD2:GPU.AnyTexture 
@@ -938,31 +943,155 @@ enum GPU
             case nearest, linear
         }
         
+        enum Wrap 
+        {
+            case `repeat`, clamp
+            
+            fileprivate 
+            var code:OpenGL.Enum
+            {
+                switch self 
+                {
+                case .repeat:
+                    return OpenGL.REPEAT 
+                case .clamp:
+                    return OpenGL.CLAMP_TO_EDGE
+                }
+            }
+        }
+        
         typealias AnyTarget = _GPUAnyTextureTarget
         enum Target 
         {
-            enum D2:AnyTarget 
+            private static 
+            func filtering(_ filter:(magnification:Filter, minification:Filter, mipmap:Filter?))
+                -> (minification:OpenGL.Enum, magnification:OpenGL.Enum)
+            {
+                let code:(minification:OpenGL.Enum, magnification:OpenGL.Enum)
+                switch (filter.minification, filter.mipmap) 
+                {
+                case (.nearest, nil):
+                    code.minification = OpenGL.NEAREST 
+                case (.linear, nil):
+                    code.minification = OpenGL.LINEAR
+                case (.nearest, .nearest):
+                    code.minification = OpenGL.NEAREST_MIPMAP_NEAREST 
+                case (.nearest, .linear):
+                    code.minification = OpenGL.NEAREST_MIPMAP_LINEAR
+                
+                case (.linear, .nearest):
+                    code.minification = OpenGL.LINEAR_MIPMAP_NEAREST
+                case (.linear, .linear):
+                    code.minification = OpenGL.LINEAR_MIPMAP_LINEAR
+                }
+                switch filter.magnification 
+                {
+                case .nearest:
+                    code.magnification = OpenGL.NEAREST 
+                case .linear:
+                    code.magnification = OpenGL.LINEAR
+                }
+                
+                return code 
+            }
+            struct Multisample:AnyTarget 
+            {
+                static 
+                var code:OpenGL.Enum 
+                {
+                    OpenGL.TEXTURE_2D_MULTISAMPLE
+                }
+                
+                let samples:Int
+                
+                var parameters:[(key:OpenGL.Enum, value:OpenGL.Enum)]
+                {
+                    []
+                }
+            }
+            struct D2:AnyTarget 
             {
                 static 
                 var code:OpenGL.Enum 
                 {
                     OpenGL.TEXTURE_2D
                 }
+                
+                let filter:(magnification:Filter, minification:Filter, mipmap:Filter?)
+                let wrap:(x:Wrap, y:Wrap)
+                
+                var parameters:[(key:OpenGL.Enum, value:OpenGL.Enum)]
+                {
+                    let code:(minification:OpenGL.Enum, magnification:OpenGL.Enum) = 
+                        filtering(self.filter)
+                    return 
+                        [
+                        (OpenGL.TEXTURE_MAG_FILTER, code.magnification), 
+                        (OpenGL.TEXTURE_MIN_FILTER, code.minification), 
+                        (OpenGL.TEXTURE_WRAP_S, self.wrap.x.code),
+                        (OpenGL.TEXTURE_WRAP_T, self.wrap.y.code),
+                        ]
+                }
+                
+                var mipmap:Bool 
+                {
+                    self.filter.mipmap != nil
+                }
             }
-            enum D3:AnyTarget 
+            struct D3:AnyTarget 
             {
                 static 
                 var code:OpenGL.Enum 
                 {
                     OpenGL.TEXTURE_3D
                 }
+                
+                let filter:(magnification:Filter, minification:Filter, mipmap:Filter?)
+                let wrap:(x:Wrap, y:Wrap, z:Wrap)
+                
+                var parameters:[(key:OpenGL.Enum, value:OpenGL.Enum)]
+                {
+                    let code:(minification:OpenGL.Enum, magnification:OpenGL.Enum) = 
+                        filtering(self.filter)
+                    return 
+                        [
+                        (OpenGL.TEXTURE_MAG_FILTER, code.magnification), 
+                        (OpenGL.TEXTURE_MIN_FILTER, code.minification), 
+                        (OpenGL.TEXTURE_WRAP_S, self.wrap.x.code),
+                        (OpenGL.TEXTURE_WRAP_T, self.wrap.y.code),
+                        (OpenGL.TEXTURE_WRAP_R, self.wrap.z.code),
+                        ]
+                }
+                
+                var mipmap:Bool 
+                {
+                    self.filter.mipmap != nil
+                }
             }
-            enum Cube:AnyTarget 
+            struct Cube:AnyTarget 
             {
                 static 
                 var code:OpenGL.Enum 
                 {
                     OpenGL.TEXTURE_CUBE_MAP
+                }
+                
+                let filter:(magnification:Filter, minification:Filter, mipmap:Filter?)
+                
+                var parameters:[(key:OpenGL.Enum, value:OpenGL.Enum)]
+                {
+                    let code:(minification:OpenGL.Enum, magnification:OpenGL.Enum) = 
+                        filtering(self.filter)
+                    return 
+                        [
+                        (OpenGL.TEXTURE_MAG_FILTER, code.magnification), 
+                        (OpenGL.TEXTURE_MIN_FILTER, code.minification), 
+                        ]
+                }
+                
+                var mipmap:Bool 
+                {
+                    self.filter.mipmap != nil
                 }
             }
         }
@@ -991,37 +1120,31 @@ enum GPU
                 }
             }
             
-            func set(magnification:Filter, minification:Filter, mipmap:Filter?) 
+            func set(_ parameters:Target) 
             {
-                let code:(minification:OpenGL.Enum, magnification:OpenGL.Enum)
-                switch (minification, mipmap) 
+                // set type-specific parameters 
+                for (key, value):(OpenGL.Enum, OpenGL.Enum) in parameters.parameters 
                 {
-                case (.nearest, nil):
-                    code.minification = OpenGL.NEAREST 
-                case (.linear, nil):
-                    code.minification = OpenGL.LINEAR
-                case (.nearest, .nearest):
-                    code.minification = OpenGL.NEAREST_MIPMAP_NEAREST 
-                case (.nearest, .linear):
-                    code.minification = OpenGL.NEAREST_MIPMAP_LINEAR
-                
-                case (.linear, .nearest):
-                    code.minification = OpenGL.LINEAR_MIPMAP_NEAREST
-                case (.linear, .linear):
-                    code.minification = OpenGL.LINEAR_MIPMAP_LINEAR
+                    OpenGL.glTexParameteri(Target.code, key, value)
                 }
-                switch magnification 
-                {
-                case .nearest:
-                    code.magnification = OpenGL.NEAREST 
-                case .linear:
-                    code.magnification = OpenGL.LINEAR
-                }
-                
-                OpenGL.glTexParameteri(Target.code, OpenGL.TEXTURE_MAG_FILTER, code.magnification)
-                OpenGL.glTexParameteri(Target.code, OpenGL.TEXTURE_MIN_FILTER, code.minification)
             }
             
+            func reserve(_ size:Vector2<Int>, layout:Layout, samples:Int)
+            {
+                let size:Vector2<OpenGL.Size> = .cast(size)
+                OpenGL.glTexImage2DMultisample(Target.code, .init(samples), layout.storage, 
+                    size.x, size.y, true)
+            }
+            func reserve(_ size:Vector2<Int>, layout:Layout, mipmap:Bool)
+            {
+                let size:Vector2<OpenGL.Size> = .cast(size)
+                OpenGL.glTexImage2D(Target.code, 0, layout.storage, 
+                    size.x, size.y, 0, layout.layout, layout.type, nil)
+                if mipmap 
+                {
+                    OpenGL.glGenerateMipmap(Target.code)
+                }
+            }
             func assign<Atom>(_ data:Array2D<Atom>, layout:Layout, mipmap:Bool)
             {
                 let size:Vector2<OpenGL.Size> = .cast(data.size)
@@ -1063,6 +1186,7 @@ enum GPU
         typealias AnyD2         = _GPUAnyTextureD2
         typealias AnyD3         = _GPUAnyTextureD3
         typealias AnyCube       = _GPUAnyTextureCube
+        typealias Multisample   = Texture<Target.Multisample, Void>
         typealias D2<Element>   = Texture<Target.D2, Element>
         typealias D3<Element>   = Texture<Target.D3, Element>
         typealias Cube<Element> = Texture<Target.Cube, Element>
@@ -1071,11 +1195,11 @@ enum GPU
         class Texture<Target, Element>:AnyTexture where Target:AnyTarget
         {
             private 
-            let layout:Layout, 
-                mipmap:Bool
+            let layout:Layout
             
             fileprivate 
             let core:Core<Target>
+            let parameters:Target
             
             // `AnyTexture` conformance 
             static 
@@ -1094,19 +1218,16 @@ enum GPU
             }
             let debugName:String 
             
-            init(layout:Layout, 
-                magnification:Filter, 
-                minification:Filter, 
-                mipmap:Filter? = nil, 
-                debugName:String = "<anonymous>") 
+            fileprivate 
+            init(layout:Layout, parameters:Target, debugName:String = "<anonymous>") 
             {
                 self.layout     = layout 
-                self.mipmap     = mipmap != nil 
                 self.core       = .create()
+                self.parameters = parameters
                 self.debugName  = debugName
                 Manager.Texture.with(self) 
                 {
-                    self.core.set(magnification: magnification, minification: minification, mipmap: mipmap)
+                    self.core.set(parameters)
                 }
             }
             
@@ -1286,6 +1407,7 @@ enum GPU
             case matrix3    (Matrix3<Float>)
             case matrix4    (Matrix4<Float>)
             
+            case texture2MS (Texture.Multisample)
             case texture2   (Texture.AnyD2)
             case texture3   (Texture.AnyD3)
             case textureCube(Texture.AnyCube)
@@ -1347,6 +1469,7 @@ enum GPU
                         .matrix3    (let value as Any),
                         .matrix4    (let value as Any),
                 
+                        .texture2MS (let value as Any),
                         .texture2   (let value as Any),
                         .texture3   (let value as Any),
                         .textureCube(let value as Any):
@@ -1397,6 +1520,8 @@ enum GPU
                 case (.matrix4    (let v1), .matrix4    (let v2)):
                     return v1 == v2
                 
+                case (.texture2MS (let t1), .texture2MS (let t2)):
+                    return t1 === t2
                 case (.texture2   (let t1), .texture2   (let t2)):
                     return t1 === t2
                 case (.texture3   (let t1), .texture3   (let t2)):
@@ -1426,7 +1551,7 @@ enum GPU
                     case uint32, uint32x2, uint32x3, uint32x4
                     
                     case matrix2, matrix3, matrix4
-                    case texture2, texture3, textureCube
+                    case texture2MS, texture2, texture3, textureCube
                     case block(size:Int)
                     
                     fileprivate 
@@ -1469,6 +1594,8 @@ enum GPU
                         case .matrix4:
                             metatype = Matrix4<Float>.self
                         
+                        case .texture2MS:
+                            metatype = Texture.Multisample.self 
                         case .texture2:
                             metatype = Texture.AnyD2.self 
                         case .texture3:
@@ -1607,6 +1734,17 @@ enum GPU
                         ]
                         OpenGL.glUniformMatrix4fv(parameter.location, 16, false, flattened)
                     
+                    // separate case handling because compiler crash
+                    case    (.texture2MS,   .texture2MS (let texture)):
+                        if let index:Int = Manager.Texture.pin(texture) 
+                        {
+                            OpenGL.glUniform1i(parameter.location, .init(index))
+                        }
+                        else 
+                        {
+                            Log.error("could not push texture constant '\(texture.debugName)' to texture parameter '\(parameter.name)' (no free texture units)")
+                            OpenGL.glUniform1i(parameter.location, -1)
+                        }
                     case    (.texture2,     .texture2   (let texture as AnyTexture)), 
                             (.texture3,     .texture3   (let texture as AnyTexture)),
                             (.textureCube,  .textureCube(let texture as AnyTexture)):
@@ -1736,6 +1874,8 @@ enum GPU
                         case OpenGL.FLOAT_MAT4:
                             type = .matrix4
                         
+                        case OpenGL.SAMPLER_2D_MULTISAMPLE:
+                            type = .texture2MS
                         case OpenGL.SAMPLER_2D:
                             type = .texture2
                         case OpenGL.SAMPLER_3D:
@@ -1944,34 +2084,466 @@ enum GPU
             self.core.push(constants: constants)
         }
     }
+    
+    final 
+    class RenderBuffer 
+    {
+        enum Layout 
+        {
+            case depth32f
+            case depth24stencil8
+            
+            fileprivate 
+            var storage:OpenGL.Enum 
+            {
+                switch self 
+                {
+                case .depth32f:
+                    return OpenGL.DEPTH_COMPONENT32F
+                case .depth24stencil8:
+                    return OpenGL.DEPTH24_STENCIL8
+                }
+            }
+        }
+        
+        fileprivate 
+        struct Core 
+        {
+            let buffer:OpenGL.UInt 
+            
+            static 
+            func create() -> Self 
+            {
+                let buffer:OpenGL.UInt = directReturn(default: 0) 
+                {
+                    OpenGL.glGenRenderbuffers(1, $0)
+                }
+                return .init(buffer: buffer)
+            }
+            
+            func destroy()
+            {
+                withUnsafePointer(to: self.buffer)
+                {
+                    OpenGL.glDeleteRenderbuffers(1, $0)
+                }
+            }
+            
+            func set(storage layout:Layout, size:Vector2<Int>, samples:Int) 
+            {
+                let size:Vector2<OpenGL.Size> = .cast(size)
+                OpenGL.glRenderbufferStorageMultisample(OpenGL.RENDERBUFFER, .init(samples), 
+                    layout.storage, size.x, size.y)
+            }
+        }
+        
+        fileprivate 
+        let core:Core 
+        let layout:Layout
+        let debugName:String 
+        
+        private 
+        var size:Vector2<Int>
+        let samples:Int 
+        
+        init(layout:Layout, 
+            size:Vector2<Int> = .zero, 
+            samples:Int, 
+            debugName:String = "<anonymous>") 
+        {
+            self.core       = .create()
+            self.layout     = layout 
+            self.size       = .zero 
+            self.samples    = samples 
+            self.debugName  = debugName
+            
+            self.resize(size) // will only happen if `size != .zero`
+        }
+        
+        deinit 
+        {
+            self.core.destroy()
+        }
+        
+        func resize(_ size:Vector2<Int>) 
+        {
+            guard size != self.size 
+            else 
+            {
+                return 
+            }
+            
+            self.bind()
+            self.core.set(storage: self.layout, size: size, samples: self.samples)
+            self.size = size
+        }
+        
+        fileprivate 
+        func bind() 
+        {
+            if let old:RenderBuffer = Manager.RenderBuffer.bound
+            {
+                guard old !== self 
+                else 
+                {
+                    return 
+                }
+            }
+            
+            OpenGL.glBindRenderbuffer(OpenGL.RENDERBUFFER, self.core.buffer)
+            Manager.RenderBuffer.bound = self
+        }
+    }
+    
+    final 
+    class FrameBuffer 
+    {
+        enum Image 
+        {
+            case texture2(Texture.D2<Void>)
+            case texture2MS(Texture.Multisample)
+            case renderbuffer(RenderBuffer)
+        }
+        
+        enum Attachment
+        {
+            case color 
+            case depth
+            case stencil 
+            case depthStencil
+            
+            fileprivate 
+            var code:OpenGL.Enum 
+            {
+                switch self 
+                {
+                case .color:
+                    return OpenGL.COLOR_ATTACHMENT0
+                case .depth:
+                    return OpenGL.DEPTH_ATTACHMENT
+                case .stencil:
+                    return OpenGL.STENCIL_ATTACHMENT
+                case .depthStencil:
+                    return OpenGL.DEPTH_STENCIL_ATTACHMENT
+                }
+            }
+        }
+        
+        fileprivate 
+        struct Core 
+        {
+            let buffer:OpenGL.UInt 
+            
+            static 
+            func create() -> Self 
+            {
+                let buffer:OpenGL.UInt = directReturn(default: 0) 
+                {
+                    OpenGL.glGenFramebuffers(1, $0)
+                }
+                return .init(buffer: buffer)
+            }
+            
+            func destroy()
+            {
+                withUnsafePointer(to: self.buffer)
+                {
+                    OpenGL.glDeleteFramebuffers(1, $0)
+                }
+            }
+            
+            func attach(_ texture:AnyTexture, as attachment:Attachment)
+            {
+                OpenGL.glFramebufferTexture2D(OpenGL.FRAMEBUFFER, attachment.code, 
+                    type(of: texture).target.code, texture.texture, 0)
+            }
+            func attach(_ renderbuffer:RenderBuffer, as attachment:Attachment)
+            {
+                OpenGL.glFramebufferRenderbuffer(OpenGL.FRAMEBUFFER, attachment.code, 
+                    OpenGL.RENDERBUFFER, renderbuffer.core.buffer)
+            }
+        }
+        
+        fileprivate 
+        let core:Core 
+        let debugName:String 
+        
+        private 
+        let images:[(Attachment, Image)]
+        private 
+        var size:Vector2<Int>
+        var viewport:Rectangle<Int> // publically settable 
+        {
+            didSet 
+            {
+                guard self.viewport.b.x <= self.size.x, self.viewport.b.y <= self.size.y
+                else 
+                {
+                    Log.warning("viewport \(self.viewport) overruns framebuffer '\(self.debugName)' of size \(self.size)")
+                    return
+                }
+            }
+        }
+        
+        private 
+        init(core:Core, images:[(Attachment, Image)], 
+            size:Vector2<Int>, viewport:Rectangle<Int>, debugName:String)
+        {
+            self.core       = core
+            self.images     = images 
+            self.size       = size 
+            self.viewport   = viewport 
+            self.debugName  = debugName
+        }
+        
+        static 
+        let `default`:FrameBuffer = .init(core: .init(buffer: 0), images: [], 
+            size: .zero, viewport: .zero, debugName: "diannamy://framebuffers/default")
+        
+        convenience
+        init(_ images:[(Attachment, Image)], size:Vector2<Int> = .zero, debugName:String = "<anonymous>") 
+        {
+            self.init(core: .create(), images: images, size: .zero, viewport: .zero, debugName: debugName)
+            self.resize(size) 
+            
+            // attach images 
+            self.with 
+            {
+                // validate matching MSAA levels 
+                var samples:Int? = nil 
+                for (attachment, image):(Attachment, Image) in $0.images 
+                {
+                    let next:Int 
+                    switch image 
+                    {
+                    case .texture2(let texture):
+                        next = 0
+                        $0.core.attach(texture, as: attachment)
+                    case .texture2MS(let texture):
+                        next = texture.parameters.samples
+                        $0.core.attach(texture, as: attachment)
+                    case .renderbuffer(let renderbuffer):
+                        next = renderbuffer.samples
+                        $0.core.attach(renderbuffer, as: attachment)
+                    }
+                    if let current:Int = samples
+                    {
+                        guard current == next 
+                        else 
+                        {
+                            Log.error("Framebuffer images have different MSAA counts")
+                            continue 
+                        }
+                    } 
+                    samples = next
+                }
+                
+                let status:OpenGL.Enum = OpenGL.glCheckFramebufferStatus(OpenGL.FRAMEBUFFER)
+                guard status == OpenGL.FRAMEBUFFER_COMPLETE
+                else 
+                {
+                    let message:String
+                    switch status 
+                    {
+                    case OpenGL.FRAMEBUFFER_UNDEFINED:
+                        message = "default framebuffer does not exist"
+                    case OpenGL.FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+                        message = "incomplete attachment"
+                    case OpenGL.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+                        message = "no attached images"
+                    case OpenGL.FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+                        message = "incomplete draw buffer"
+                    case OpenGL.FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+                        message = "incomplete read buffer"
+                    case OpenGL.FRAMEBUFFER_UNSUPPORTED:
+                        message = "unsupported format"
+                    case OpenGL.FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+                        message = "incomplete multisample"
+                    case OpenGL.FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+                        message = "incomplete layer targets"
+                    default:
+                        message = "unknown error (\(status))"
+                    }
+                    Log.error("failed to create framebuffer, \(message)")
+                    return 
+                }
+            }
+        }
+        
+        deinit 
+        {
+            self.core.destroy()
+        }
+        
+        func resize(_ size:Vector2<Int>) 
+        {
+            // invalid to have framebuffer images with size of 0
+            let size:Vector2<Int> = .max(size, .init(1, 1))
+            // texture objects do not track their own size, so this check makes it  
+            // so that we are not constantly reallocating them. (renderbuffer objects 
+            // track their size internally.)
+            guard size != self.size 
+            else 
+            {
+                return 
+            }
+            
+            for (_, image):(Attachment, Image) in self.images 
+            {
+                switch image 
+                {
+                case .texture2(let texture):
+                    texture.reserve(size)
+                case .texture2MS(let texture):
+                    texture.reserve(size)
+                case .renderbuffer(let renderbuffer):
+                    renderbuffer.resize(size)
+                }
+            }
+            self.size = size
+        }
+        
+        private 
+        func with<R>(_ body:(FrameBuffer) throws -> R) rethrows -> R
+        {
+            let old:FrameBuffer = Manager.FrameBuffer.bound 
+            
+            if old !== self 
+            {
+                defer 
+                {
+                    OpenGL.glBindFramebuffer(OpenGL.FRAMEBUFFER, old.core.buffer)
+                    Manager.FrameBuffer.bound = old 
+                }
+                
+                OpenGL.glBindFramebuffer(OpenGL.FRAMEBUFFER, self.core.buffer)
+                Manager.FrameBuffer.bound = self
+                
+                return try body(self)
+            }
+            else 
+            {
+                return try body(self)
+            }
+        }
+        
+        fileprivate 
+        func bind() 
+        {
+            guard Manager.FrameBuffer.bound !== self 
+            else 
+            {
+                return 
+            }
+            
+            OpenGL.glBindFramebuffer(OpenGL.FRAMEBUFFER, self.core.buffer)
+            Manager.FrameBuffer.bound = self
+            
+            for (attachment, image):(Attachment, Image) in self.images 
+            {
+                switch image 
+                {
+                case .texture2(let texture):
+                    self.core.attach(texture, as: attachment)
+                case .texture2MS(let texture):
+                    self.core.attach(texture, as: attachment)
+                case .renderbuffer(let renderbuffer):
+                    self.core.attach(renderbuffer, as: attachment)
+                }
+            }
+        }
+    }
 }
-extension GPU.Texture.D2:GPU.Texture.AnyD2
+
+extension GPU.Texture.Multisample
 {
+    convenience 
+    init(layout:GPU.Texture.Layout, 
+        samples:Int, 
+        debugName:String = "<anonymous>") 
+    {
+        let parameters:Target = .init(samples: samples)
+        self.init(layout: layout, parameters: parameters, debugName: debugName)
+    }
+    
+    func reserve(_ size:Vector2<Int>)
+    {
+        GPU.Manager.Texture.with(self) 
+        {
+            self.core.reserve(size, layout: self.layout, samples: self.parameters.samples)
+        }
+    }
+}
+extension GPU.Texture.Texture:GPU.Texture.AnyD2 where Target == GPU.Texture.Target.D2
+{
+    convenience 
+    init(layout:GPU.Texture.Layout, 
+        magnification:GPU.Texture.Filter, 
+        minification:GPU.Texture.Filter, 
+        mipmap:GPU.Texture.Filter? = nil, 
+        wrap:(x:GPU.Texture.Wrap, y:GPU.Texture.Wrap) = (.repeat, .repeat),
+        debugName:String = "<anonymous>") 
+    {
+        let parameters:Target = .init(filter: (magnification, minification, mipmap), wrap: wrap)
+        self.init(layout: layout, parameters: parameters, debugName: debugName)
+    }
+    
+    func reserve(_ size:Vector2<Int>)
+    {
+        GPU.Manager.Texture.with(self) 
+        {
+            self.core.reserve(size, layout: self.layout, mipmap: self.parameters.mipmap)
+        }
+    }
+    
     func assign(_ data:Array2D<Element>)
     {
         GPU.Manager.Texture.with(self) 
         {
-            self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
+            self.core.assign(data, layout: self.layout, mipmap: self.parameters.mipmap)
         }
     }
 }
-extension GPU.Texture.D3:GPU.Texture.AnyD3
+extension GPU.Texture.Texture:GPU.Texture.AnyD3 where Target == GPU.Texture.Target.D3
 {
+    convenience 
+    init(layout:GPU.Texture.Layout, 
+        magnification:GPU.Texture.Filter, 
+        minification:GPU.Texture.Filter, 
+        mipmap:GPU.Texture.Filter? = nil, 
+        wrap:(x:GPU.Texture.Wrap, y:GPU.Texture.Wrap, z:GPU.Texture.Wrap) = (.repeat, .repeat, .repeat),
+        debugName:String = "<anonymous>") 
+    {
+        let parameters:Target = .init(filter: (magnification, minification, mipmap), wrap: wrap)
+        self.init(layout: layout, parameters: parameters, debugName: debugName)
+    }
+    
     func assign(_ data:Array3D<Element>)
     {
         GPU.Manager.Texture.with(self) 
         {
-            self.core.assign(data, layout: self.layout, mipmap: self.mipmap)
+            self.core.assign(data, layout: self.layout, mipmap: self.parameters.mipmap)
         }
     }
 }
-extension GPU.Texture.Cube:GPU.Texture.AnyCube
+extension GPU.Texture.Texture:GPU.Texture.AnyCube where Target == GPU.Texture.Target.Cube
 {
+    convenience 
+    init(layout:GPU.Texture.Layout, 
+        magnification:GPU.Texture.Filter, 
+        minification:GPU.Texture.Filter, 
+        mipmap:GPU.Texture.Filter? = nil, 
+        debugName:String = "<anonymous>") 
+    {
+        let parameters:Target = .init(filter: (magnification, minification, mipmap))
+        self.init(layout: layout, parameters: parameters, debugName: debugName)
+    }
+    
     func assign(cubemap data:Array2D<Element>)
     {
         GPU.Manager.Texture.with(self) 
         {
-            self.core.assign(cubemap: data, layout: self.layout, mipmap: self.mipmap)
+            self.core.assign(cubemap: data, layout: self.layout, mipmap: self.parameters.mipmap)
         }
     }
 }
@@ -2285,6 +2857,16 @@ extension GPU
             static 
             var bound:GPU.Program? = nil
         }
+        enum RenderBuffer 
+        {
+            static 
+            var bound:GPU.RenderBuffer? = nil
+        }
+        enum FrameBuffer 
+        {
+            static 
+            var bound:GPU.FrameBuffer = .default
+        }
         
         enum Texture:StateManager
         {
@@ -2524,46 +3106,54 @@ extension GPU
     }
 }
 
-
-final 
-class Renderer 
+extension GPU.FrameBuffer 
 {
-    var viewport:Rectangle<Int> = .zero 
-    
-    init() 
+    func execute(_ commands:[Renderer.Command])
     {
+        let viewport:Rectangle<Int> = self.viewport 
+        self.with 
+        {
+            _ in 
+            Self.execute(commands, viewport: viewport)
+        }
     }
     
-    func execute(_ commands:[Command]) 
+    private static 
+    func execute(_ commands:[Renderer.Command], viewport:Rectangle<Int>) 
     {
-        let a:Vector2<Int32> = .cast(self.viewport.a),
-            s:Vector2<Int32> = .cast(self.viewport.size)
+        let a:Vector2<Int32> = .cast(viewport.a),
+            s:Vector2<Int32> = .cast(viewport.size)
         OpenGL.glViewport(a.x, a.y, s.x, s.y)
+        // always clear the framebuffer 
+        OpenGL.glClear(OpenGL.COLOR_BUFFER_BIT | OpenGL.DEPTH_BUFFER_BIT)
         // should really do some sorting
         var state:
         (
             program:GPU.Program?, 
             arguments:[String: GPU.Program.Constant], 
             
-            blendMode:Command.BlendMode,
-            depthTest:Command.DepthTest, 
+            depthTest:Renderer.Command.DepthTest, 
+            depthMask:Bool,
             cull:Bool, 
             multisample:Bool 
         )
         
-        OpenGL.glDisable(OpenGL.DEPTH_TEST)
-        OpenGL.glDisable(OpenGL.MULTISAMPLE)
         OpenGL.glEnable(OpenGL.BLEND)
-        OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
+        OpenGL.glBlendFunc(OpenGL.ONE, OpenGL.ONE_MINUS_SRC_ALPHA)
         OpenGL.glBlendEquation(OpenGL.FUNC_ADD)
+        OpenGL.glDisable(OpenGL.DEPTH_TEST)
+        //OpenGL.glColorMask(true)
+        OpenGL.glDepthMask(true)
+        OpenGL.glDisable(OpenGL.CULL_FACE)
+        OpenGL.glDisable(OpenGL.MULTISAMPLE)
         
         state.program       = nil 
         state.arguments     = [:] 
-        state.blendMode     = .mix 
         state.depthTest     = .off 
+        state.depthMask     = true
         state.cull          = false 
         state.multisample   = false 
-        for command:Command in commands 
+        for command:Renderer.Command in commands 
         {
             switch command 
             {
@@ -2593,21 +3183,9 @@ class Renderer
                     }
                 } 
                 
-                if command.blend != state.blendMode 
+                if command.depthTest != state.depthTest 
                 {
-                    switch command.blend 
-                    {
-                    case .mix:
-                        OpenGL.glBlendFunc(OpenGL.SRC_ALPHA, OpenGL.ONE_MINUS_SRC_ALPHA)
-                    case .add:
-                        OpenGL.glBlendFunc(OpenGL.ONE, OpenGL.ONE)
-                    }
-                    state.blendMode = command.blend
-                }
-                
-                if command.depth != state.depthTest 
-                {
-                    switch (state.depthTest, command.depth) 
+                    switch (state.depthTest, command.depthTest) 
                     {
                     case (.off, .off):
                         break 
@@ -2619,7 +3197,7 @@ class Renderer
                         break
                     }
                     
-                    switch command.depth 
+                    switch command.depthTest 
                     {
                     case .never:
                         OpenGL.glDepthFunc(OpenGL.NEVER)
@@ -2640,7 +3218,20 @@ class Renderer
                     case .off:
                         break
                     }
-                    state.depthTest = command.depth
+                    state.depthTest = command.depthTest
+                }
+                
+                if command.depthMask != state.depthMask 
+                {
+                    if command.depthMask
+                    {
+                        OpenGL.glDepthMask(true)
+                    }
+                    else 
+                    {
+                        OpenGL.glDepthMask(false)
+                    }
+                    state.depthMask = command.depthMask 
                 }
                 
                 if command.cull != state.cull 
@@ -2686,21 +3277,15 @@ class Renderer
         }
     }
 }
-extension Renderer 
+
+final 
+class Renderer 
 {
     enum Backend 
     {
         enum Option 
         {
             case debug
-            case clear(r:Float, g:Float, b:Float, a:Float)
-            case clearDepth(Double)
-            
-            static 
-            func clear(color:Vector4<Float>) -> Self 
-            {
-                return .clear(r: color.x, g: color.y, b: color.z, a: color.w)
-            }
         }
         
         private static 
@@ -2724,16 +3309,12 @@ extension Renderer
                 {
                 case .debug:
                     Self.enableDebugOutput()
-                
-                case .clear(r: let r, g: let g, b: let b, a: let a):
-                    OpenGL.glClearColor(r, g, b, a)
-                
-                case .clearDepth(let depth):
-                    OpenGL.glClearDepth(depth)
                 }
             }
             
             // options always set to constant value 
+            OpenGL.glClearColor(0, 0, 0, 0)
+            OpenGL.glClearDepth(-1)
             OpenGL.glPolygonMode(OpenGL.FRONT_AND_BACK, OpenGL.FILL)
             OpenGL.glCullFace(OpenGL.BACK)
             OpenGL.glFrontFace(OpenGL.CCW)
@@ -2791,11 +3372,6 @@ extension Renderer
 {
     enum Command 
     {
-        enum BlendMode 
-        {
-            case mix, add 
-        }
-
         enum DepthTest
         {
             case off, 
@@ -2818,8 +3394,8 @@ extension Renderer
             let indexed:Bool
             let primitive:GPU.Primitive
             
-            let blend:BlendMode
-            let depth:DepthTest 
+            let depthTest:DepthTest 
+            let depthMask:Bool
             let cull:Bool
             let multisample:Bool
         }
@@ -2832,8 +3408,8 @@ extension Renderer
             of vertexArray:GPU.Vertex.AnyArray, 
             as primitive:GPU.Primitive, 
             
-            blendMode:BlendMode = .mix, 
             depthTest:DepthTest = .greaterEqual, 
+            depthMask:Bool      = true, 
             cull:Bool           = true, 
             multisample:Bool    = false, 
             
@@ -2850,8 +3426,8 @@ extension Renderer
                 indexed: true, 
                 primitive: primitive, 
                 
-                blend: blendMode, 
-                depth: depthTest, 
+                depthTest: depthTest, 
+                depthMask: depthMask,
                 cull: cull, 
                 multisample: multisample 
                 )
@@ -2862,8 +3438,8 @@ extension Renderer
             of vertexArray:GPU.Vertex.AnyArray, 
             as primitive:GPU.Primitive, 
             
-            blendMode:BlendMode = .mix, 
             depthTest:DepthTest = .greaterEqual, 
+            depthMask:Bool      = true, 
             cull:Bool           = true, 
             multisample:Bool    = false, 
             
@@ -2880,8 +3456,8 @@ extension Renderer
                 indexed: false, 
                 primitive: primitive, 
                 
-                blend: blendMode, 
-                depth: depthTest, 
+                depthTest: depthTest, 
+                depthMask: depthMask,
                 cull: cull, 
                 multisample: multisample 
                 )
