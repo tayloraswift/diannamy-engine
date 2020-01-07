@@ -1670,25 +1670,60 @@ extension UI
     {
         struct FontLibrary 
         {
+            enum Symbol:Int
+            {
+                enum Size:Int, CaseIterable 
+                {
+                    case x1 = 0
+                    case x2
+                    
+                    var value:Int 
+                    {
+                        switch self 
+                        {
+                        case .x1:
+                            return 16 
+                        case .x2:
+                            return 32
+                        }
+                    }
+                }
+                
+                // this is hardcoded to correspond to the indexing produced by 
+                // fontforge when exporting ttfs. the first 3 glyphs are always empty
+                case plus = 3
+                case minus 
+                case magnet 
+            }
             private 
-            let fonts:[Style.FontSelection: Typeface.Font]
+            let fonts:
+            (
+                unicode:[Style.FontSelection: Typeface.Font], 
+                symbol:[Typeface.Font]
+            )
             let atlas:Atlas 
             
             init(_ selections:[Style.FontSelection]) 
             {
+                let levels:[Style.FontSelection] = Symbol.Size.allCases.map 
+                {
+                    .init(fontfile: "Emblem.ttf", size: $0.value)
+                }
+                
                 let fonts:[Typeface.Font]
-                (self.atlas, fonts) = Typeface.assemble(selections)
+                (self.atlas, fonts) = Typeface.assemble(selections + levels)
                 print("rendered \(selections.count) fonts:")
                 print(selections.enumerated().map{ "    [\($0.0)]: \($0.1)" }.joined(separator: "\n"))
-                self.fonts = .init(uniqueKeysWithValues: zip(selections, fonts))
+                self.fonts.unicode = .init(uniqueKeysWithValues: zip(selections, fonts))
+                self.fonts.symbol  = .init(fonts.suffix(levels.count))
             }
             
             subscript(selection:Style.FontSelection) -> Typeface.Font 
             {
-                guard let font:Typeface.Font = self.fonts[selection]
+                guard let font:Typeface.Font = self.fonts.unicode[selection]
                 else 
                 {
-                    guard let font:Typeface.Font = self.fonts.first?.value
+                    guard let font:Typeface.Font = self.fonts.unicode.first?.value
                     else 
                     {
                         Log.fatal("no fallback fonts")
@@ -1698,6 +1733,11 @@ extension UI
                     return font 
                 }
                 return font
+            }
+            
+            subscript(symbols size:Symbol.Size) -> Typeface.Font
+            {
+                self.fonts.symbol[size.rawValue]
             }
         }
         

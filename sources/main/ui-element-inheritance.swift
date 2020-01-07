@@ -40,8 +40,8 @@ extension UI
             
             // 3D tracing is disabled using a (.nan, .nan, .nan) triple
             let vertices:[(s:Vector2<Float>, t:Vector2<Float>)]
-            let s0:Vector2<Float>, 
-                r0:Vector3<Float>, 
+            var s0:Vector2<Float>
+            let r0:Vector3<Float>, 
                 color:Vector4<UInt8>
             
             //var z:Float = 0
@@ -63,6 +63,35 @@ extension UI
                     t: (          t).tuple, 
                     r: (self.r0    ).tuple, 
                     c:  self.color.tuple)
+            }
+            
+            static 
+            func symbol(_ symbol:UI.Styles.FontLibrary.Symbol, at size:UI.Styles.FontLibrary.Symbol.Size, 
+                color:Vector4<UInt8>, 
+                offset:Vector2<Float> = .zero,
+                styles:UI.Styles)
+                -> Self 
+            {
+                let font:Typeface.Font = styles.fonts[symbols: size]
+                let (s, t):(s:Rectangle<Float>, t:Rectangle<Float>) = 
+                    Self.glyph(symbol.rawValue, of: font, styles: styles)
+                return .init(vertices: [(s: s.a + offset, t: t.a), (s: s.b + offset, t: t.b)], 
+                    s0: .zero, r0: .init(repeating: .nan), color: color)
+            }
+            
+            // used to render symbols from emblem font 
+            private static 
+            func glyph(_ index:Int, of font:Typeface.Font, styles:UI.Styles) 
+                -> (s:Rectangle<Float>, t:Rectangle<Float>)
+            {
+                let sort:Typeface.Font.SortInfo = font.sorts[index]
+                // convert 64-point fractional units to ints to floats 
+                let a:Vector2<Float> = .cast(sort.vertices.a &>> 6), 
+                    b:Vector2<Float> = .cast(sort.vertices.b &>> 6)
+                
+                let s:Rectangle<Float> = .init(a, b), 
+                    t:Rectangle<Float> = styles.fonts.atlas[sort.sprite]
+                return (s, t)
             }
         }
         

@@ -1,8 +1,6 @@
-// import PNG 
+import PNG 
 
-// now that Texture has reference semantics, can we downgrade this to a struct?
-final 
-class Atlas 
+struct Atlas 
 {
     let texture:GPU.Texture.D2<UInt8> 
     
@@ -64,10 +62,18 @@ class Atlas
             position.y += row.last?.1.size.y ?? 0
         }
         
-        /* try!    PNG.encode(v: packed.buffer, 
+        do 
+        {
+            try PNG.encode(v: packed.buffer, 
                         size: (packed.size.x, packed.size.y), 
                           as: .v8, 
-                        path: "fontatlas-debug.png") */
+                        path: "fontatlas-debug.png") 
+        }
+        catch 
+        {
+            Log.trace(error: error)
+        }
+        
         Log.note("rendered font atlas of \(sprites.count) glyphs, \(packed.buffer.count >> 10) KB")
         
         let texture:GPU.Texture.D2<UInt8> = .init(
@@ -80,10 +86,6 @@ class Atlas
         
         self.texture = texture 
         self.sprites = sprites 
-    }
-    
-    deinit 
-    {
     }
     
     private static 

@@ -32,7 +32,7 @@ button
     background-color: rgba(255, 255, 255, 0)
     border-color: rgb(255, 255, 255)
     border-radius: 50
-    crease: false true
+    // crease: false true
     padding: 4 12 10
     
     grow: 0

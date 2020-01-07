@@ -219,6 +219,20 @@ extension Algorithm
             }
         }
         
+        func save(filename:String) 
+        {
+            do 
+            {
+                let encoder:Foundation.JSONEncoder  = .init()
+                let data:Foundation.Data = try encoder.encode(self)
+                try File.write(.init(data), to: filename, overwrite: true)
+            }
+            catch 
+            {
+                Log.trace(error: error)
+            }
+        }
+        
         func distance(to x:Vector3<Double>) -> Double 
         {
             var minimum:Double = .infinity

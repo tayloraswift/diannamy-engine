@@ -3,6 +3,29 @@ extension Editor
     final 
     class Isolines
     {
+        // visual constants 
+        private 
+        enum Constants 
+        {
+            static 
+            let color:
+            (
+                new:Vector3<UInt8>,
+                moving:Vector3<UInt8>,
+                selected:Vector3<UInt8>,
+                preselected:Vector3<UInt8>,
+                adjacent:Vector3<UInt8>
+            ) 
+            = 
+            (
+                .init(255, 120,   0), 
+                .init(255,  60,   0), 
+                .init(255,   0,  40), 
+                .init(255,   0, 100),
+                .init(255, 255, 255)
+            )
+        }
+        
         private 
         enum Edit 
         {
@@ -42,6 +65,13 @@ extension Editor
             preselected:UI.Canvas.Geometry,
             adjacent:UI.Canvas.Geometry
         )
+        private 
+        var symbol:
+        (
+            plus:UI.Canvas.Text, 
+            _:Void
+        )? 
+        = nil
         
         private 
         var edit:Edit = .select(nil)
@@ -75,34 +105,32 @@ extension Editor
             self.model = .init(filename: filename)
             self.view  = .init()
             
+            func ring(_ color:Vector3<UInt8>, alpha:(UInt8, UInt8)) -> UI.Canvas.Geometry 
+            {
+                .rectangle(at: .zero, 
+                    padding: .init(5), 
+                    border: .init(2), 
+                    radius: 100, 
+                    color: (fill: .extend(color, alpha.0), border: .extend(color, alpha.1)))
+            }
+            
             self.indicator = 
             (
-                .rectangle(at: .zero, 
-                    padding: .init(5), 
-                    border: .init(2), 
-                    radius: 100, 
-                    color: (fill: .init(255, 120, 0, 0), border: .init(255, 120, 0, .max))),
-                .rectangle(at: .zero, 
-                    padding: .init(5), 
-                    border: .init(2), 
-                    radius: 100, 
-                    color: (fill: .init(255, 60, 0, 0), border: .init(255, 60, 0, .max))),
-                .rectangle(at: .zero, 
-                    padding: .init(5), 
-                    border: .init(2), 
-                    radius: 100, 
-                    color: (fill: .init(255, 0, 40, 0), border: .init(255, 0, 40, .max))),
-                .rectangle(at: .zero, 
-                    padding: .init(5), 
-                    border: .init(2), 
-                    radius: 100, 
-                    color: (fill: .init(255, 0, 100, 0), border: .init(255, 0, 100, .max))),
-                .rectangle(at: .zero, 
-                    padding: .init(5), 
-                    border: .init(2), 
-                    radius: 100, 
-                    color: (fill: .init(.max, .max, .max, 0), border: .init(.max, .max, .max, 100)))
+                ring(Constants.color.new,           alpha: (.min, .max)), 
+                ring(Constants.color.moving,        alpha: (.min, .max)), 
+                ring(Constants.color.selected,      alpha: (.min, .max)), 
+                ring(Constants.color.preselected,   alpha: (.min, .max)), 
+                ring(Constants.color.adjacent,      alpha: (.min,  100))
             )
+        }
+        
+        func reinit(filename:String) 
+        {
+            self.model          = .init(filename: filename)
+            self.view           = .init()
+            self.edit           = .select(nil)
+            self.preselected    = nil 
+            self.projected      = []
         }
         
         // should be called after self.update(_:style:viewport:frame) for the same renderframe
@@ -198,6 +226,12 @@ extension Editor
                 {
                     self.indicator.new.s0           = s
                     canvas.geometry(self.indicator.new, layer: .highlight)
+                    
+                    if var symbol:UI.Canvas.Text    = self.symbol?.plus
+                    {
+                        symbol.s0                   = s 
+                        canvas.text(symbol, layer: .highlight)
+                    }
                 }
                 fixed       = selected 
                 occupied    = selected 
@@ -211,8 +245,14 @@ extension Editor
                 }
                 if  let s:Vector2<Float>            = s 
                 {
-                    self.indicator.new.s0           = s
+                    self.indicator.new.s0           = s 
                     canvas.geometry(self.indicator.new, layer: .highlight)
+                    
+                    if var symbol:UI.Canvas.Text    = self.symbol?.plus
+                    {
+                        symbol.s0                   = s 
+                        canvas.text(symbol, layer: .highlight)
+                    }
                 }
                 
                 return 
@@ -453,9 +493,19 @@ extension Editor.Isolines:UI.Group
         }
     }
     
-    func update(_:Int, styles _:UI.Styles, viewport:Vector2<Int>, frame _:Rectangle<Int>)
+    func update(_:Int, styles:UI.Styles, viewport:Vector2<Int>, frame _:Rectangle<Int>)
     {
         self.viewport = .cast(viewport)
+        
+        // render the emblems, if they haven’t already been rendered 
+        if self.symbol == nil 
+        {
+            let plus:UI.Canvas.Text = .symbol(.magnet, at: .x1, color: .extend(Constants.color.new, .max), 
+                offset: .init(4, -4), 
+                styles: styles)
+            
+            self.symbol = (plus, ())
+        }
     }
     
     var cursor:(inactive:UI.Cursor, active:UI.Cursor)

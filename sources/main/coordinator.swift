@@ -116,12 +116,16 @@ class Controller//:LayerController
     private 
     let buttons:
     (
+        save:UI.Element.Button,
+        reload:UI.Element.Button,
         renormalize:UI.Element.Button,
         background:UI.Element.Button, 
         bake:UI.Element.Button, 
         
         labels:
         (
+            save:UI.Element.P,
+            reload:UI.Element.P,
             renormalize:UI.Element.P,
             background:UI.Element.P,
             bake:UI.Element.P
@@ -131,6 +135,8 @@ class Controller//:LayerController
     var allButtons:[UI.Element.Button] 
     {
         [
+            self.buttons.save,
+            self.buttons.reload,
             self.buttons.renormalize,
             self.buttons.background,
             self.buttons.bake,
@@ -182,9 +188,6 @@ class Controller//:LayerController
         nil 
     )
     
-    // private 
-    // var _phase:Int = 0
-    
     init() 
     {
         let plane:Editor.Plane3D = .init(.init(
@@ -197,15 +200,21 @@ class Controller//:LayerController
         self.plane                      = plane
         
         // ui elements 
+        self.buttons.labels.save        = .init([.init("Save")])
+        self.buttons.labels.reload      = .init([.init("Reload")])
         self.buttons.labels.renormalize = .init([.init("Renormalize")])
         self.buttons.labels.background  = .init([.init("Background")])
         self.buttons.labels.bake        = .init([.init("Bake")])
         
+        self.buttons.save               = .init([self.buttons.labels.save])
+        self.buttons.reload             = .init([self.buttons.labels.reload])
         self.buttons.renormalize        = .init([self.buttons.labels.renormalize])
         self.buttons.background         = .init([self.buttons.labels.background])
         self.buttons.bake               = .init([self.buttons.labels.bake])
         
-        let toolbar:UI.Element.Div      = .init([self.buttons.0, self.buttons.1, self.buttons.2], identifier: "toolbar")
+        let toolbar:UI.Element.Div      = .init(
+            [self.buttons.0, self.buttons.1, self.buttons.2, self.buttons.3, self.buttons.4], 
+            identifier: "toolbar")
         let container:UI.Element.Div    = .init([toolbar], identifier: "container")
         self.ui = UI.Element.Div.init([container])
         
@@ -413,6 +422,16 @@ class Controller//:LayerController
             }
         }
         
+        save:
+        if self.buttons.save.click > 0 
+        {
+            self.isolines.model.save(filename: "map.json")
+        }
+        reload:
+        if self.buttons.reload.click > 0 
+        {
+            self.isolines.reinit(filename: "map.json")
+        }
         background:
         if self.buttons.background.click > 0 
         {
