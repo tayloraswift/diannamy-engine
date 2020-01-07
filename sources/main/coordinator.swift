@@ -131,17 +131,6 @@ class Controller//:LayerController
             bake:UI.Element.P
         )
     )
-    private 
-    var allButtons:[UI.Element.Button] 
-    {
-        [
-            self.buttons.save,
-            self.buttons.reload,
-            self.buttons.renormalize,
-            self.buttons.background,
-            self.buttons.bake,
-        ]
-    }
     
     // GPU resources
     private 
@@ -174,6 +163,71 @@ class Controller//:LayerController
     private 
     var _active:Int = 0, 
         _activeTriangle:Int = 0 
+    
+    // button callbacks 
+    private 
+    var save:Bool = false 
+    {
+        didSet 
+        {
+            if self.save 
+            {
+                self.isolines.model.save(filename: "map.json")
+                self.save = false 
+            }
+        }
+    }
+    private 
+    var reload:Bool = false 
+    {
+        didSet 
+        {
+            if self.reload 
+            {
+                self.isolines.reinit(filename: "map.json")
+                self.reload = false 
+            }
+        }
+    }
+    private 
+    var background:Bool = false 
+    {
+        didSet 
+        {
+            // we cannot use a `defer` block to clear the state variable, because 
+            // the `defer` will trigger infinite recursion through the `didSet` observer
+            guard self.background, self.depot.cubemap.progress == nil  
+            else 
+            {
+                self.background = false 
+                return 
+            }
+            self.depot.cubemap.progress = 0
+            Terrain.background(cylindrical: "assets/textures/blue-marble-cylindrical.png", self, 
+                progress:   \.depot.cubemap.progress, 
+                return:     \.depot.cubemap.value)
+            self.background = false 
+        }
+    }
+    private 
+    var bake:Bool = false 
+    {
+        didSet 
+        {
+            guard self.bake, self.depot.cubemap.progress == nil 
+            else 
+            {
+                self.bake = false 
+                return 
+            }
+            
+            self.depot.cubemap.progress = 0
+            Terrain.generate(isolines: self.isolines.model, self, 
+                progress:   \.depot.cubemap.progress, 
+                return:     \.depot.cubemap.value)
+            self.bake = false 
+        }
+    }
     
     // async depot 
     private 
@@ -357,12 +411,6 @@ class Controller//:LayerController
     
     func event(_ event:UI.Event) -> UI.State 
     {
-        // clear buttons 
-        self.allButtons.forEach 
-        {
-            $0.click = 0
-        }
-        
         if let focus:UI.Group = self.focus 
         {
             switch event 
@@ -422,46 +470,11 @@ class Controller//:LayerController
             }
         }
         
-        save:
-        if self.buttons.save.click > 0 
-        {
-            self.isolines.model.save(filename: "map.json")
-        }
-        reload:
-        if self.buttons.reload.click > 0 
-        {
-            self.isolines.reinit(filename: "map.json")
-        }
-        background:
-        if self.buttons.background.click > 0 
-        {
-            guard self.depot.cubemap.progress == nil 
-            else 
-            {
-                self.buttons.background.click = 0
-                break background
-            }
-            
-            self.depot.cubemap.progress = 0
-            Terrain.background(cylindrical: "assets/textures/blue-marble-cylindrical.png", self, 
-                progress:   \.depot.cubemap.progress, 
-                return:     \.depot.cubemap.value)
-        }
-        bake:
-        if self.buttons.bake.click > 0 
-        {
-            guard self.depot.cubemap.progress == nil 
-            else 
-            {
-                self.buttons.bake.click = 0
-                break bake
-            }
-            
-            self.depot.cubemap.progress = 0
-            Terrain.generate(isolines: self.isolines.model, self, 
-                progress:   \.depot.cubemap.progress, 
-                return:     \.depot.cubemap.value)
-        }
+        self.buttons.save.communicate(\.save, to: self)
+        self.buttons.reload.communicate(\.reload, to: self)
+        // self.buttons.renormalize.communicate(\.renormalize, to: self)
+        self.buttons.background.communicate(\.background, to: self)
+        self.buttons.bake.communicate(\.bake, to: self)
         
         let cursor:UI.Cursor = self.focus?.cursor.active ?? self.hover?.cursor.inactive ?? .arrow
         return .init(cursor: cursor)

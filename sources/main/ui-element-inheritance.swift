@@ -1287,6 +1287,7 @@ extension UI.Element
         }
     }
     
+    // unidirectional boolean event handling 
     class Button:UI.Element.Div 
     {
         override
@@ -1295,8 +1296,8 @@ extension UI.Element
             (.hand, .hand)
         }
         
-        final 
-        var click:Int = 0
+        final private 
+        var value:Bool = false 
         
         override 
         func action(_ action:UI.Event.Action)
@@ -1305,29 +1306,104 @@ extension UI.Element
             switch action 
             {
             case .complete:
-                self.click &+= 1
+                self.value = true 
             default:
                 break
             }
         }
+        
+        func communicate<Root>(_ path:ReferenceWritableKeyPath<Root, Bool>, to root:Root) 
+        {
+            if self.value 
+            {
+                if !root[keyPath: path]
+                {
+                    root[keyPath: path] = true 
+                }
+                self.value = false 
+            }
+        }
     }
     
-    class StickyButton:UI.Element.Button 
+    // bidirectional boolean event handling
+    class StickyButton:UI.Element.Div 
     {
-        // indicator is purely cosmetic, it is the responsibility of the 
-        // button manager to keep it in sync with ground truth
-        final 
-        var indicator:Bool = false
+        private 
+        enum Value 
+        {
+            case off, on, submit, cancel
+        }
+        
+        final private
+        var value:Value = .off
+        
+        override
+        var cursor:(inactive:UI.Cursor, active:UI.Cursor) 
+        {
+            (.hand, .hand)
+        }
         
         override
         var pseudoclasses:Set<UI.Style.PseudoClass> 
         {
             var pseudoclasses:Set<UI.Style.PseudoClass> = super.pseudoclasses
-            if self.indicator 
+            if case .on = self.value
             {
                 pseudoclasses.insert(.indicating)
             }
             return pseudoclasses
+        }
+        
+        override 
+        func action(_ action:UI.Event.Action)
+        {
+            super.action(action)
+            switch action 
+            {
+            case .complete:
+                switch self.value 
+                {
+                case .off, .cancel:
+                    self.value = .submit 
+                case .on, .submit:
+                    self.value = .cancel
+                }
+            default:
+                break
+            }
+        }
+        
+        func communicate<Root>(_ path:ReferenceWritableKeyPath<Root, Bool>, to root:Root) 
+        {
+            switch self.value 
+            {
+            case .off: 
+                if root[keyPath: path]
+                {
+                    // state of value is true, so we make sure the stickybutton reflects that 
+                    self.value = .on
+                }
+            case .on:
+                if !root[keyPath: path]
+                {
+                    // state of value is false, so we return the stickybutton to the inactive state
+                    self.value = .off
+                }
+            case .submit:
+                if !root[keyPath: path]
+                {
+                    // push event to value 
+                    root[keyPath: path] = true 
+                }
+                self.value = .on
+            case .cancel:
+                if root[keyPath: path]
+                {
+                    // push cancellation to value 
+                    root[keyPath: path] = false 
+                }
+                self.value = .off 
+            }
         }
     }
 }
