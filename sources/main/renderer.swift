@@ -773,13 +773,24 @@ enum GPU
                 }
             }
             
-            func data<CC>(_ data:CC, hint:Hint) 
+            func data<CC>(_ data:CC, hint:Hint, capacity:Int? = nil) 
                 where CC:ContiguousCollection
             {
                 OpenGL.glBindBuffer(Target.code, self.buffer)
                 data.withUnsafeBytes 
                 {
-                    OpenGL.glBufferData(Target.code, $0.count, $0.baseAddress, hint.code)
+                    let bytes:Int 
+                    if let capacity:Int = capacity
+                    {
+                        bytes = capacity * MemoryLayout<CC.Element>.stride
+                    }
+                    else 
+                    {
+                        bytes = $0.count 
+                    }
+                    
+                    OpenGL.glBufferData(Target.code, bytes, nil, hint.code)
+                    OpenGL.glBufferSubData(Target.code, 0, $0.count, $0.baseAddress)
                 }
                 OpenGL.glBindBuffer(Target.code, 0)
             }
@@ -852,11 +863,13 @@ enum GPU
             func assign<CC>(_ data:CC) 
                 where CC:ContiguousCollection, CC.Element == Element 
             {
-                if data.count > self.capacity || data.count < self.capacity / 2
+                if data.count > self.capacity || data.count < self.capacity / 4
                 {
-                    self.core.data(data, hint: self.hint)
+                    let capacity:Int = data.count.nextPowerOfTwo 
+                    
+                    self.core.data(data, hint: self.hint, capacity: capacity)
                     self.count      = data.count 
-                    self.capacity   = data.count 
+                    self.capacity   = capacity
                 }
                 else 
                 {
@@ -3329,6 +3342,9 @@ class Renderer
         {
             OpenGL.glEnable(OpenGL.DEBUG_OUTPUT)
             OpenGL.glEnable(OpenGL.DEBUG_OUTPUT_SYNCHRONOUS)
+            // disable logging notification-level messages 
+            OpenGL.glDebugMessageControl(OpenGL.DONT_CARE, OpenGL.DONT_CARE, 
+                OpenGL.DEBUG_SEVERITY_NOTIFICATION, 0, nil, false)
             
             OpenGL.glDebugMessageCallback(
             {

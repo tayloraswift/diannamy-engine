@@ -391,11 +391,14 @@ vec4 Shade_atmosphere(
     float l             = dot(c, ray);
     float discriminant  = atmosphere.radius_bottom * atmosphere.radius_bottom + l * l - dot(c, c);
     
+    //vec3 _ground;
     // radiance reflected by ground
     vec4 radiance_ground;
     if (discriminant < 0.0) 
     {
         radiance_ground = vec4(0.0);
+        
+        //_ground = vec3(0.0);
     }
     else 
     {
@@ -418,6 +421,8 @@ vec4 Shade_atmosphere(
         radiance_ground.rgb *= transmittance;
         radiance_ground.rgb += in_scatter;
         radiance_ground.a    = 1.0;
+        
+        //_ground = mix(vec3(0.3, 0.4, 0.2), vec3(0, 0.2, 0.33), texture(albedo, normal).r);
     }
     
     // radiance of sky 
@@ -433,6 +438,7 @@ vec4 Shade_atmosphere(
     }
     
     radiance = mix(radiance, radiance_ground.rgb, radiance_ground.a);
+    //return vec4(mix(_ground, pow(vec3(1.0) - exp(-radiance * 20), vec3(1.0 / 1.8)), 0.1), 1.0);
     return vec4(pow(vec3(1.0) - exp(-radiance * 20), vec3(1.0 / 1.8)), 1.0);
 }
 
@@ -443,23 +449,6 @@ vec4 Pixel(const vec2 fragment)
     vec3 ray = normalize(camera.F * vec3(fragment, 1));
     return Shade_atmosphere(globetex, transmittance_table, scattering_table, irradiance_table, 
         camera.position * k, ray, normalize(vec3(1, 1, 0.5)), origin * k);
-    
-    vec3  c  = origin - camera.position;
-    float l  = dot(c, ray);
-    
-    float discriminant = scale * scale + l * l - dot(c, c);
-    if (discriminant < 0)
-    {
-        return vec4(0); 
-    }
-    
-    vec3 normal = normalize(camera.position + ray * (l - sqrt(discriminant)) - origin);
-    
-    //vec2 equirectangular = vec2(atan(normal.y, normal.x) * INV_2PI, acos(normal.z) * INV_PI);
-    //vec3 albedo = texture(globetex, normal).rgb;
-    vec4 entry  = texture(globetex, normal);
-    vec3 albedo = entry.a > 0.5 ? entry.rgb : vec3(entry.r + entry.g + entry.b) * 0.25;
-    return vec4(albedo * vec3(max(0, dot(normal, normalize(vec3(1, 1, 1)))) + 0.05), 1);
 }
 void main()
 {

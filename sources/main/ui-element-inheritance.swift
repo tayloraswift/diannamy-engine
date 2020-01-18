@@ -568,6 +568,14 @@ extension UI
             }
         } */
         
+        // we provide this as an explicit property so that classes like `StickyButton` 
+        // can override it with a different metatype than they actually are
+        class 
+        var element:Any.Type 
+        {
+            Self.self 
+        } 
+        
         final 
         var classes:Set<String>
         final 
@@ -1328,6 +1336,12 @@ extension UI.Element
     // bidirectional boolean event handling
     class StickyButton:UI.Element.Div 
     {
+        override class 
+        var element:Any.Type 
+        {
+            UI.Element.Button.self 
+        } 
+        
         private 
         enum Value 
         {

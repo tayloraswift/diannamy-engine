@@ -21,7 +21,7 @@ extension Editor
                 .init(255, 120,   0), 
                 .init(255,  60,   0), 
                 .init(255,   0,  40), 
-                .init(255,   0, 100),
+                .init(255,  20,  20),
                 .init(255, 255, 255)
             )
         }
@@ -335,6 +335,49 @@ extension Editor.Isolines:UI.Group
         }
     }
     
+    // interface for stickybutton to activate `.new` edit 
+    var new:Bool 
+    {
+        get 
+        {
+            if case .new = self.edit 
+            {
+                return true 
+            }
+            else 
+            {
+                return false 
+            }
+        }
+        set(value) 
+        {
+            if value 
+            {
+                switch self.edit 
+                {
+                case .select(let selected):
+                    self.edit = .new(selected, nil)
+                case .move(let index, _):
+                    self.edit = .new(index, nil)
+                case .insert:
+                    self.edit = .new(nil, nil)
+                case .new:
+                    break 
+                }
+            }
+            else 
+            {
+                switch self.edit 
+                {
+                case .new(let selected, _):
+                    self.edit = .select(selected)
+                default:
+                    break
+                }
+            }
+        }
+    }
+    
     func action(_ action:UI.Event.Action)
     {
         switch action 
@@ -383,7 +426,6 @@ extension Editor.Isolines:UI.Group
                         group   = "continent-\(continents.count)"
                         name    = "\(group)-landmass-0"
                     }
-                    
                     self.model.append(.init([r], name: name, group: group))
                     self.edit   = .select((self.model.endIndex - 1, 0))
                 
@@ -459,15 +501,35 @@ extension Editor.Isolines:UI.Group
                 self.removeSelected()
             case .key(.backspace, .none):
                 self.removeSelected()
+                self.backward()
+            
+            case .key(.left, .none):
+                self.backward()
+            case .key(.right, .none):
+                self.forward()
+            case .key(.up, .none):
                 switch self.edit 
                 {
                 case .select(let selected?):
                     let before:(Int, Int) = 
                     (
-                        selected.0, 
-                        Self.wrap(selected.1, under: self.model[selected.0].indices)
+                        Self.wrap(selected.0, under: self.model.indices),
+                        0
                     )
                     self.edit = .select(before)
+                default:
+                    break 
+                }
+            case .key(.down, .none):
+                switch self.edit 
+                {
+                case .select(let selected?):
+                    let after:(Int, Int) = 
+                    (
+                        Self.wrap(selected.0, beyond: self.model.indices),
+                        0
+                    )
+                    self.edit = .select(after)
                 default:
                     break 
                 }
@@ -478,6 +540,38 @@ extension Editor.Isolines:UI.Group
     }
     
     private 
+    func backward() 
+    {
+        switch self.edit 
+        {
+        case .select(let selected?):
+            let before:(Int, Int) = 
+            (
+                selected.0, 
+                Self.wrap(selected.1, under: self.model[selected.0].indices)
+            )
+            self.edit = .select(before)
+        default:
+            break 
+        }
+    }
+    private 
+    func forward() 
+    {
+        switch self.edit 
+        {
+        case .select(let selected?):
+            let after:(Int, Int) = 
+            (
+                selected.0, 
+                Self.wrap(selected.1, beyond: self.model[selected.0].indices)
+            )
+            self.edit = .select(after)
+        default:
+            break 
+        }
+    }
+    private 
     func removeSelected() 
     {
         switch self.edit 
@@ -486,7 +580,12 @@ extension Editor.Isolines:UI.Group
             self.model.remove(at: selected)
             if self.model[selected.0].isEmpty 
             {
+                self.model.remove(at: selected.0)
                 self.edit = .select(nil)
+            }
+            else if selected.1 >= self.model[selected.0].endIndex 
+            {
+                self.edit = .select((selected.0, 0))
             }
         default:
             break 
@@ -500,7 +599,7 @@ extension Editor.Isolines:UI.Group
         // render the emblems, if they haven’t already been rendered 
         if self.symbol == nil 
         {
-            let plus:UI.Canvas.Text = .symbol(.magnet, at: .x1, color: .extend(Constants.color.new, .max), 
+            let plus:UI.Canvas.Text = .symbol(.plus, at: .x1, color: .extend(Constants.color.new, .max), 
                 offset: .init(4, -4), 
                 styles: styles)
             
@@ -597,6 +696,19 @@ extension Editor.Isolines
                     vertices.append(contentsOf: subdivided)
                 }
                 let count:UInt32 = .init(vertices.count) - base
+                guard count > 2
+                else 
+                {
+                    if count > 1 
+                    {
+                        // one edge 
+                        indices.append(base + 0)
+                        indices.append(base + 1)
+                        indices.append(base + 0)
+                        indices.append(base + 1)
+                    }
+                    continue 
+                }
                 
                 for k:UInt32 in 0 ..< count 
                 {

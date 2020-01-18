@@ -121,6 +121,7 @@ class Controller//:LayerController
         renormalize:UI.Element.Button,
         background:UI.Element.Button, 
         bake:UI.Element.Button, 
+        loop:UI.Element.StickyButton, 
         
         labels:
         (
@@ -128,7 +129,8 @@ class Controller//:LayerController
             reload:UI.Element.P,
             renormalize:UI.Element.P,
             background:UI.Element.P,
-            bake:UI.Element.P
+            bake:UI.Element.P,
+            loop:UI.Element.P
         )
     )
     
@@ -259,15 +261,17 @@ class Controller//:LayerController
         self.buttons.labels.renormalize = .init([.init("Renormalize")])
         self.buttons.labels.background  = .init([.init("Background")])
         self.buttons.labels.bake        = .init([.init("Bake")])
+        self.buttons.labels.loop        = .init([.init("Loop")])
         
         self.buttons.save               = .init([self.buttons.labels.save])
         self.buttons.reload             = .init([self.buttons.labels.reload])
         self.buttons.renormalize        = .init([self.buttons.labels.renormalize])
         self.buttons.background         = .init([self.buttons.labels.background])
         self.buttons.bake               = .init([self.buttons.labels.bake])
+        self.buttons.loop               = .init([self.buttons.labels.loop])
         
         let toolbar:UI.Element.Div      = .init(
-            [self.buttons.0, self.buttons.1, self.buttons.2, self.buttons.3, self.buttons.4], 
+            [self.buttons.0, self.buttons.1, self.buttons.2, self.buttons.3, self.buttons.4, self.buttons.5], 
             identifier: "toolbar")
         let container:UI.Element.Div    = .init([toolbar], identifier: "container")
         self.ui = UI.Element.Div.init([container])
@@ -475,6 +479,7 @@ class Controller//:LayerController
         // self.buttons.renormalize.communicate(\.renormalize, to: self)
         self.buttons.background.communicate(\.background, to: self)
         self.buttons.bake.communicate(\.bake, to: self)
+        self.buttons.loop.communicate(\.isolines.new, to: self)
         
         let cursor:UI.Cursor = self.focus?.cursor.active ?? self.hover?.cursor.inactive ?? .arrow
         return .init(cursor: cursor)

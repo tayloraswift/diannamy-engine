@@ -170,6 +170,11 @@ extension Algorithm
         {
             self.isolines[index.0].remove(at: index.1)
         }
+        mutating 
+        func remove(at index:Int) 
+        {
+            self.isolines.remove(at: index)
+        }
         
         mutating 
         func append(_ isoline:Isoline) 
@@ -190,8 +195,9 @@ extension Algorithm
             let serialized:KeyedDecodingContainer<CodingKeys> = 
                 try decoder.container(keyedBy: CodingKeys.self)
             
-            self.background = try serialized.decode(String.self,    forKey: .background)
-            self.isolines   = try serialized.decode([Isoline].self, forKey: .isolines)
+            let isolines:[Isoline]  = try serialized.decode([Isoline].self, forKey: .isolines)
+            self.isolines           = isolines.filter{ !$0.isEmpty }
+            self.background         = try serialized.decode(String.self,    forKey: .background)
         }
         
         func encode(to encoder:Encoder) throws 

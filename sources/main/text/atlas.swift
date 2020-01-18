@@ -72,7 +72,7 @@ struct Atlas
         catch 
         {
             Log.trace(error: error)
-        }
+        } 
         
         Log.note("rendered font atlas of \(sprites.count) glyphs, \(packed.buffer.count >> 10) KB")
         

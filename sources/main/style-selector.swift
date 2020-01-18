@@ -146,7 +146,7 @@ extension UI.Style
             
             init(_ element:UI.Element)  
             {
-                self.element        = type(of: element) 
+                self.element        = type(of: element).element
                 self.classes        = element.classes
                 self.identifier     = element.identifier
                 self.pseudoclasses  = element.pseudoclasses
