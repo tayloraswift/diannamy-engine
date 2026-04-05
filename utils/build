@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import print_function
 
 import os, fnmatch
@@ -18,30 +18,30 @@ def find_gyb_files( * filetypes ):
 
 def main():
     flags = {
-        'cc': '-Xcc -I/usr/local/include', 
+        'cc': '-Xcc -I/usr/local/include',
         'ld': '-Xlinker -L/usr/local/lib'
     }
     parser = ArgumentParser()
     parser.add_argument('-d', '--debug', action='store_true')
     parser.add_argument('-l', '--line-directive', action='store_true')
     parser.add_argument('--no-gyb', action='store_true')
-    
+
     arguments = parser.parse_args()
-    
+
     gyb_targets = tuple(find_gyb_files('swift'))
-    
+
     if not arguments.no_gyb:
         for directory, swiftfile in gyb_targets:
             shell('mkdir -p {0}'.format(os.path.join(directory, '__gyb__/')), silent = True)
             shell('utils/swift/gyb {0}.gyb -o {1}'.
                 format(
-                os.path.join(directory, swiftfile), 
+                os.path.join(directory, swiftfile),
                 os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile))
-                ), 
+                ),
             silent = False)
             shell('rsync -c {0} {1}'.
                 format(
-                os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile)), 
+                os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile)),
                 os.path.join(directory, '__gyb__/', swiftfile)
                 ),
             silent = True)
@@ -50,19 +50,19 @@ def main():
                 os.path.join(directory, '__gyb__/', '~{0}'.format(swiftfile))
                 ),
             silent = True)
-    
+
     if arguments.debug:
         command = 'swift build -c debug -Xswiftc "-D" -Xswiftc "DEBUG" {cc} {ld}'
     else:
-        command = 'swift build -c release {cc} {ld} ' 
-    
+        command = 'swift build -c release {cc} {ld} '
+
     command = command.format( ** flags )
-    
+
     if arguments.line_directive:
         command = 'utils/swift/line-directive {0} -- {1}'.format(' '.join(gyb_targets), command)
-    
+
     shell(command)
-    
+
 if __name__ == '__main__':
     # set cwd
     location = os.path.dirname(__file__)

@@ -1,47 +1,47 @@
 import Noise
 import PNG
 
-import class Dispatch.DispatchQueue 
+import class Dispatch.DispatchQueue
 
-enum Terrain 
+enum Terrain
 {
-    static 
-    func generate<Root>(isolines:Algorithm.Isolines, _ root:Root, 
-        progress:WritableKeyPath<Root, Double?>, 
-        return:WritableKeyPath<Root, Array2D<Vector4<UInt8>>?>) 
+    static
+    func generate<Root>(isolines:Algorithm.Isolines, _ root:Root,
+        progress:WritableKeyPath<Root, Double?>,
+        return:WritableKeyPath<Root, Array2D<Vector4<UInt8>>?>)
         where Root:AnyObject
     {
-        DispatchQueue.global(qos: .userInitiated).async 
+        DispatchQueue.global(qos: .userInitiated).async
         {
-            [weak root] in 
-            
-            guard var root:Root = root 
-            else 
+            [weak root] in
+
+            guard var root:Root = root
+            else
             {
-                return 
+                return
             }
-            
-            let noise:(r:GradientNoise3D, g:GradientNoise3D, b:GradientNoise3D) = 
+
+            let noise:(r:GradientNoise3D, g:GradientNoise3D, b:GradientNoise3D) =
             (
                 .init(amplitude: 1.2 * 0.5 * 255, frequency: 4, seed: 0),
                 .init(amplitude: 1.2 * 0.5 * 255, frequency: 2, seed: 1),
                 .init(amplitude: 1.2 * 0.5 * 255, frequency: 1, seed: 2)
-            ) 
-            
-            let d:Int     = 512 
+            )
+
+            let d:Int     = 512
             let count:Int = 6 * d * d
             var j:Int     = 0
-            let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: d) 
+            let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: d)
             {
                 let offset:Double = 0.75 * 255
-                let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))), 
-                    g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))), 
+                let r:UInt8 = .init(clamping: Int.init(offset + noise.r.evaluate($0.x, $0.y, $0.z))),
+                    g:UInt8 = .init(clamping: Int.init(offset + noise.g.evaluate($0.x, $0.y, $0.z))),
                     b:UInt8 = .init(clamping: Int.init(offset + noise.b.evaluate($0.x, $0.y, $0.z)))
-                let d:Double = isolines.distance(to: $0), 
+                let d:Double = isolines.distance(to: $0),
                     i:UInt8  = .init(min(max(0, 128 + 800 * d), 255))
-                
+
                 j += 1
-                if j & 0xff == 0 
+                if j & 0xff == 0
                 {
                     let percent:Double = .init(j) / .init(count)
                     root[keyPath: progress] = percent
@@ -49,54 +49,53 @@ enum Terrain
                 return .init(r, g, b, i)
                 // return .extend(.cast(128 + 127 * $0), .max)
             }
-            
+
             root[keyPath: `return`] = cubemap
         }
     }
-    
-    static 
-    func background<Root>(cylindrical filepath:String, _ root:Root, 
-        progress:WritableKeyPath<Root, Double?>, 
-        return:WritableKeyPath<Root, Array2D<Vector4<UInt8>>?>) 
+
+    static
+    func background<Root>(cylindrical filepath:String, _ root:Root,
+        progress:WritableKeyPath<Root, Double?>,
+        return:WritableKeyPath<Root, Array2D<Vector4<UInt8>>?>)
         where Root:AnyObject
     {
-        DispatchQueue.global(qos: .userInitiated).async 
+        DispatchQueue.global(qos: .userInitiated).async
         {
-            [weak root] in 
-            
-            guard var root:Root = root 
-            else 
+            [weak root] in
+
+            guard var root:Root = root
+            else
             {
-                return 
+                return
             }
-            
-            let (pixels, (x, y)):([PNG.RGBA<UInt8>], (Int, Int)) = 
-                try! PNG.rgba(path: filepath, of: UInt8.self)
-            
-            let d:Int     = 1024 
+
+            let (pixels, (x, y)):([PNG.RGBA<UInt8>], (Int, Int)) = try! LoadRGBA(path: filepath)
+
+            let d:Int     = 1024
             let count:Int = 6 * d * d
             var p:Int     = 0
-            let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: d) 
+            let cubemap:Array2D<Vector4<UInt8>> = Algorithm.cubemap(size: d)
             {
                 let l:Spherical2<Double>    = .init(cartesian: $0)
-                let theta:Double            = l.colatitude, 
+                let theta:Double            = l.colatitude,
                     phi:Double              = l.longitude + (l.longitude < 0 ? 2 * .pi : 0)
-                let i:Int = .init(theta /      .pi  * .init(y)), 
+                let i:Int = .init(theta /      .pi  * .init(y)),
                     j:Int = .init(phi   / (2 * .pi) * .init(x))
-                
+
                 let c:PNG.RGBA<UInt8> = pixels[i * x + j]
-                
+
                 p += 1
-                if p & 0xff == 0 
+                if p & 0xff == 0
                 {
                     let percent:Double = .init(p) / .init(count)
                     root[keyPath: progress] = percent
                 }
-                
+
                 return .init(c.r, c.g, c.b, .max)
                 // return .extend(.cast(128 + 127 * $0), .max)
             }
-            
+
             root[keyPath: `return`] = cubemap
         }
     }

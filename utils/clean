@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import print_function
 
 import os, fnmatch
@@ -17,7 +17,7 @@ def find_gyb_directories():
 def main():
     shell('rm -rf {0}'.format(' '.join(find_gyb_directories())))
     shell('rm -rf .build/ Package.resolved')
-    
+
 if __name__ == '__main__':
     # set cwd
     location = os.path.dirname(__file__)

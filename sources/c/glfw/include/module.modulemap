@@ -1,6 +1,6 @@
 module GLFW {
     header "shim.h"
-    link "glfw3"
+    link "glfw"
     export *
 
     link "X11"
