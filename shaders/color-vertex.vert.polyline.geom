@@ -39,14 +39,14 @@ void polyline(const vec3 nodes[4])
     //               ·
     //              nodes[i]
 
-    const vec3 vectors[3] = vec3[]
+    vec3 vectors[3] = vec3[]
     (
         normalize(nodes[1] - nodes[0]),
         normalize(nodes[2] - nodes[1]),
         normalize(nodes[3] - nodes[2])
     );
 
-    const vec3 normals[3] = vec3[]
+    vec3 normals[3] = vec3[]
     (
         vec3(-vectors[0].y, vectors[0].x, 0),
         vec3(-vectors[1].y, vectors[1].x, 0),
@@ -76,12 +76,12 @@ void polyline(const vec3 nodes[4])
     EmitVertex();
     
 
-    const vec3 miter = normalize(normals[1] + normals[2]);
+    vec3 miter = normalize(normals[1] + normals[2]);
 
     // project miter onto normal, then scale it up until the projection is the
     // same size as the normal, so we know how big the full size miter vector is
 
-    const float p = dot(miter, normals[1]);
+    float p = dot(miter, normals[1]);
 
     if (p == 0)
     {

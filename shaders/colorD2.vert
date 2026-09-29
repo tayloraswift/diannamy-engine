@@ -14,12 +14,12 @@ layout(std140) uniform Display
 
 out Vertex
 {
-    vec2    border;
-    float   radius;
-    vec2    i;
-    vec4    color_outer_h;
-    vec4    color_outer_v;
-    vec4    color_inner;
+    noperspective vec2    border;
+    noperspective float   radius;
+    noperspective vec2    i;
+    noperspective vec4    color_outer_h;
+    noperspective vec4    color_outer_v;
+    noperspective vec4    color_inner;
 } vertex;
 
 void main()

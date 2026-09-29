@@ -2,8 +2,8 @@
 
 in Vertex
 {
-    vec4 color;
-    float facing;
+    noperspective vec4 color;
+    noperspective float facing;
 } vertex;
 
 out vec4 color;
